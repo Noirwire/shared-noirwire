@@ -1,0 +1,65 @@
+{
+  "name": "@noirwire/shared",
+  "version": "0.1.0",
+  "description": "The code that holds keys and checks transactions for NoirWire's apps.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    "./platform": {
+      "types": "./dist/platform.d.ts",
+      "default": "./dist/platform.js"
+    },
+    "./domain": {
+      "types": "./dist/domain/index.d.ts",
+      "default": "./dist/domain/index.js"
+    },
+    "./application": {
+      "types": "./dist/application/index.d.ts",
+      "default": "./dist/application/index.js"
+    },
+    "./presentation": {
+      "types": "./dist/presentation/index.d.ts",
+      "default": "./dist/presentation/index.js"
+    },
+    "./copy": {
+      "types": "./dist/copy/index.d.ts",
+      "default": "./dist/copy/index.js"
+    },
+    "./design": {
+      "types": "./dist/design/index.d.ts",
+      "default": "./dist/design/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "default": "./dist/testing/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit",
+    "lint": "eslint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "prepare": "npm run build",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^24",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.9",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.70.0",
+    "vitest": "^5.0.1"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
