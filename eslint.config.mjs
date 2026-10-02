@@ -1,56 +1,9 @@
 import js from "@eslint/js";
 import { defineConfig, globalIgnores } from "eslint/config";
 import eslintConfigPrettier from "eslint-config-prettier";
+import path from "node:path";
 import tseslint from "typescript-eslint";
-
-/**
- * The dependency rule. Each layer lists the layers it may import; every
- * other layer is refused. `platform` is src/platform.ts, the rest are the
- * folders under src/.
- */
-const MAY_IMPORT = {
-  domain: [],
-  design: [],
-  platform: [],
-  copy: ["domain"],
-  application: ["domain", "platform", "copy"],
-  infrastructure: ["domain", "application", "platform"],
-  presentation: ["domain", "application", "copy"],
-  testing: ["platform"],
-};
-
-const LAYERS = Object.keys(MAY_IMPORT);
-
-/** Nothing here may depend on a framework, on Node, or on one of the apps. */
-const OUTSIDE = {
-  regex:
-    "^(node:|react($|/)|react-dom($|/)|react-native($|[-/])|next($|/)|expo($|[-/])|@/)|(app|mobile)-noirwire",
-  message:
-    "This package is framework-free and is imported by the apps, never the reverse. What differs by platform goes through src/platform.ts.",
-};
-
-function layerRule(layer) {
-  const refused = LAYERS.filter((other) => other !== layer && !MAY_IMPORT[layer].includes(other));
-  const allowed = MAY_IMPORT[layer].length ? MAY_IMPORT[layer].join(", ") : "nothing of ours";
-  return {
-    files: [layer === "platform" ? "src/platform.ts" : `src/${layer}/**`],
-    ignores: ["**/*.test.ts"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            OUTSIDE,
-            {
-              regex: `^(\\.\\.?/)+(${refused.join("|")})(/|\\.js$|$)`,
-              message: `Dependency rule: ${layer} may import ${allowed}. See README.md.`,
-            },
-          ],
-        },
-      ],
-    },
-  };
-}
+import { dependencyRule } from "./eslint-rules/dependency-rule.mjs";
 
 export default defineConfig([
   js.configs.recommended,
@@ -68,6 +21,12 @@ export default defineConfig([
       ],
     },
   },
-  ...LAYERS.map(layerRule),
+  {
+    files: ["src/**/*.ts"],
+    plugins: { noirwire: { rules: { "dependency-rule": dependencyRule } } },
+    rules: {
+      "noirwire/dependency-rule": ["error", { srcDir: path.join(import.meta.dirname, "src") }],
+    },
+  },
   globalIgnores(["dist/**", "coverage/**"]),
 ]);
