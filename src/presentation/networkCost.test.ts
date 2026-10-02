@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { networkCostView } from "./networkCost.js";
+import { NO_PENDING_ACTION, type PendingAction } from "../application/pending.js";
+import { networkCostView as viewOf, type NetworkCostInput } from "./networkCost.js";
+
+const networkCostView = (cost: NetworkCostInput) =>
+  viewOf({ cost, pending: NO_PENDING_ACTION, submitting: false });
 
 const NOT_NOW =
   "This can't be done right now. Nothing was charged. Please try again in a few minutes.";
@@ -106,4 +110,45 @@ describe("networkCostView", () => {
       confirmDisabled: true,
     });
   });
+
+  it("holds Confirm back while the cost is still being worked out", () => {
+    expect(viewOf({ cost: null, pending: NO_PENDING_ACTION, submitting: false })).toEqual({
+      label: "Network cost",
+      value: "Checking...",
+      tone: "neutral",
+      explanation: [],
+      confirmDisabled: true,
+    });
+  });
+
+  it("holds Confirm back while the action is being submitted", () => {
+    const view = viewOf({
+      cost: { kind: "covered" },
+      pending: NO_PENDING_ACTION,
+      submitting: true,
+    });
+    expect(view).toMatchObject({ value: "Covered", tone: "neutral", confirmDisabled: true });
+  });
+
+  it.each<PendingAction>([
+    { status: "reserved" },
+    { status: "submitted", signature: "sig", lastValidBlockHeight: 10 },
+    { status: "unknown" },
+  ])("holds Confirm back and says why while the last action is $status", (pending) => {
+    const view = viewOf({ cost: { kind: "covered" }, pending, submitting: false });
+    expect(view.confirmDisabled).toBe(true);
+    expect(view.tone).toBe("warning");
+    expect(view.explanation).toEqual([
+      expect.stringContaining("was sent and is not confirmed yet"),
+    ]);
+  });
+
+  it.each<PendingAction>([{ status: "landed" }, { status: "expired" }])(
+    "lets a settled action ($status) be followed by the next one",
+    (pending) => {
+      expect(
+        viewOf({ cost: { kind: "covered" }, pending, submitting: false }).confirmDisabled,
+      ).toBe(false);
+    },
+  );
 });

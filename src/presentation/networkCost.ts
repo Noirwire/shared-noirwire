@@ -1,4 +1,6 @@
+import { canReserve, type PendingAction } from "../application/pending.js";
 import { networkCostCopy as copy } from "../copy/networkCost.js";
+import { refusalCopy } from "../copy/refusal.js";
 import { symbolAmount } from "../domain/format.js";
 import type { Opens } from "../domain/networkCost.js";
 
@@ -18,6 +20,16 @@ export type NetworkCostInput =
   | { kind: "noPrice" }
   /** It cannot be met at this moment. */
   | { kind: "unavailable" };
+
+/** Everything that decides the network cost row of a review and whether it can be confirmed. */
+export type NetworkCostState = {
+  /** Null while the cost is still being worked out. */
+  cost: NetworkCostInput | null;
+  /** The pending action of the intent this review would confirm. */
+  pending: PendingAction;
+  /** True from the press of Confirm until the action answers. */
+  submitting: boolean;
+};
 
 export type NetworkCostView = {
   label: string;
@@ -57,7 +69,16 @@ function openingReason(opens: Opens | null, count: number): readonly string[] {
   return [count > 1 ? copy.openingSeveral(count) : copy.opening[opens]];
 }
 
-export function networkCostView(cost: NetworkCostInput): NetworkCostView {
+function costRow(cost: NetworkCostInput | null): NetworkCostView {
+  if (cost === null) {
+    return {
+      label: copy.label,
+      value: copy.checking,
+      tone: "neutral",
+      explanation: [],
+      confirmDisabled: true,
+    };
+  }
   switch (cost.kind) {
     case "covered":
       return payable(copy.covered);
@@ -76,4 +97,22 @@ export function networkCostView(cost: NetworkCostInput): NetworkCostView {
     case "unavailable":
       return notPayable(copy.notNow);
   }
+}
+
+/**
+ * The network cost row of a money review, and whether its Confirm is
+ * enabled. A component renders this and forwards the press; it decides
+ * nothing about whether the action can go ahead.
+ */
+export function networkCostView({ cost, pending, submitting }: NetworkCostState): NetworkCostView {
+  const row = costRow(cost);
+  if (!canReserve(pending)) {
+    return {
+      ...row,
+      tone: "warning",
+      explanation: [...row.explanation, refusalCopy.actionPending],
+      confirmDisabled: true,
+    };
+  }
+  return submitting ? { ...row, confirmDisabled: true } : row;
 }

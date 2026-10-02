@@ -10,6 +10,7 @@ export const networkCostCopy = {
   covered: "Covered",
   underOneCent: "less than 0.01 USDC",
   notAvailable: "Not available",
+  checking: "Checking...",
 
   /** Nothing was charged, and nothing is asked for. */
   notNow: "This can't be done right now. Nothing was charged. Please try again in a few minutes.",

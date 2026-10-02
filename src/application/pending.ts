@@ -1,124 +1,137 @@
 /**
- * A money action that was sent and not seen to land may still land, so
- * whatever it was for must not be done a second time until the chain has
- * settled the first: that is how one decision turns into two payments.
+ * The life of one money action, from the moment it is confirmed until the
+ * chain has settled it. An action that may still land must not be done a
+ * second time: that is how one decision turns into two payments.
  *
- * It can always be settled eventually. A transaction is only valid until its
- * blockhash expires, so either the chain shows it, or the chain has moved
- * past the point where it could ever be included.
+ *   none ──reserve──► reserved ──submitted──► submitted ──chain──► landed | expired
+ *                       │   │                     │
+ *                       │   └──outcomeUnknown──►  unknown ──chain──► landed | expired
+ *                       │                         │
+ *        releasedBeforeSend (nothing left         └──userCleared (no block height only)──► none
+ *        the device) ──► none
  *
- * One `PendingAction` tracks one intent. `intent` is the caller's own key for
- * what must not be repeated, for example a portfolio's id.
+ * Only chain evidence settles an action. The device's clock never does.
  */
 export type PendingAction =
   | { status: "none" }
-  /** Sent, with everything needed to look it up. */
-  | { status: "submitted"; intent: string; signature: string; lastValidBlockHeight: number }
-  /** Sent without a full receipt: a venue that pays the fee signs first, and may not have said. */
-  | {
-      status: "unknown";
-      intent: string;
-      signature?: string;
-      lastValidBlockHeight?: number;
-      sentAt: number;
-    }
+  /** Confirmed and recorded before anything is signed. */
+  | { status: "reserved" }
+  /** Sent, with the signature and last valid block height of the exact transaction. */
+  | { status: "submitted"; signature: string; lastValidBlockHeight: number }
+  /** Something may have left the device, and what became of it is not known. */
+  | { status: "unknown"; signature?: string; lastValidBlockHeight?: number }
   /** The chain shows it took effect. */
-  | { status: "landed"; intent: string }
-  /** It can no longer take effect: it failed, or its time to land ran out. */
-  | { status: "expired"; intent: string };
+  | { status: "landed"; signature?: string }
+  /** The chain shows it can no longer take effect: it failed, or its block height passed. */
+  | { status: "expired" };
 
 export type PendingEvent =
-  | { type: "submitted"; intent: string; signature: string; lastValidBlockHeight: number }
-  | {
-      type: "sentUnseen";
-      intent: string;
-      signature?: string;
-      lastValidBlockHeight?: number;
-      now: number;
-    }
+  | { type: "reserve" }
+  /** A failure certain to be before anything left the device: signing refused, the build threw. */
+  | { type: "releasedBeforeSend" }
+  | { type: "submitted"; signature: string; lastValidBlockHeight: number }
+  /** Any failure after the transaction may have left the device. */
+  | { type: "outcomeUnknown"; signature?: string; lastValidBlockHeight?: number }
   /**
-   * One reading of the chain. `signatureStatus` is left out when there was no
-   * signature to look up or the lookup failed, `finalizedHeight` when the
-   * height could not be read.
+   * One reading of the chain, supplied by the caller from the RPC. Each field
+   * is left out when it could not be read. `effect` is what the balances the
+   * action would change show, read at or after `blockHeight`.
    */
   | {
       type: "chainChecked";
       signatureStatus?: "confirmed" | "failed" | "notFound";
-      finalizedHeight?: number;
-      now: number;
+      blockHeight?: number;
+      effect?: "seen" | "absent";
     }
-  /** The balances the action would have changed show that it did. The only proof of landing when there is no signature. */
-  | { type: "effectObserved" }
+  /** The person has confirmed that an action with no block height to wait for may be cleared. */
+  | { type: "userCleared" }
   /** The person has been told how it ended. */
   | { type: "acknowledged" };
 
-/**
- * How long an action with no known expiry is treated as possibly still on
- * its way. A blockhash is good for about a minute and a half at most; the
- * rest is for the finalized height that proves it to catch up.
- */
-export const LONGEST_VALID_MS = 180_000;
+type Unsettled = Extract<PendingAction, { status: "reserved" | "submitted" | "unknown" }>;
+type InFlight = Extract<PendingAction, { status: "submitted" | "unknown" }>;
 
 export const NO_PENDING_ACTION: PendingAction = { status: "none" };
 
-export function isUnsettled(
-  pending: PendingAction,
-): pending is Extract<PendingAction, { status: "submitted" | "unknown" }> {
-  return pending.status === "submitted" || pending.status === "unknown";
+export function isUnsettled(pending: PendingAction): pending is Unsettled {
+  return (
+    pending.status === "reserved" || pending.status === "submitted" || pending.status === "unknown"
+  );
 }
 
-/** The same intent cannot be confirmed again while its last action is unsettled. */
-export function canConfirm(pending: PendingAction, intent: string): boolean {
-  return !(isUnsettled(pending) && pending.intent === intent);
+/** An intent can be reserved again only once its last action has settled. */
+export function canReserve(pending: PendingAction): boolean {
+  return !isUnsettled(pending);
 }
 
-function hasRunOutOfTime(
-  pending: Extract<PendingAction, { status: "submitted" | "unknown" }>,
-  finalizedHeight: number | undefined,
-  now: number,
-): boolean {
-  if (pending.lastValidBlockHeight !== undefined) {
-    return finalizedHeight !== undefined && finalizedHeight > pending.lastValidBlockHeight;
+function pastLastValidHeight(pending: InFlight, blockHeight: number | undefined): boolean {
+  return (
+    pending.lastValidBlockHeight !== undefined &&
+    blockHeight !== undefined &&
+    blockHeight > pending.lastValidBlockHeight
+  );
+}
+
+function settleFromChain(
+  pending: InFlight,
+  event: Extract<PendingEvent, { type: "chainChecked" }>,
+): PendingAction {
+  const { signature } = pending;
+  if (event.effect === "seen")
+    return signature ? { status: "landed", signature } : { status: "landed" };
+  if (signature === undefined) {
+    return event.effect === "absent" && pastLastValidHeight(pending, event.blockHeight)
+      ? { status: "expired" }
+      : pending;
   }
-  // With no expiry to wait for, the clock is the only thing that ends this.
-  return pending.status === "unknown" && now - pending.sentAt > LONGEST_VALID_MS;
+  if (event.signatureStatus === "confirmed") return { status: "landed", signature };
+  if (event.signatureStatus === "failed") return { status: "expired" };
+  return event.signatureStatus === "notFound" && pastLastValidHeight(pending, event.blockHeight)
+    ? { status: "expired" }
+    : pending;
 }
 
+/**
+ * Returns `pending` itself for an event that does not apply, so a caller can
+ * tell a refused event by identity.
+ */
 export function pendingReducer(pending: PendingAction, event: PendingEvent): PendingAction {
   switch (event.type) {
-    case "submitted": {
-      if (isUnsettled(pending)) return pending;
-      const { intent, signature, lastValidBlockHeight } = event;
-      return { status: "submitted", intent, signature, lastValidBlockHeight };
-    }
-    case "sentUnseen": {
-      if (isUnsettled(pending)) return pending;
-      const { intent, signature, lastValidBlockHeight, now } = event;
+    case "reserve":
+      return canReserve(pending) ? { status: "reserved" } : pending;
+    case "releasedBeforeSend":
+      return pending.status === "reserved" ? NO_PENDING_ACTION : pending;
+    case "submitted":
+      return pending.status === "reserved"
+        ? {
+            status: "submitted",
+            signature: event.signature,
+            lastValidBlockHeight: event.lastValidBlockHeight,
+          }
+        : pending;
+    case "outcomeUnknown": {
+      if (pending.status !== "reserved" && pending.status !== "submitted") return pending;
+      const known: { signature?: string; lastValidBlockHeight?: number } =
+        pending.status === "submitted" ? pending : {};
+      const signature = event.signature ?? known.signature;
+      const lastValidBlockHeight = event.lastValidBlockHeight ?? known.lastValidBlockHeight;
       return {
         status: "unknown",
-        intent,
         ...(signature === undefined ? {} : { signature }),
         ...(lastValidBlockHeight === undefined ? {} : { lastValidBlockHeight }),
-        sentAt: now,
       };
     }
-    case "chainChecked": {
-      if (!isUnsettled(pending)) return pending;
-      const { intent } = pending;
-      // A status only counts for a signature that was ours to look up.
-      const status = pending.signature === undefined ? undefined : event.signatureStatus;
-      if (status === "confirmed") return { status: "landed", intent };
-      if (status === "failed") return { status: "expired", intent };
-      // Past its last valid height it can only be called expired once the
-      // chain has also been asked for the signature and does not have it.
-      const lookedUp = pending.signature === undefined || status === "notFound";
-      return lookedUp && hasRunOutOfTime(pending, event.finalizedHeight, event.now)
-        ? { status: "expired", intent }
+    case "chainChecked":
+      return pending.status === "submitted" || pending.status === "unknown"
+        ? settleFromChain(pending, event)
         : pending;
-    }
-    case "effectObserved":
-      return isUnsettled(pending) ? { status: "landed", intent: pending.intent } : pending;
+    case "userCleared":
+      return pending.status === "unknown" && pending.lastValidBlockHeight === undefined
+        ? NO_PENDING_ACTION
+        : pending;
     case "acknowledged":
-      return isUnsettled(pending) ? pending : NO_PENDING_ACTION;
+      return pending.status === "landed" || pending.status === "expired"
+        ? NO_PENDING_ACTION
+        : pending;
   }
 }

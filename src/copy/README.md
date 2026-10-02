@@ -8,4 +8,4 @@ Every string a person reads, in one place, so both apps say the same thing in th
 
 **May import:** types from `domain/`.
 
-**Must never import:** anything else. Formatting numbers is `domain/format.ts`'s job; choosing which string applies is `presentation/`'s.
+**Must never import:** anything else. Formatting numbers is `domain/format.ts`'s job; choosing which string applies is `presentation/`'s. `application/` never imports this folder.
