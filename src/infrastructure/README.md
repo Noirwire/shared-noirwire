@@ -1,6 +1,6 @@
 # infrastructure
 
-Clients for everything outside the device: the Solana RPC, Jupiter, MagicBlock and the relayer. Each implements an interface that `application/` declares, and reaches the network only through the relay the platform seam provides.
+Clients for everything outside the device: the Solana RPC, Jupiter, MagicBlock and the relayer. Each implements an interface that `application/` declares, and is built with an `HttpConfig` (`httpConfig.ts`): the base URL and headers each app passes in. That is configuration, not a platform port.
 
 **Belongs here:** request building, response parsing, retries.
 

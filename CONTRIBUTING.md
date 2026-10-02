@@ -33,14 +33,14 @@ Each folder under `src/` may import only what its `README.md` allows:
 | ----------------- | ---------------------------------------- |
 | `domain/`         | nothing of ours                          |
 | `design/`         | nothing of ours                          |
-| `platform.ts`     | nothing of ours                          |
+| `platform.ts`     | `domain/`                                |
 | `copy/`           | `domain/`                                |
-| `application/`    | `domain/`, `copy/`, `platform.ts`        |
+| `application/`    | `domain/`, `platform.ts`                 |
 | `infrastructure/` | `domain/`, `application/`, `platform.ts` |
 | `presentation/`   | `domain/`, `application/`, `copy/`       |
 | `testing/`        | `platform.ts`                            |
 
-Nothing imports from an app, from React, React Native, Next or Expo, or from Node. `npm run lint` enforces this, and `tests/dependencyRule.test.ts` proves the lint rule fires. If you change the table, change `eslint.config.mjs` and that test with it.
+Nothing imports from an app, from React, React Native, Next or Expo, or from Node. `npm run lint` enforces this through `eslint-rules/dependency-rule.mjs`, which checks where each import resolves to, and `tests/dependencyRule.test.ts` proves it. If you change the table, change that rule and that test with it.
 
 ## Code
 
@@ -48,7 +48,8 @@ Nothing imports from an app, from React, React Native, Next or Expo, or from Nod
 - No dead code and no commented-out code. Comment only where the reason is not obvious.
 - Build what the change needs and nothing more. A new dependency needs a reason in the pull request, and a library both apps already carry is a `peerDependency`, so each app has one copy.
 - Use relative imports with the `.js` extension. The package ships as ES modules.
-- A string a person reads goes in `src/copy/`. What a screen shows goes in `src/presentation/`.
+- Use cases return reason codes, never words. A string a person reads goes in `src/copy/`; choosing it, and everything else a screen shows, goes in `src/presentation/`.
+- Nothing that decides whether money is safe may read the device's clock.
 
 ## Text people read
 

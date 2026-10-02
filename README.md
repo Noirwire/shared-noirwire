@@ -27,46 +27,77 @@ Each folder has a `README.md` saying what belongs there.
 ## The dependency rule
 
 ```
-   presentation ──────────┐
-      │      │            │
-      │      ▼            ▼
-      │  application ──► copy
-      │      │   │        │
-      │      │   ▼        │
-      │      │  platform  │
-      ▼      ▼            ▼
-        domain  ◄─────────┘
+   presentation ─────► copy ─────► domain
+        │                            ▲
+        └──────► application ────────┤
+                   │    ▲            │
+                   ▼    │            │
+             platform ──┼────────────┘
+                   ▲    │
+   infrastructure ─┴────┘   (and domain)
 
-   infrastructure ──► application, domain, platform
-   design, domain and platform import nothing of ours
-   nothing imports from an app
+   design and domain import nothing of ours
+   nothing imports from an app, a framework or Node
 ```
 
 | Layer             | May import                               |
 | ----------------- | ---------------------------------------- |
 | `domain/`         | nothing of ours                          |
 | `design/`         | nothing of ours                          |
-| `platform.ts`     | nothing of ours                          |
+| `platform.ts`     | `domain/` (the usage event types)        |
 | `copy/`           | `domain/`                                |
-| `application/`    | `domain/`, `copy/`, `platform.ts`        |
+| `application/`    | `domain/`, `platform.ts`                 |
 | `infrastructure/` | `domain/`, `application/`, `platform.ts` |
 | `presentation/`   | `domain/`, `application/`, `copy/`       |
 | `testing/`        | `platform.ts`                            |
 
-ESLint enforces the table (`no-restricted-imports` per folder, in `eslint.config.mjs`), along with a ban on framework, Node and app imports. `tests/dependencyRule.test.ts` runs the linter against violating imports and proves the rule fires.
+Use cases answer with reason codes from closed unions; only `presentation/` chooses the words.
+
+A small local ESLint rule, `eslint-rules/dependency-rule.mjs`, enforces the table. It resolves every relative import against the importing file and checks the layer of the file it lands on, so `../domain/../application/x.js` and `../../src/application/x.js` are caught like `../application/x.js`, and an import that leaves `src/` (into an app, a test or the repository root) is refused outright. It also refuses React, React Native, Next, Expo, Node built-ins, `@/` paths and the package's own name. `tests/dependencyRule.test.ts` lints violating and allowed fixtures and checks that each one fails or passes for the stated reason.
 
 ## The platform seam
 
 What differs by platform is a small set of interfaces in `src/platform.ts`:
 
-| Port       | What it is                                                             |
-| ---------- | ---------------------------------------------------------------------- |
-| `storage`  | Synchronous `getItem`, `setItem`, `removeItem`, `keys`                 |
-| `relay`    | `baseUrl` and `headers()` for relayed requests                         |
-| `env`      | Network, referral account, fee in basis points                         |
-| `activity` | Subscribe to user input and foreground events; returns an unsubscribe  |
-| `track`    | `track(event, props)` for optional usage counts                        |
-| `locks`    | `withLock(name, fn)`: across tabs on web, `inProcessLocks()` on mobile |
+```ts
+interface VaultRepository {
+  read(key: string): Promise<{ ok: true; value: string | null } | { ok: false }>;
+  update(
+    key: string,
+    change: (current: string | null) => { write: string | null } | { keep: true },
+  ): Promise<
+    | { persisted: true; value: string | null }
+    | { persisted: false; reason: "kept"; value: string | null }
+    | { persisted: false; reason: "failed" }
+  >;
+  subscribe(onChange: (key: string) => void): () => void;
+}
+interface Env {
+  network: "mainnet-beta" | "devnet";
+  referralAccount: string | null;
+  feeBps: number;
+}
+interface Activity {
+  subscribe(onActive: () => void): () => void;
+}
+type Track = <E extends UsageEvent>(event: E, ...props: UsageArgs<E>) => void;
+interface Locks {
+  withLock<T>(name: string, fn: () => Promise<T>): Promise<T>;
+}
+interface Platform {
+  vault: VaultRepository;
+  env: Env;
+  activity: Activity;
+  track: Track;
+  locks: Locks;
+}
+```
+
+- **`vault`** is asynchronous and fallible: every call reports failure rather than throwing. `update` is an atomic read-modify-write that runs under the platform lock for its key, so nothing from this tab, another tab or another process comes between its read and its write. `subscribe` hears of every persisted change, including ones made elsewhere. Whether a value is sealed is the app's business.
+- **`track`** takes only events and values from the closed list in `src/domain/usageEvents.ts`. Every property is a string from a closed union or a number, so an address cannot be passed by accident: it does not type-check.
+- **`locks`** serialises across tabs on the web; `inProcessLocks()` is enough on mobile.
+
+Where an HTTP client sends its requests (the web's same-origin relay routes, or an absolute URL with a client header on mobile) is adapter configuration, `HttpConfig` in `src/infrastructure/`, passed to a client when an app builds it. It is not a port.
 
 Each app installs its implementations once, at boot:
 
@@ -74,12 +105,27 @@ Each app installs its implementations once, at boot:
 import { assertRuntime, installPlatform, inProcessLocks } from "@noirwire/shared/platform";
 
 assertRuntime();
-installPlatform({ storage, relay, env, activity, track, locks: inProcessLocks() });
+installPlatform({ vault, env, activity, track, locks: inProcessLocks() });
 ```
 
 `getPlatform()` throws a clear error if nothing was installed.
 
 Cryptography and randomness are not ports. Both platforms provide WebCrypto on `globalThis.crypto`. `assertRuntime()` checks for `crypto.subtle`, `crypto.getRandomValues`, `TextEncoder` and `TextDecoder`, so a missing polyfill stops the app at boot.
+
+## One decision, one payment
+
+A money action reserves its intent in the vault before anything is signed, in one atomic update, so two taps or two tabs cannot both get through. The life of an action is a pure reducer in `src/application/pending.ts`:
+
+```
+none ─reserve─► reserved ─submitted─► submitted ─chain─► landed | expired
+                  │   │                   │
+                  │   └─outcomeUnknown─► unknown ─chain─► landed | expired
+                  │       (from submitted too)  │
+                  └─releasedBeforeSend─► none   └─userCleared─► none
+                    (nothing left the device)     (only with no block height)
+```
+
+Only chain evidence settles an action: a signature status, the chain's current block height against the transaction's last valid block height, and the balances the action would change. The device's clock never does. An intent cannot be reserved while it is reserved, submitted or unknown.
 
 ## The presentation model
 
@@ -88,7 +134,11 @@ A view model is a pure function of state that returns display-ready values, neve
 ```ts
 import { networkCostView } from "@noirwire/shared/presentation";
 
-const view = networkCostView({ kind: "relayer", fee: 0.004, opens: null, count: 1 });
+const view = networkCostView({
+  cost: { kind: "relayer", fee: 0.004, opens: null, count: 1 },
+  pending: { status: "none" },
+  submitting: false,
+});
 // { label: "Network cost", value: "less than 0.01 USDC", tone: "neutral",
 //   explanation: [], confirmDisabled: false }
 ```
@@ -97,15 +147,16 @@ const view = networkCostView({ kind: "relayer", fee: 0.004, opens: null, count: 
 
 Import by subpath. There is no root entry.
 
-| Subpath                         | Contents                                      |
-| ------------------------------- | --------------------------------------------- |
-| `@noirwire/shared/platform`     | The ports, `installPlatform`, `assertRuntime` |
-| `@noirwire/shared/domain`       | Formatting rules and shared types             |
-| `@noirwire/shared/application`  | `ActionResult`, the pending-action reducer    |
-| `@noirwire/shared/presentation` | View models                                   |
-| `@noirwire/shared/copy`         | Strings                                       |
-| `@noirwire/shared/design`       | Tokens, chart paths                           |
-| `@noirwire/shared/testing`      | In-memory ports                               |
+| Subpath                           | Contents                                      |
+| --------------------------------- | --------------------------------------------- |
+| `@noirwire/shared/platform`       | The ports, `installPlatform`, `assertRuntime` |
+| `@noirwire/shared/domain`         | Formatting rules and shared types             |
+| `@noirwire/shared/application`    | `ActionResult`, the pending action and store  |
+| `@noirwire/shared/presentation`   | View models                                   |
+| `@noirwire/shared/copy`           | Strings                                       |
+| `@noirwire/shared/design`         | Tokens, chart paths                           |
+| `@noirwire/shared/infrastructure` | `HttpConfig`                                  |
+| `@noirwire/shared/testing`        | In-memory ports                               |
 
 ### Install
 
@@ -136,7 +187,12 @@ Do not use `npm install ../shared-noirwire` or a `file:` path to the folder. npm
 - **Next.js 16 (Turbopack):** nothing. The exports map resolves by default, in server and client components.
 - **Expo SDK 57 (Metro 0.84):** nothing. Metro's `resolver.unstable_enablePackageExports` is `true` by default in this version, and Expo's default config adds the `react-native` or `browser` condition. The exports map uses only `types` and `default`, so it resolves on every platform. If an app has switched `unstable_enablePackageExports` off, it must switch it back on: there is no `main` field to fall back to.
 - **TypeScript:** `moduleResolution` must be `Bundler`, `Node16` or `NodeNext`. The older `node` setting does not read exports maps. The declarations are emitted by TypeScript 5.9 and checked against 5.9 and 6.0.
-- **Jest (mobile):** the package is ES modules, so add `@noirwire/shared` to the packages `transformIgnorePatterns` lets through.
+- **Jest (mobile):** the package is ES modules, which Jest does not load untransformed, so it joins the packages the preset lets the transformer read. In `jest.config.js`, the existing line becomes:
+
+  ```js
+  packagesToTransform.replace("(?!(", "(?!(@noirwire/shared|phosphor-react-native|"),
+  ```
+
 - The package is ES modules only. It cannot be loaded with `require()` from a CommonJS TypeScript project.
 
 Libraries both apps already carry (the Solana and crypto libraries) will be `peerDependencies`, so each app has one copy. There are none yet.
@@ -161,8 +217,8 @@ The package itself is type-checked with `lib: ["ES2022"]` and `types: []`, so a 
 1. Pick its layer from the table above. Split the file if it spans two.
 2. Move the file and its tests with it. Do not leave a copy in the app.
 3. Replace `@/` imports with relative ones ending in `.js`.
-4. Replace every platform call (`localStorage`, `window`, `document`, `fetch` to a relative URL, `process.env`, `navigator.locks`) with `getPlatform()`.
-5. Move every string a person reads to `src/copy/`, and every decision about what a screen shows to `src/presentation/`.
+4. Replace every platform call (`localStorage`, `window`, `document`, `process.env`, `navigator.locks`) with `getPlatform()`, and every relative `fetch` with a client that takes an `HttpConfig`.
+5. Return reason codes from closed unions. Move every string a person reads to `src/copy/`, and every decision about what a screen shows, including whether Confirm is enabled, to `src/presentation/`.
 6. Add any library it needs to `peerDependencies` and `devDependencies`, at the version both apps use.
 7. Export it from the layer's `index.ts`. For a new layer entry, add the subpath to `exports` in `package.json`.
 8. If it is security-critical, add it to the table below.
@@ -177,15 +233,16 @@ Semver tags on this repository: `v0.1.0`, `v0.2.0`. The apps pin an exact tag. W
 
 The files that decide whether money is safe.
 
-| What                              | Where                             |
-| --------------------------------- | --------------------------------- |
-| Wallet sealing at rest            | moves here from the web app       |
-| Key derivation                    | moves here from the web app       |
-| Pre-sign guards                   | moves here from the web app       |
-| One decision, one payment         | `src/application/pending.ts`      |
-| Outcome of a money action         | `src/application/result.ts`       |
-| Runtime check for WebCrypto       | `src/platform.ts`                 |
-| What a review says about its cost | `src/presentation/networkCost.ts` |
+| What                              | Where                                                           |
+| --------------------------------- | --------------------------------------------------------------- |
+| Wallet sealing at rest            | moves here from the web app                                     |
+| Key derivation                    | moves here from the web app                                     |
+| Pre-sign guards                   | moves here from the web app                                     |
+| One decision, one payment         | `src/application/pending.ts`, `src/application/pendingStore.ts` |
+| Atomic vault update contract      | `src/platform.ts`                                               |
+| Outcome of a money action         | `src/application/result.ts`                                     |
+| Runtime check for WebCrypto       | `src/platform.ts`                                               |
+| What a review says about its cost | `src/presentation/networkCost.ts`                               |
 
 ## Security
 
