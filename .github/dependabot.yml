@@ -1,5 +1,7 @@
 version: 2
 updates:
+  # Minor and patch updates only, in one weekly pull request. A major version
+  # is a decision, not a routine bump, so those are raised by hand.
   - package-ecosystem: npm
     directory: /
     schedule:
@@ -8,6 +10,19 @@ updates:
       npm-dependencies:
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+      # Pinned exactly on purpose: both apps must resolve the same versions.
+      - dependency-name: "@solana/*"
+      - dependency-name: "@scure/bip39"
+      - dependency-name: "ed25519-hd-key"
+      - dependency-name: "buffer"
+      - dependency-name: "@zxcvbn-ts/*"
 
   - package-ecosystem: github-actions
     directory: /
