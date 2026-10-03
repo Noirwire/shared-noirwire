@@ -23,3 +23,14 @@ export const UNNORMALISED_PASSWORD = "\uff50\uff41\uff53\uff53 \ufb01re \u2460\u
 
 export const UNNORMALISED_VAULT_JSON =
   '{"v":1,"kdf":"PBKDF2-SHA256","iterations":600000,"salt":"rysMq3BFa9WLw1lXseLHrQ==","iv":"vCVsb9hakzt33IA4","ciphertext":"MjN4cP3W7oUMql+8kanSe7MznkUeT1rFWaeg6XsQS0bHvyI9APj06MnBNESikhwpH8AuqSCPd23nP6ZNx/gIOJWVBc+KfIPnsMOFxhuDJF++tucR7RyTLoWN0A=="}';
+
+/**
+ * A current-format envelope sealed by the web app's own keystore, over a
+ * record of `FIXTURE_PHRASE` whose addresses are the ones it derives. Its
+ * password has a composed accent, so a decomposed spelling of it opens it
+ * only through NFKC normalisation.
+ */
+export const WEB_ENVELOPE_PASSWORD = "café-orbit-lamp-quarry";
+
+export const WEB_ENVELOPE_JSON =
+  '{"v":2,"kdf":"PBKDF2-SHA256","iterations":600000,"salt":"qqoA0Gv9DNeUpaiEyu6m6Q==","iv":"AllZ4vyU9NeenItv","ciphertext":"WmYBynVX6Vl4Bk57FI+RE5LgeUeh+Ci73q+skxje7nI248S1jJL4yA/D5g4e1DT4DANNckGJVHxOpb7wvNj+u1rtCpDYmiuMenay9tSdPa3VraNEu9oMuVvypDf6bXW/bIx3kVoqqhM7xfePpdNsklo5p24LHLsc58jEmtQ4bqGwnC1hSp+bh7lRp71oa1XsgaObdlDBNctSQ9fpav+pIsRtoX/aBlImF4YqlgPvRMlS5A8S73YBPjxdH7SD6oeboudPENGS38EGFqmJt5CfmfFb4FbJYmIfIVbcLFZglJERnDQy3aQUsj/hv+84dwEvCRs7gimSlLHzj8gOAgJ36MQ8ugLLTgHzbyL+TZt0IsWPFeRgLC4BU8c+mhau4dh+ah1m5WR2xs+iiRk8Un7zq7IQD+wmxvgpyqjOilSOYnsQ8THEWEyvvp+hyOgUcnvStocPiu1tvmPvdTfIonFIryqC1Q2OTTWYKaIws7aH74gDT4YwbEB819dAbq/nggXHL83nPzR3/0JNLDWR3+cErbmgXz5sO+5KJrtsvHv7RCIKkGNMv/B/NMxat87Ie4uG/QPTpWMZ/UiEYmFYB4Yt+vK3wyqiMBLkafNLCfu9zT7u4hY3Ku4RD1HzI8YUAq2uM8zVjo5OtfCZMag6XFdARqiVyw=="}';

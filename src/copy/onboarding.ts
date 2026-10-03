@@ -1,7 +1,15 @@
 import { plural } from "./plural.js";
+import { notSaved } from "./wallet.js";
 
-const keysStay =
-  "Your keys and recovery phrase stay in this browser. Network requests are relayed by NoirWire's server, which stores and logs nothing.";
+/** `where` is the platform's place for the keys: "in this browser" or "on this phone". */
+const keysStay = (where: string) =>
+  `Your keys and recovery phrase stay ${where}. Network requests are relayed by NoirWire's server, which stores and logs nothing.`;
+
+/** `platformNoun` names the device: "device" on the web, "phone" on mobile. */
+const onlyWayBack = (platformNoun: string) =>
+  `These words are the only way back into your money if this ${platformNoun} is lost. Write them on paper. Anyone who sees them can take everything.`;
+
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** Creating a wallet or importing one, up to the password that seals it. */
 export const onboardingCopy = {
@@ -16,8 +24,8 @@ export const onboardingCopy = {
     create: "Create my wallet",
     import: "Import an existing wallet",
     lookAround: "Look around first",
-    trustMainnet: `${keysStay} Tracker issuers keep control over their own tokens. The risks are set out in Settings.`,
-    trustTestNetwork: `${keysStay} Keys are real; funds are Solana devnet SOL and a test USDC-alike token.`,
+    trustMainnet: `${keysStay("in this browser")} Tracker issuers keep control over their own tokens. The risks are set out in Settings.`,
+    trustTestNetwork: `${keysStay("in this browser")} Keys are real; funds are Solana devnet SOL and a test USDC-alike token.`,
     examplePortfolios: "Your portfolios",
     exampleBadge: "Example",
     exampleTotal: "$2,584.78",
@@ -37,8 +45,7 @@ export const onboardingCopy = {
 
   phrase: {
     title: "Write these twelve words down.",
-    intro:
-      "These words are the only way back into your money if this device is lost. Write them on paper. Anyone who sees them can take everything.",
+    intro: onlyWayBack("device"),
     copyDescribe: "Copy recovery phrase",
     saved: "I have saved these words for the next step.",
     neverAsked:
@@ -106,5 +113,79 @@ export const onboardingCopy = {
     encryptFailed: "Could not encrypt the wallet. Try again.",
     encrypting: "Encrypting...",
     finish: "Encrypt and finish",
+  },
+} as const;
+
+/**
+ * What the phone says differently in onboarding: its own quiz rules, its own
+ * import screens, and "this phone" where the web says "this browser". Only
+ * the strings that differ are here; the phone reads the rest from
+ * `onboardingCopy`. See README.md for how the two are kept apart.
+ */
+export const mobileOnboardingCopy = {
+  welcome: {
+    trust: `${keysStay("on this phone")} Tracker issuers keep control over their own tokens.`,
+  },
+  phrase: {
+    intro: onlyWayBack("phone"),
+    continueReason: "Reveal the words and confirm you have saved them.",
+  },
+  confirm: {
+    intro: "Pick the word at each position from the list you wrote down.",
+    checkWord: (position: number) => `Check word ${position} on your paper.`,
+    restart: "Let's start again with different words. Look at your paper first.",
+    showAgain: "Show phrase again",
+    tryAgain: "Try again",
+  },
+  import: {
+    intro:
+      "Type or paste the 12 or 24 word recovery phrase. It stays on this phone and is checked against the Solana network only to find what it already holds.",
+    paste: "Paste",
+    checking: "Checking what this phrase holds...",
+    slow: "Looking for portfolios this phrase already has. This can take a moment.",
+    networkFailed: "Could not reach the network to check this phrase. Try again.",
+    offline: "You're offline. Importing needs the network to find what this phrase holds.",
+  },
+  source: {
+    title: "Where did this phrase come from?",
+    intro:
+      "A phrase can open two different sets of addresses, depending on the app that made it. Here is what each one holds.",
+    noirwire: "NoirWire",
+    otherWallet: "Another Solana wallet",
+    otherWalletExamples: "Such as Phantom or Solflare.",
+    notSure: "Not sure",
+    used: "This one has been used.",
+    opensMostWallets: "Opens the addresses most other wallets use. You can switch afterwards.",
+    opensUsed: "Opens the set that has been used.",
+    nothingFound: "Nothing found on chain yet",
+    tokenBalances: "Token balances",
+    portfolios: (count: number) => plural(count, "portfolio"),
+    portfoliosAndTokens: (count: number) => `${plural(count, "portfolio")} and token balances`,
+    open: "Open this wallet",
+  },
+  result: {
+    found: (count: number) =>
+      `Found ${plural(count, "portfolio")} this phrase already had on chain.`,
+    foundBalances: "Found token balances this phrase already had on chain.",
+    nothing: "Nothing was found on chain for these addresses yet. Add money whenever you're ready.",
+    showAddress: "Show funding address",
+    hideAddress: "Hide",
+    addressLabel: "Funding address",
+  },
+  password: {
+    intro:
+      "Your wallet is encrypted with this password before it is stored on this phone. We never see it and it is never sent anywhere. Anyone who gets a copy of this phone's data can try to guess it, so it has to be hard to guess.",
+    notSaved: notSaved("phone"),
+    alreadyStored: "A wallet is already stored on this phone. Nothing was saved.",
+    hide: "Hide password",
+  },
+  biometric: {
+    title: (method: string) => `Unlock with ${method}?`,
+    lead: (method: string) =>
+      `Open NoirWire with ${method} instead of typing your password each time. Your password is still needed to view your recovery phrase and to change the password.`,
+    use: (method: string) => `Use ${method}`,
+    notNow: "Not now",
+    notTurnedOn: (method: string) =>
+      `${sentence(method)} was not turned on. You can turn it on later in Settings.`,
   },
 } as const;

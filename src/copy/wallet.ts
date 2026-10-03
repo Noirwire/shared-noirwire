@@ -1,3 +1,7 @@
+/** The vault refused a new wallet. `platformNoun` names the device: "browser" or "phone". */
+export const notSaved = (platformNoun: string) =>
+  `This ${platformNoun} would not save the wallet (storage is full or blocked). Nothing was changed.`;
+
 /** Unlocking, passwords, resetting and copying: the wallet itself rather than what is in it. */
 export const walletCopy = {
   unlock: {
@@ -47,8 +51,7 @@ export const walletCopy = {
 
   /** What the store answers when a wallet could not be opened, saved or changed. */
   store: {
-    notSaved:
-      "This browser would not save the wallet (storage is full or blocked). Nothing was changed.",
+    notSaved: notSaved("browser"),
     walletExists:
       "A wallet already exists on this device, most likely created in another tab. Nothing was saved here. Reload this page to unlock that wallet.",
     wrongPassword: "That password does not match this wallet.",
@@ -63,5 +66,10 @@ export const walletCopy = {
     passwordNotChanged: "Could not change the password. Your old password still works.",
     changedElsewhere:
       "The wallet changed in another tab while this was running. Nothing was saved.",
+    keyRefused: "The saved unlock key does not open this wallet. Enter your password.",
+    rekeyRefused:
+      "The new password could not be saved for quick unlock, so it was not changed. Your old password still works.",
+    rekeyNotUndone:
+      "The password was changed, but quick unlock could not be updated. Use the new password, and turn quick unlock on again.",
   },
 } as const;

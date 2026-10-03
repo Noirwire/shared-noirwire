@@ -35,7 +35,9 @@ export {
 export { assessPassword, suggestPassphrase } from "./passwordStrength.js";
 export { unlockedSession } from "./session.js";
 export {
+  type ChangePasswordOptions,
   type ResetResult,
+  type UnlockResult,
   changePassword,
   getPhrase,
   getServerSnapshot,
@@ -54,6 +56,7 @@ export {
   subscribe,
   syncFromStorage,
   unlock,
+  unlockWithKeyBits,
   unlockedSince,
   updateWallet,
   verifyPassword,
@@ -66,7 +69,9 @@ export {
   newVaultKey,
   open,
   seal,
+  vaultKeyBits,
   vaultKeyFor,
+  vaultKeyFromBits,
 } from "./keystore.js";
 export {
   LEGACY_STORAGE_KEY,

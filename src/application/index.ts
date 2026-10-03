@@ -64,3 +64,15 @@ export {
   type Track,
   type WalletStore,
 } from "./ports.js";
+export {
+  QUIZ_CHOICES,
+  QUIZ_MISSES_PER_ATTEMPT,
+  QUIZ_QUESTIONS,
+  type PhraseQuiz,
+  type QuizPickOutcome,
+  type RandomIndex,
+  cryptoRandomIndex,
+  newQuizAttempt,
+  pickQuizWord,
+  resumeQuiz,
+} from "./phraseQuiz.js";

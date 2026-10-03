@@ -6,7 +6,7 @@ export { errorsCopy } from "./errors.js";
 export { fundingCopy } from "./funding.js";
 export { marketsCopy } from "./markets.js";
 export { networkCostCopy } from "./networkCost.js";
-export { onboardingCopy } from "./onboarding.js";
+export { mobileOnboardingCopy, onboardingCopy } from "./onboarding.js";
 export { pendingActionCopy } from "./pendingAction.js";
 export { pieCopy } from "./pie.js";
 export { plural } from "./plural.js";

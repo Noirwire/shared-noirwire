@@ -10,6 +10,11 @@ export {
   tokenAmount,
   usd,
 } from "./format.js";
+export {
+  type DiscoveredPortfolio,
+  type ImportResolution,
+  type SchemeActivity,
+} from "./importResolution.js";
 export { type NetworkCost, type Opens } from "./networkCost.js";
 export {
   type Leg,

@@ -6,9 +6,12 @@ import {
   isEncryptedVault,
   isEnvelope,
   newVaultKey,
+  newVaultKeyWithBits,
   open,
   seal,
   vaultKeyFor,
+  vaultKeyFromBits,
+  zeroBits,
   type EncryptedVault,
   type Envelope,
   type VaultKey,
@@ -664,6 +667,9 @@ const {
   damaged: DAMAGED,
   addressMismatch: ADDRESS_MISMATCH,
   changedElsewhere: CHANGED_ELSEWHERE,
+  keyRefused: KEY_REFUSED,
+  rekeyRefused: REKEY_REFUSED,
+  rekeyNotUndone: REKEY_NOT_UNDONE,
 } = walletCopy.store;
 
 /**
@@ -772,6 +778,37 @@ async function upgradeLegacy(password: string, started: number): Promise<string 
   });
 }
 
+/** Null when the wallet was unlocked, else the reason it was not, in words to show. */
+export type UnlockResult = string | null;
+
+/**
+ * Opens the current-format record under `vaultKey` and unlocks on success.
+ * Both ways of unlocking end here, so they make the same checks: the record
+ * decrypts and parses, every address is the one the phrase derives, and
+ * nothing locked, reset or replaced the wallet while the key was on its way.
+ */
+async function unlockEnvelope(
+  vaultKey: VaultKey,
+  envelope: Envelope,
+  raw: string | null,
+  started: number,
+  wrongKey: string,
+): Promise<UnlockResult> {
+  const plaintext = await open(vaultKey, envelope);
+  if (plaintext === null) return wrongKey;
+  const stored = parseRecord(plaintext);
+  if (!stored) return DAMAGED;
+  if (!addressesMatch(stored)) return ADDRESS_MISMATCH;
+  if (generation !== started || parseEnvelope(await readRaw())?.salt !== envelope.salt) {
+    return INTERRUPTED;
+  }
+  install(vaultKey, stored, raw);
+  // Another tab may have written while the key was being derived.
+  const live = session;
+  if (live) void exclusive(() => sync(live)).catch(noteSaveFailed);
+  return null;
+}
+
 /**
  * Decrypts the stored wallet with `password` and unlocks on success. Returns
  * null, or the reason nothing was unlocked.
@@ -781,29 +818,21 @@ async function upgradeLegacy(password: string, started: number): Promise<string 
  * unlock that finishes after any of those is discarded rather than
  * installing a phrase for a wallet that is no longer the one stored.
  */
-export async function unlock(password: string): Promise<string | null> {
+export async function unlock(password: string): Promise<UnlockResult> {
   const started = generation;
   const raw = await readRaw();
   const envelope = parseEnvelope(raw);
 
-  if (!envelope) {
-    const problem = await upgradeLegacy(password, started);
-    if (problem) return problem;
-  } else {
-    const vaultKey = await vaultKeyFor(envelope, password);
-    const plaintext = await open(vaultKey, envelope);
-    if (plaintext === null) return WRONG_PASSWORD;
-    const stored = parseRecord(plaintext);
-    if (!stored) return DAMAGED;
-    if (!addressesMatch(stored)) return ADDRESS_MISMATCH;
-    if (generation !== started || parseEnvelope(await readRaw())?.salt !== envelope.salt) {
-      return INTERRUPTED;
-    }
-    install(vaultKey, stored, raw);
-    // Another tab may have written while the key was being derived.
-    const live = session;
-    if (live) void exclusive(() => sync(live)).catch(noteSaveFailed);
-  }
+  const problem = envelope
+    ? await unlockEnvelope(
+        await vaultKeyFor(envelope, password),
+        envelope,
+        raw,
+        started,
+        WRONG_PASSWORD,
+      )
+    : await upgradeLegacy(password, started);
+  if (problem) return problem;
   // There is a working wallet on this device now, so older plain text copies can go.
   await purgePlaintext();
 
@@ -815,6 +844,35 @@ export async function unlock(password: string): Promise<string | null> {
     .catch(() => {
       /* the strength check could not load; unlocking does not depend on it */
     });
+  return null;
+}
+
+/**
+ * Unlocks with the raw vault key a device keystore kept (see `vaultKeyBits`
+ * in keystore.ts) instead of the password. Everything else is as `unlock`:
+ * the same checks, the same discarding of a late result, the same cleanup
+ * of old plain text phrases. A wallet still in the previous format has no
+ * such key, and needs the password once to be upgraded.
+ *
+ * The bytes are imported into a key that holds its own copy; `bits` is the
+ * caller's to zero.
+ */
+export async function unlockWithKeyBits(bits: Uint8Array): Promise<UnlockResult> {
+  const started = generation;
+  const raw = await readRaw();
+  const envelope = parseEnvelope(raw);
+  if (!envelope) {
+    return parseLegacy(await readRaw(LEGACY_STORAGE_KEY)) ? KEY_REFUSED : walletCopy.store.noWallet;
+  }
+  let vaultKey: VaultKey;
+  try {
+    vaultKey = await vaultKeyFromBits(envelope, bits);
+  } catch {
+    return KEY_REFUSED;
+  }
+  const problem = await unlockEnvelope(vaultKey, envelope, raw, started, KEY_REFUSED);
+  if (problem) return problem;
+  await purgePlaintext();
   return null;
 }
 
@@ -842,6 +900,16 @@ export async function verifyPassword(password: string): Promise<string[] | null>
   return stored?.phrase ?? null;
 }
 
+export type ChangePasswordOptions = {
+  /**
+   * Called once the record is stored under the new key, with that key's raw
+   * bytes, for a platform that keeps the vault key in a device keystore.
+   * False, or a throw, undoes the change: the record goes back to the one
+   * sealed under the old password. The bytes are zeroed when it settles.
+   */
+  onRekey?: (bits: Uint8Array) => Promise<boolean>;
+};
+
 /**
  * Re-encrypts the wallet under a new password. The old one must decrypt the
  * stored copy first, so a borrowed unlocked session cannot lock the owner out.
@@ -855,7 +923,11 @@ export async function verifyPassword(password: string): Promise<string[] | null>
  * Only the copy on this device changes. A copy someone already took keeps
  * opening with the old password, which the settings screen says plainly.
  */
-export async function changePassword(current: string, next: string): Promise<string | null> {
+export async function changePassword(
+  current: string,
+  next: string,
+  { onRekey }: ChangePasswordOptions = {},
+): Promise<string | null> {
   const run = async (): Promise<string | null> => {
     const before = parseEnvelope(await readRaw());
     if (!before) return walletCopy.store.noWalletToChange;
@@ -863,9 +935,16 @@ export async function changePassword(current: string, next: string): Promise<str
     if ((await open(oldKey, before)) === null) return walletCopy.store.currentPasswordWrong;
     const strength = await assessPassword(next);
     if (!strength.ok) return strength.reason;
-    const newKey = await newVaultKey(next);
-
-    return exclusive(() => rekey(oldKey, newKey));
+    if (!onRekey) {
+      const newKey = await newVaultKey(next);
+      return exclusive(() => rekey(oldKey, newKey));
+    }
+    const { vaultKey: newKey, bits } = await newVaultKeyWithBits(next);
+    try {
+      return await exclusive(() => rekey(oldKey, newKey, () => onRekey(bits)));
+    } finally {
+      zeroBits(bits);
+    }
   };
 
   try {
@@ -877,8 +956,27 @@ export async function changePassword(current: string, next: string): Promise<str
   }
 }
 
-/** The write half of a password change: the record as stored now, under the new key. */
-async function rekey(oldKey: VaultKey, newKey: VaultKey): Promise<string | null> {
+/** Whether a platform's `onRekey` accepted the new key. A throw is a refusal. */
+async function accepted(confirm: () => Promise<boolean>): Promise<boolean> {
+  try {
+    return (await confirm()) === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The write half of a password change: the record as stored now, under the
+ * new key. With `confirm`, the change stands only once it accepts; until
+ * then this tab keeps the old key, and a refusal writes the old record back
+ * exactly as it was. Writes are held in turn meanwhile, so nothing of this
+ * tab's lands under the new key only to be lost with it.
+ */
+async function rekey(
+  oldKey: VaultKey,
+  newKey: VaultKey,
+  confirm?: () => Promise<boolean>,
+): Promise<string | null> {
   const latestRaw = await readRaw();
   const latest = parseEnvelope(latestRaw);
   const stored = latest && latest.salt === oldKey.salt ? await openRecord(oldKey, latest) : null;
@@ -904,6 +1002,17 @@ async function rekey(oldKey: VaultKey, newKey: VaultKey): Promise<string | null>
     throw new Error(NOT_SAVED);
   }
 
+  let problem: string | null = null;
+  if (confirm && !(await accepted(confirm))) {
+    if ((await replace(raw, latestRaw)) === "written") {
+      live?.pending.unshift(...changes);
+      return REKEY_REFUSED;
+    }
+    // The old record could not be put back, so the new password is the one
+    // that opens what is stored, and this tab carries on under it.
+    problem = REKEY_NOT_UNDONE;
+  }
+
   if (live) live.vaultKey = newKey;
   if (live && session === live) {
     current = live.pending.reduce(apply, updated.wallet);
@@ -914,7 +1023,7 @@ async function rekey(oldKey: VaultKey, newKey: VaultKey): Promise<string | null>
   }
   passwordIsWeak = false;
   emit();
-  return null;
+  return problem;
 }
 
 /** Forgets the key, the decrypted phrase and the decrypted wallet without touching the stored record. */

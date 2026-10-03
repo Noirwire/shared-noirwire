@@ -1,4 +1,4 @@
-import type { DiscoveredPortfolio } from "../infrastructure/solana/import.js";
+import type { DiscoveredPortfolio } from "../domain/importResolution.js";
 import { onboardingCopy } from "../copy/onboarding.js";
 import {
   deriveKeypair,

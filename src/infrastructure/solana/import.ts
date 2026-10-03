@@ -1,6 +1,11 @@
 import "./buffer-polyfill.js";
 
 import type { PublicKey } from "@solana/web3.js";
+import type {
+  DiscoveredPortfolio,
+  ImportResolution,
+  SchemeActivity,
+} from "../../domain/importResolution.js";
 import type { DerivationScheme } from "../../domain/wallet.js";
 import { connection } from "./client.js";
 import { deriveKeypair, FUNDING_DERIVATION_INDEX } from "./keys.js";
@@ -8,33 +13,7 @@ import { lamportsToSol } from "./sol.js";
 import { ataFor } from "./tokens.js";
 import { ALL_STOCKS, SUPPORTED_TOKENS } from "./tokenRegistry.js";
 
-export type DiscoveredPortfolio = {
-  index: number;
-  address: string;
-  solBalance: number;
-};
-
-/** What one derivation scheme's addresses show on chain for a phrase. */
-export type SchemeActivity = {
-  /** The funding wallet's address under this scheme. */
-  address: string;
-  balanceSol: number;
-  /** The portfolios found past the funding index. */
-  portfolios: DiscoveredPortfolio[];
-  /** Any sign of use at all: SOL, a token account, or a portfolio. */
-  active: boolean;
-};
-
-export type ImportResolution = {
-  /**
-   * The scheme the chain points to, when exactly one shows activity. Null
-   * when both do or neither does: the chain cannot say which set of
-   * addresses the user means, so the user has to.
-   */
-  scheme: DerivationScheme | null;
-  app: SchemeActivity;
-  walletDefault: SchemeActivity;
-};
+export type { DiscoveredPortfolio, ImportResolution, SchemeActivity };
 
 /** getMultipleAccounts accepts at most this many addresses in one request. */
 const MAX_ADDRESSES_PER_REQUEST = 100;

@@ -65,22 +65,45 @@ function fromBase64(value: string): Uint8Array {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
-async function deriveKey(password: string, salt: Uint8Array, iterations: number) {
-  const material = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(password),
-    "PBKDF2",
-    false,
-    ["deriveKey"],
-  );
+function passwordMaterial(password: string, usage: "deriveKey" | "deriveBits") {
+  return crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, [
+    usage,
+  ]);
+}
 
+function pbkdf2(salt: Uint8Array, iterations: number) {
+  return { name: "PBKDF2", salt: salt as BufferSource, iterations, hash: "SHA-256" };
+}
+
+async function deriveKey(password: string, salt: Uint8Array, iterations: number) {
   return crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt: salt as BufferSource, iterations, hash: "SHA-256" },
-    material,
+    pbkdf2(salt, iterations),
+    await passwordMaterial(password, "deriveKey"),
     { name: "AES-GCM", length: KEY_BITS },
     false,
     ["encrypt", "decrypt"],
   );
+}
+
+/**
+ * The same PBKDF2 output `deriveKey` turns into a key, as raw bytes. Takes
+ * the password already normalised.
+ */
+async function deriveBits(password: string, salt: Uint8Array, iterations: number) {
+  const bits = await crypto.subtle.deriveBits(
+    pbkdf2(salt, iterations),
+    await passwordMaterial(password, "deriveBits"),
+    KEY_BITS,
+  );
+  return new Uint8Array(bits);
+}
+
+function importBits(bits: Uint8Array) {
+  if (bits.length !== KEY_BITS / 8) throw new Error("A vault key is 32 bytes.");
+  return crypto.subtle.importKey("raw", bits as BufferSource, { name: "AES-GCM" }, false, [
+    "encrypt",
+    "decrypt",
+  ]);
 }
 
 /**
@@ -113,6 +136,58 @@ export async function vaultKeyFor(envelope: Envelope, password: string): Promise
     salt: envelope.salt,
     iterations: envelope.iterations,
   };
+}
+
+/**
+ * The raw bytes of the key `password` gives for an existing envelope: the
+ * same PBKDF2-SHA256 parameters and the same normalisation as `vaultKeyFor`,
+ * so `vaultKeyFromBits` turns them into exactly the key unlocking derives.
+ *
+ * For a platform that keeps the vault key in a device keystore behind a
+ * biometric check. They open the wallet as the password does, so they are
+ * handed to that keystore and nowhere else; the caller owns the buffer and
+ * should zero it once it is stored.
+ */
+export async function vaultKeyBits(envelope: Envelope, password: string): Promise<Uint8Array> {
+  return deriveBits(normalisePassword(password), fromBase64(envelope.salt), envelope.iterations);
+}
+
+/**
+ * A key for `envelope` from raw bytes `vaultKeyBits` produced, imported as
+ * non-extractable. Whether it is the right one only `open` can say. Throws
+ * for bytes that are not 32 long. The key holds its own copy, so the caller
+ * may zero `bits` as soon as this resolves.
+ */
+export async function vaultKeyFromBits(envelope: Envelope, bits: Uint8Array): Promise<VaultKey> {
+  return { key: await importBits(bits), salt: envelope.salt, iterations: envelope.iterations };
+}
+
+/**
+ * A key under a fresh salt, as `newVaultKey`, together with its raw bytes,
+ * for a password change that must hand the new key to a device keystore.
+ * Derives once: the key is imported from the bytes.
+ */
+export async function newVaultKeyWithBits(
+  password: string,
+): Promise<{ vaultKey: VaultKey; bits: Uint8Array }> {
+  const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
+  const bits = await deriveBits(normalisePassword(password), salt, ITERATIONS);
+  return {
+    vaultKey: { key: await importBits(bits), salt: toBase64(salt), iterations: ITERATIONS },
+    bits,
+  };
+}
+
+/**
+ * Overwrites key bytes this package made once they have been handed on.
+ * A buffer that cannot be written (a detached or frozen one) is left as it is.
+ */
+export function zeroBits(bits: Uint8Array): void {
+  try {
+    bits.fill(0);
+  } catch {
+    /* the platform does not allow writing this buffer */
+  }
 }
 
 /**
