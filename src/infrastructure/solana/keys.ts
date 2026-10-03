@@ -65,21 +65,60 @@ export function deriveCandidateKeypairs(
   };
 }
 
+/** What is wrong with a pasted recovery phrase, precisely enough to fix it. */
+export type PhraseProblem =
+  /** Not 12 or 24 words. `count` is how many there were. */
+  | { kind: "wordCount"; count: number }
+  /** A word that is not in the list a phrase is made from, and where it stands, from 1. */
+  | { kind: "unknownWord"; word: string; position: number }
+  /** Every word is a real one, and together they are not a phrase: one is wrong, missing or out of place. */
+  | { kind: "checksum" };
+
+const WORDS = new Set(wordlist);
+
 /**
- * Accepts a pasted recovery phrase: normalizes whitespace/casing, requires
- * exactly 12 or 24 words, and checks the BIP-39 checksum. Rejects anything
- * else with a plain, user-facing reason rather than silently deriving keys
- * from garbage input.
+ * The words of a phrase as people really paste one: from a numbered list
+ * ("1. word 2. word"), with commas, line breaks or tabs between them, in
+ * capitals. A recovery phrase word is made of letters only, so everything
+ * else, the numbering included, only separates words.
  */
-export function parseRecoveryPhrase(input: string): { words: string[] } | { error: string } {
-  const words = input.trim().toLowerCase().split(/\s+/).filter(Boolean);
+export function phraseWords(input: string): string[] {
+  return input
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter(Boolean);
+}
+
+function phraseProblemText(problem: PhraseProblem): string {
+  switch (problem.kind) {
+    case "wordCount":
+      return `A recovery phrase is 12 or 24 words. This has ${problem.count}.`;
+    case "unknownWord":
+      return `Word ${problem.position}, "${problem.word}", is not a recovery phrase word. Check its spelling.`;
+    case "checksum":
+      return "These are all real words, but together they are not a recovery phrase. Check that every word is the right one and in the right order.";
+  }
+}
+
+/**
+ * Accepts a pasted recovery phrase: reads its words however they were laid
+ * out (`phraseWords`), requires exactly 12 or 24 of them, each from the
+ * BIP-39 list, and checks the checksum. Anything else is refused with what
+ * exactly is wrong, in `error` as words and in `problem` as data, rather
+ * than silently deriving keys from garbage input.
+ */
+export function parseRecoveryPhrase(
+  input: string,
+): { words: string[] } | { error: string; problem: PhraseProblem } {
+  const words = phraseWords(input);
+  const refuse = (problem: PhraseProblem) => ({ error: phraseProblemText(problem), problem });
   if (words.length !== 12 && words.length !== 24) {
-    return { error: "A recovery phrase is 12 or 24 words." };
+    return refuse({ kind: "wordCount", count: words.length });
   }
-  if (!validateMnemonic(words.join(" "), wordlist)) {
-    return {
-      error: "Those words don't form a valid recovery phrase. Check the spelling and order.",
-    };
+  const unknown = words.findIndex((word) => !WORDS.has(word));
+  if (unknown >= 0) {
+    return refuse({ kind: "unknownWord", word: words[unknown], position: unknown + 1 });
   }
+  if (!validateMnemonic(words.join(" "), wordlist)) return refuse({ kind: "checksum" });
   return { words };
 }

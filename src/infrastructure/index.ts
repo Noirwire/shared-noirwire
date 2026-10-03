@@ -61,9 +61,11 @@ export {
 } from "./solana/import.js";
 export {
   FUNDING_DERIVATION_INDEX,
+  type PhraseProblem,
   deriveKeypair,
   generateWalletMnemonic,
   parseRecoveryPhrase,
+  phraseWords,
 } from "./solana/keys.js";
 export { inspectMint, multiplierAt, multiplierSchedule } from "./solana/mintPolicy.mjs";
 export { settle } from "./solana/pending.js";
@@ -121,6 +123,7 @@ export {
   type StockDefinition,
   TRADABLE_STOCKS,
   type TokenDefinition,
+  findStock,
   stockBySymbol,
   tokenBySymbol,
 } from "./solana/tokenRegistry.js";

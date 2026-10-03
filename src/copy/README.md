@@ -6,6 +6,8 @@ Every string a person reads, in one place, so both apps say the same thing in th
 
 **Style:** say "portfolio", "funding wallet" and "trackers". Say plainly what happened and what to do next. No em dashes; three periods for an ellipsis. Never name the network's own currency where the cost is paid in USDC.
 
+**Counts:** a counted noun goes through `plural(count, noun)`, so nothing reads "1 assets".
+
 **Failures and waiting:** say what happened in the person's terms, what it means for their money ("Nothing was sent", "Nothing was charged", "Nothing was saved") and what to do next. Never how the app asked: no request, service, timeout or status. "Network cost" is the name of a fee, "Solana" is the chain a person must know they are on, and "offline" is said when the device truly has no connection; a privacy note may name who sees what. `tests/unit/copyVariants.test.ts` holds every changed string and refuses the blaming words.
 
 **May import:** types from `domain/`.

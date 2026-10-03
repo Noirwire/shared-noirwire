@@ -1,9 +1,10 @@
-import type { EarnAction, EarnDraft } from "../application/earn.js";
+import { EARN_CASH_DECIMALS, type EarnAction, type EarnDraft } from "../application/earn.js";
 import { commonCopy } from "../copy/common.js";
 import { earnCopy as copy, mobileEarnCopy } from "../copy/earn.js";
 import { errorsCopy } from "../copy/errors.js";
 import { networkCostCopy } from "../copy/networkCost.js";
 import { portfolioCopy } from "../copy/portfolio.js";
+import { smallestAmount } from "../domain/amount.js";
 import type { AppPlatform } from "../domain/appPlatform.js";
 import { symbolAmount, usd } from "../domain/format.js";
 import type { NetworkCost } from "../domain/networkCost.js";
@@ -334,13 +335,15 @@ export function earnAmountView(state: {
     action === "withdraw" && draft.valid && cost !== null && draft.amount <= feeOf(cost);
   const validation = !typed
     ? null
-    : !Number.isFinite(draft.amount) || draft.amount <= 0
-      ? errorsCopy.amountAboveZero
-      : draft.amount > draft.max
-        ? copy.moreThanAvailable
-        : tooSmall
-          ? copy.smallerThanCost
-          : null;
+    : draft.tooPrecise
+      ? commonCopy.tooPrecise(`${smallestAmount(EARN_CASH_DECIMALS)} ${CASH}`)
+      : !Number.isFinite(draft.amount) || draft.amount <= 0
+        ? errorsCopy.amountAboveZero
+        : draft.amount > draft.max
+          ? copy.moreThanAvailable
+          : tooSmall
+            ? copy.smallerThanCost
+            : null;
   return {
     lead: copy.leadFor[action](state.portfolioLabel),
     amountLabel: copy.amountLabel,

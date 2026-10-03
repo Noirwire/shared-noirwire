@@ -1,3 +1,5 @@
+import { plural } from "./plural.js";
+
 /** The vault refused a new wallet. `platformNoun` names the device: "browser" or "phone". */
 export const notSaved = (platformNoun: string) =>
   `This ${platformNoun} would not save the wallet (storage is full or blocked). Nothing was changed.`;
@@ -67,7 +69,7 @@ export const walletCopy = {
     describeCopied: (describe: string) => `${describe}: copied`,
     failed: "Copy failed. Select and copy the text manually.",
     clearing: (seconds: number) =>
-      `Copied. This page will try to clear the clipboard in ${seconds} seconds; copy something else to be sure.`,
+      `Copied. This page will try to clear the clipboard in ${plural(seconds, "second")}; copy something else to be sure.`,
     toClipboard: "Copied to clipboard.",
   },
 
@@ -88,6 +90,7 @@ export const walletCopy = {
     noWallet: noWallet("in this browser"),
     noWalletToChange: "There is no wallet to change.",
     currentPasswordWrong: "Your current password is not right.",
+    samePassword: "That is already your password.",
     passwordNotChanged: "Could not change the password. Your old password still works.",
     changedElsewhere:
       "The wallet changed in another tab while this was running. Nothing was saved.",

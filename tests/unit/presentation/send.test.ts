@@ -121,9 +121,7 @@ describe("sendFormView", () => {
 
   it("says what is wrong with the amount, but only once the balance can be shown", () => {
     expect(form({}, { amountText: "500" }).amountError).toBe("More than this portfolio holds");
-    expect(form({}, { amountText: "abc" }).amountError).toBe(
-      "Enter a finite amount greater than zero.",
-    );
+    expect(form({}, { amountText: "abc" }).amountError).toBe("Enter an amount, like 12.50.");
     const unknown = form({ unitsPerHeld: undefined }, { unitsPerHeld: undefined, amountText: "x" });
     expect(unknown.amountError).toBeNull();
     expect(unknown.balanceUnavailable).toBe(

@@ -27,6 +27,7 @@ export { type ActionDeps } from "./actions/common.js";
 export {
   canCreatePortfolio,
   createPortfolio,
+  portfolioNameTaken,
   unusedPortfoliosInARow,
 } from "./actions/createPortfolio.js";
 export { type EarnChain, earn, reviewEarnCost } from "./actions/earn.js";
@@ -46,7 +47,7 @@ export {
   send,
 } from "./actions/send.js";
 export { type TradeChain, placeTrade, quoteTrade, reviewOrdersCost } from "./actions/trade.js";
-export { type EarnAction, earnDraft, earnSample } from "./earn.js";
+export { EARN_CASH_DECIMALS, type EarnAction, earnDraft, earnSample } from "./earn.js";
 export { fundingDraft } from "./funding.js";
 export { MARKET_PAGE_SIZE, type MarketCategory, SHELF_SIZE } from "./markets.js";
 export { type CostAgreed, type CostChain, costAgreed } from "./networkCost.js";
@@ -59,7 +60,7 @@ export {
   createPendingActions,
 } from "./pendingActions.js";
 export { sendDraft } from "./send.js";
-export { type Denomination, tradeDraft } from "./trade.js";
+export { TRADE_CASH_DECIMALS, type Denomination, tradeDraft } from "./trade.js";
 export { mapPortfolio, walletUsage } from "./walletRecord.js";
 export { type Pacer, type PacerOptions, createPacer } from "./pacer.js";
 export { processLocks } from "./processLocks.js";

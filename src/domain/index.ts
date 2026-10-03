@@ -1,4 +1,4 @@
-export { decimalAmount, typedAmount } from "./amount.js";
+export { decimalAmount, smallestAmount, tooPrecise, typedAmount } from "./amount.js";
 export { type AppPlatform } from "./appPlatform.js";
 export {
   type ChangeTone,

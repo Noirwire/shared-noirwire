@@ -10,6 +10,7 @@ import {
   deriveKeypair,
   generateWalletMnemonic,
   parseRecoveryPhrase,
+  phraseWords,
 } from "../../src/infrastructure/solana/keys.js";
 
 /**
@@ -120,15 +121,53 @@ describe("parseRecoveryPhrase", () => {
 
   it("rejects a phrase with the wrong word count", () => {
     const result = parseRecoveryPhrase("abandon abandon abandon");
-    expect(result).toEqual({ error: "A recovery phrase is 12 or 24 words." });
+    expect(result).toEqual({
+      error: "A recovery phrase is 12 or 24 words. This has 3.",
+      problem: { kind: "wordCount", count: 3 },
+    });
   });
 
   it("rejects 12 real wordlist words with an invalid checksum", () => {
     const invalid = "abandon ".repeat(11) + "ability";
     const result = parseRecoveryPhrase(invalid);
     expect(result).toEqual({
-      error: "Those words don't form a valid recovery phrase. Check the spelling and order.",
+      error:
+        "These are all real words, but together they are not a recovery phrase. Check that every word is the right one and in the right order.",
+      problem: { kind: "checksum" },
     });
+  });
+
+  it("reads a phrase however it was pasted: numbered, comma separated, on lines, tabbed, in capitals", () => {
+    const phrase = generateMnemonic(wordlist);
+    const words = phrase.split(" ");
+    const pasted = [
+      words.map((word, index) => `${index + 1}. ${word}`).join(" "),
+      words.map((word, index) => `${index + 1}) ${word}`).join("\n"),
+      words.map((word, index) => `${index + 1}.${word}`).join("\r\n"),
+      words.join(", "),
+      words.join("\t"),
+      `  ${phrase.toUpperCase()}  `,
+      words.map((word) => word[0].toUpperCase() + word.slice(1)).join(",\n"),
+    ];
+    for (const text of pasted) expect(parseRecoveryPhrase(text)).toEqual({ words });
+    expect(phraseWords("1. Abandon\n2. ability,\tABLE")).toEqual(["abandon", "ability", "able"]);
+  });
+
+  it("names the word that is not a recovery phrase word, and where it stands", () => {
+    const words = generateMnemonic(wordlist).split(" ");
+    words[4] = "abandn";
+    expect(parseRecoveryPhrase(words.join(" "))).toEqual({
+      error: 'Word 5, "abandn", is not a recovery phrase word. Check its spelling.',
+      problem: { kind: "unknownWord", word: "abandn", position: 5 },
+    });
+  });
+
+  it("says how many words there were when the count is wrong", () => {
+    const eleven = generateMnemonic(wordlist).split(" ").slice(0, 11).join(" ");
+    expect(parseRecoveryPhrase(eleven)).toMatchObject({
+      error: "A recovery phrase is 12 or 24 words. This has 11.",
+    });
+    expect(parseRecoveryPhrase("")).toMatchObject({ problem: { kind: "wordCount", count: 0 } });
   });
 
   it("normalizes whitespace and casing", () => {

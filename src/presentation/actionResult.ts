@@ -36,6 +36,7 @@ const REFUSALS: Record<RefusalReason, (symbol: string, platform: AppPlatform) =>
   portfolioGone: () => copy.portfolioGone,
   portfolioNotSaved: (_symbol, platform) => placeWords(platform).portfolioNotSaved,
   unusedPortfolios: () => copy.unusedPortfolios,
+  duplicateName: () => copy.duplicateName,
   activePortfolioAmount: () => copy.activePortfolioAmount,
   amountAboveZero: () => copy.amountAboveZero,
   unknownAsset: (symbol) => copy.unknownAsset(symbol),

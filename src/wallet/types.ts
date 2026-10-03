@@ -122,3 +122,10 @@ export const PLAINTEXT_STORAGE_KEYS: readonly string[] = [
  * not do, so the web app's vault deletes them when it starts.
  */
 export const STALE_HISTORY_KEY_PREFIX = "noirwire.history.series.";
+
+/**
+ * Where a lock asked for in one tab is announced to the others: a counter,
+ * and nothing about the wallet. Every running copy of the app watches it and
+ * locks when it moves.
+ */
+export const LOCK_SIGNAL_KEY = "noirwire.wallet.lock";

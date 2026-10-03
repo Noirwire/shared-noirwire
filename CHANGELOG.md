@@ -23,8 +23,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 - `createPacer` in `@noirwire/shared/application`, a rate pacer with an injectable clock, and `paceImportWith` and `IMPORT_REQUESTS_PER_SECOND` (8) in `@noirwire/shared/infrastructure`. `withRetries` takes `jitter` and `random`.
 - `MAX_ACTIVITY_ENTRIES` (500) in `@noirwire/shared/domain`, `olderNotKept` on the Activity list view, and its words for both platforms.
 
+- `focusRing` and the `focus` token in `@noirwire/shared/design`; `findStock` and `phraseWords` in `@noirwire/shared/infrastructure`; `canonicalSymbol` on the catalog; `tooPrecise` and `smallestAmount` in `@noirwire/shared/domain`; `portfolioNameTaken` in `@noirwire/shared/application`; `privacySectionHelp` in `@noirwire/shared/presentation`; `LOCK_SIGNAL_KEY` in `@noirwire/shared/wallet`.
+
 ### Changed
 
+- `lock()` locks the wallet everywhere it is open: it announces the lock through the vault, under `noirwire.wallet.lock` (a counter, nothing about the wallet), and every other tab or running copy locks on hearing it. A reset does the same when the record would not be removed. An idle lock stays with the tab that went idle.
+- `changePassword` refuses the password it already has: "That is already your password."
+- Every button variant, the icon button, the input and the chip carry a keyboard focus ring in a colour named outright (`focusRing`).
+- Every counted noun goes through `plural`: "1 asset", "1 result", "Order placed".
+- `sendCopy.invalidAmount` and `mobileSendCopy.invalidAmount`: "Enter a finite amount greater than zero." and "Enter an amount greater than zero." are now "Enter an amount, like 12.50."
+- An amount typed with more decimals than its asset has, which includes one below its smallest unit, is refused in a send, when moving money in, in Earn and in a trade: "That amount has too many decimals. The smallest amount is 0.000001 USDC."
+- `parseRecoveryPhrase` reads a phrase as people paste one (numbered lists, commas, line breaks, tabs, capitals) and says exactly what is wrong: how many words there were, which word is not a recovery phrase word and where it stands, or that the words do not form a phrase. It answers `problem` beside `error`.
+- `stockBySymbol` and the catalog's `asset` find a tracker whatever the capitals: `nvdax` is NVDAx.
+- `createPortfolio` refuses a name another portfolio already has, archived ones included, with `duplicateName`.
+- `fundingAmountView` takes `touched` and shows no error under an amount field nobody has typed in.
 - `createPortfolio` refuses with `unusedPortfolios` ("You have several portfolios that were never used. Use one of those first. An archived one can be restored.") once the wallet ends in ten portfolios in a row that never held or did anything, archived ones included.
 - An import asks about each candidate address in one request instead of two, paces all its requests to eight a second across both sets of addresses, and adds jitter to its pauses after a refusal.
 - The wallet's record keeps its 500 most recent activity entries. The oldest are dropped as new ones are written.
@@ -62,6 +74,10 @@ Failure and waiting messages say what happened, what it means for the money and 
 Kept as they are, because they are honest and needed: "Network cost" and "Relay fee" as fee lines, "Solana" where the chain matters, "offline", and the privacy notes that name who can see what (NoirWire's server, the network provider, Jupiter, MagicBlock).
 
 ### Fixed
+
+- An import's pace was taken before a request had one of its three slots, so requests that queued behind slow answers all started together when those came back. The turn is now taken inside the slot, right before the request is sent.
+- Locking the wallet in one tab left it unlocked and usable in the others.
+- Changing the password to the same password reported "Password changed".
 
 - A funded portfolio could be lost to a restore. An import stops looking after 20 unused addresses in a row, and creation allowed any number of empty portfolios: twenty empty ones and then a funded one put the funded one out of reach. Creation is now held to a limit safely under the scan's gap, a test holds the two constants to that, and a further scan can be asked for.
 - An import could fail on a provider that allows about ten requests a second: both sets of addresses started together and sent a burst, and pauses that lined up used up the retries. Requests now share one pace, and a failed attempt carries on from the last completed step when it is tried again instead of starting over.

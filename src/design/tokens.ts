@@ -57,6 +57,17 @@ export const space = {
   10: 40,
 } as const;
 
+/**
+ * The keyboard focus ring on every control, on both platforms: its width, its
+ * distance from the control, and its colour, the strongest ink, which stands
+ * out from the page on every surface.
+ */
+export const focus = { width: 2, offset: 2, color: "ink-strong" } as const satisfies {
+  width: number;
+  offset: number;
+  color: ColorToken;
+};
+
 export const fontFamily = "Figtree";
 
 export type TextVariant = "h1" | "h2" | "lead" | "body" | "label" | "faint";

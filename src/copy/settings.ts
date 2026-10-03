@@ -23,7 +23,12 @@ export const settingsCopy = {
       help: "Keep access to your wallet and protect its recovery phrase.",
     },
     wallet: { title: "Wallet details", help: "Check what is held in your funding wallet." },
-    privacy: { title: "Privacy", help: "Understand what is public and control usage analytics." },
+    privacy: {
+      title: "Privacy",
+      help: "Understand what is public and control usage analytics.",
+      /** Said where the screen has no analytics control to offer. */
+      helpWithoutAnalytics: "Understand what is public.",
+    },
     risks: { title: "Risks", help: "What to know before you put money in." },
     explore: { title: "Explore", help: "Other places in NoirWire.", label: "More sections" },
     danger: {

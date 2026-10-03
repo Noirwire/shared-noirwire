@@ -5,6 +5,7 @@ import { type Wallet } from "../../src/domain/wallet.js";
 import {
   fromStored,
   LEGACY_STORAGE_KEY,
+  LOCK_SIGNAL_KEY,
   STORAGE_KEY,
   toStored,
   type OpenRecord,
@@ -523,6 +524,89 @@ describe("the wallet store", () => {
       expect(store.isUnlocked()).toBe(false);
       expect(await resetting).toEqual({ ok: true });
       expect(window.backing.size).toBe(0);
+    });
+  });
+
+  describe("locking is wallet-wide", () => {
+    async function twoUnlocked() {
+      const first = await tab();
+      await first.storeNewWallet(makeWallet(), FIXTURE_PHRASE, PASSWORD);
+      first.subscribe(() => undefined);
+      const second = await tab();
+      second.subscribe(() => undefined);
+      expect(await second.unlock(PASSWORD)).toBeNull();
+      return { first, second };
+    }
+
+    it("locks every other tab when one is locked, and announces nothing about the wallet", async () => {
+      const { first, second } = await twoUnlocked();
+      first.lock();
+      expect(first.isUnlocked()).toBe(false);
+      await vi.waitFor(() => expect(second.isUnlocked()).toBe(false));
+      expect(second.getPhrase()).toBeNull();
+      expect(second.getSnapshot()).toBeNull();
+      expect(window.localStorage.getItem(LOCK_SIGNAL_KEY)).toMatch(/^\d+$/);
+      // The wallet is still there, and opens again in either tab.
+      expect(await second.unlock(PASSWORD)).toBeNull();
+    });
+
+    it("does not lock itself again on its own announcement, once unlocked afresh", async () => {
+      const { first, second } = await twoUnlocked();
+      first.lock();
+      await vi.waitFor(() => expect(second.isUnlocked()).toBe(false));
+      expect(await first.unlock(PASSWORD)).toBeNull();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(first.isUnlocked()).toBe(true);
+    });
+
+    it("locks the others again on every lock, not only the first", async () => {
+      const { first, second } = await twoUnlocked();
+      first.lock();
+      await vi.waitFor(() => expect(second.isUnlocked()).toBe(false));
+      expect(await first.unlock(PASSWORD)).toBeNull();
+      expect(await second.unlock(PASSWORD)).toBeNull();
+      second.lock();
+      await vi.waitFor(() => expect(first.isUnlocked()).toBe(false));
+    });
+
+    it("leaves a tab alone when this one only went idle", async () => {
+      const { first, second } = await twoUnlocked();
+      vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60 * 60 * 1000);
+      expect(first.lockIfIdle()).toBe(true);
+      vi.restoreAllMocks();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(second.isUnlocked()).toBe(true);
+    });
+
+    it("locks every other tab on a reset, and a lock gets through after a reset that could write nothing", async () => {
+      const { first, second } = await twoUnlocked();
+      window.state.refuseWrites = true;
+      expect(await first.resetWallet()).toEqual({ ok: false, reason: "notRemoved" });
+      window.state.refuseWrites = false;
+      // The announcement could not be written either; the next lock gets through.
+      first.lock();
+      await vi.waitFor(() => expect(second.isUnlocked()).toBe(false));
+
+      expect(await second.unlock(PASSWORD)).toBeNull();
+      expect(await first.resetWallet()).toEqual({ ok: true });
+      await vi.waitFor(() => expect(second.isUnlocked()).toBe(false));
+      expect(window.backing.size).toBe(0);
+    });
+  });
+
+  describe("changing the password to the same password", () => {
+    it("is refused in plain words, and nothing is written", async () => {
+      const store = await tab();
+      await store.storeNewWallet(makeWallet(), FIXTURE_PHRASE, PASSWORD);
+      const stored = window.localStorage.getItem(STORAGE_KEY);
+      expect(await store.changePassword(PASSWORD, PASSWORD)).toEqual({
+        outcome: "unchanged",
+        reason: "That is already your password.",
+      });
+      expect(window.localStorage.getItem(STORAGE_KEY)).toBe(stored);
+      expect(await store.changePassword("not-it", "not-it")).toMatchObject({
+        reason: "Your current password is not right.",
+      });
     });
   });
 

@@ -1,3 +1,4 @@
+import { plural } from "./plural.js";
 import { stillWorkingOnAction } from "./waiting.js";
 
 function list(items: readonly string[]) {
@@ -105,7 +106,7 @@ export const tradeCopy = {
     sell: (amount: string, portfolio: string) => `Sell ${amount} from ${portfolio}`,
     receiveAtLeast: (amount: string) => `Receive at least ${amount}`,
   },
-  heldFor: (seconds: number) => `Price held for ${seconds} second${seconds === 1 ? "" : "s"}.`,
+  heldFor: (seconds: number) => `Price held for ${plural(seconds, "second")}.`,
   totalCost: "Total cost",
   totalReceive: "Total you receive, at least",
   includedInFee: "Included in the fee",

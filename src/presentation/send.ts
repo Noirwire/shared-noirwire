@@ -1,6 +1,7 @@
 import type { SendDraft } from "../application/send.js";
 import { commonCopy } from "../copy/common.js";
 import { mobileSendCopy as mobileCopy, sendCopy as copy } from "../copy/send.js";
+import { smallestAmount } from "../domain/amount.js";
 import type { AppPlatform } from "../domain/appPlatform.js";
 import { symbolAmount, usd } from "../domain/format.js";
 import type { NetworkCost } from "../domain/networkCost.js";
@@ -19,6 +20,8 @@ function amountOf(symbol: string, unitsPerHeld: number | undefined, held: number
 }
 
 export type SendFormState = {
+  /** The asset's decimals, named in the message for an amount typed with too many. */
+  decimals?: number;
   draft: SendDraft;
   symbol: string;
   heldRaw: number;
@@ -97,9 +100,11 @@ export function sendFormView(state: SendFormState): SendFormView {
     balanceUnavailable: draft.multiplierKnown ? null : commonCopy.balanceUnavailable,
     amountError:
       draft.multiplierKnown && amountWrong
-        ? draft.amount > draft.held
-          ? words.moreThanHeld
-          : words.invalidAmount
+        ? draft.tooPrecise && state.decimals !== undefined
+          ? commonCopy.tooPrecise(`${smallestAmount(state.decimals)} ${symbol}`)
+          : draft.amount > draft.held
+            ? words.moreThanHeld
+            : words.invalidAmount
         : null,
     canReview,
     reviewLabel,

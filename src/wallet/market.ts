@@ -14,8 +14,16 @@ export const catalog = createCatalog({ stocks: ALL_STOCKS, livePrice, stockMulti
 
 export const screenReads = createScreenReads(catalog);
 
-export const { asset, isLivePrice, price, shownUnits, unitsPerHeld, isPosition, TRADABLE } =
-  catalog;
+export const {
+  asset,
+  canonicalSymbol,
+  isLivePrice,
+  price,
+  shownUnits,
+  unitsPerHeld,
+  isPosition,
+  TRADABLE,
+} = catalog;
 
 export const {
   holdingValue,

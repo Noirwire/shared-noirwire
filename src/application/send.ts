@@ -1,4 +1,4 @@
-import { typedAmount } from "../domain/amount.js";
+import { tooPrecise, typedAmount } from "../domain/amount.js";
 /** What a send form holds, as typed, and what it knows about the asset and the address. */
 export type SendInput = {
   /** What the portfolio holds of the asset, as stored. */
@@ -6,6 +6,8 @@ export type SendInput = {
   /** Shown units per stored unit of the asset, or undefined while that is not known. */
   unitsPerHeld: number | undefined;
   amountText: string;
+  /** How many decimals the asset has. An amount typed with more is refused. Unchecked when absent. */
+  decimals?: number;
   /** The recipient as typed, trimmed. */
   destination: string;
   /** Whether `destination` is a well-formed address. */
@@ -22,6 +24,8 @@ export type SendDraft = {
   /** What the portfolio holds, in shown units. */
   held: number;
   validAmount: boolean;
+  /** The amount was typed with more decimals than the asset has. */
+  tooPrecise: boolean;
   /** The typed amount in shown units, or 0 when it is not a valid amount. */
   amount: number;
   sendingAll: boolean;
@@ -34,7 +38,8 @@ export function sendDraft(input: SendInput): SendDraft {
   const { heldRaw, unitsPerHeld } = input;
   const multiplierKnown = unitsPerHeld !== undefined;
   const held = multiplierKnown ? heldRaw * unitsPerHeld : 0;
-  const amount = typedAmount(input.amountText);
+  const precise = input.decimals !== undefined && tooPrecise(input.amountText, input.decimals);
+  const amount = precise ? 0 : typedAmount(input.amountText);
   const validAmount = amount > 0;
   // Sending the full shown balance moves the exact stored raw amount, so
   // converting shown units back to raw leaves no rounding dust behind.
@@ -43,5 +48,14 @@ export function sendDraft(input: SendInput): SendDraft {
   const rawAmount = validAmount ? (sendingAll ? heldRaw : typedRaw) : 0;
   const validRecipient =
     input.isAddress && !input.offCurve && input.destination !== input.ownAddress;
-  return { multiplierKnown, held, validAmount, amount, sendingAll, rawAmount, validRecipient };
+  return {
+    multiplierKnown,
+    held,
+    validAmount,
+    tooPrecise: precise,
+    amount,
+    sendingAll,
+    rawAmount,
+    validRecipient,
+  };
 }

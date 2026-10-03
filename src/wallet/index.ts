@@ -10,6 +10,7 @@ export {
   activePortfolios,
   archivedPortfolios,
   asset,
+  canonicalSymbol,
   cashOf,
   catalog,
   dayChangeFor,
@@ -77,6 +78,7 @@ export {
 } from "./keystore.js";
 export {
   LEGACY_STORAGE_KEY,
+  LOCK_SIGNAL_KEY,
   type OpenRecord,
   PLAINTEXT_STORAGE_KEYS,
   STALE_HISTORY_KEY_PREFIX,

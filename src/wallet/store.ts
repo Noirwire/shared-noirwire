@@ -20,6 +20,7 @@ import { assessPassword } from "./passwordStrength.js";
 import { ACTIVITY_KINDS, type Wallet } from "../domain/wallet.js";
 import {
   LEGACY_STORAGE_KEY,
+  LOCK_SIGNAL_KEY,
   PLAINTEXT_STORAGE_KEYS,
   STORAGE_KEY,
   fromStored,
@@ -101,7 +102,7 @@ let stopActivity: (() => void) | null = null;
 export function lockIfIdle(): boolean {
   if (!session || Date.now() - lastActivityAt < IDLE_LOCK_MS) return false;
   getPlatform().track("wallet_locked", { by: "idle" });
-  lock();
+  lockHere();
   return true;
 }
 
@@ -450,7 +451,7 @@ async function sync(live: Session): Promise<boolean> {
     // Another tab reset the wallet, replaced it or changed its password. A
     // change made here must not bring the old one back, and the phrase in
     // memory may no longer belong to what is stored.
-    if (session === live) lock();
+    if (session === live) lockHere();
     exists = await hasStoredWallet();
     emit();
     return false;
@@ -515,6 +516,7 @@ async function sync(live: Session): Promise<boolean> {
  * mistaken for someone else's halfway through.
  */
 function handleStored(key: string) {
+  if (key === LOCK_SIGNAL_KEY) return handleLockSignal();
   if (key !== STORAGE_KEY && key !== LEGACY_STORAGE_KEY) return;
   void exclusive(async () => {
     exists = await hasStoredWallet();
@@ -716,13 +718,18 @@ export type ResetResult =
  * format's record.
  */
 export async function resetWallet(): Promise<ResetResult> {
-  lock();
+  lockHere();
   saveFailing = false;
   emit();
   return exclusive(async () => {
     const removed = (await remove(STORAGE_KEY)) && (await remove(LEGACY_STORAGE_KEY));
     // A password change left unknown was about the record that is now gone.
     if (removed) unsettledRekey = null;
+    // Other tabs lock when they see the record gone, and nothing is left
+    // behind, the lock signal included. A record that would not go is still
+    // there for them to use, so they are told to lock.
+    if (removed) await remove(LOCK_SIGNAL_KEY);
+    else announceLock();
     exists = removed ? false : await hasStoredWallet();
     emit();
     return removed ? { ok: true as const } : { ok: false as const, reason: "notRemoved" as const };
@@ -1005,6 +1012,9 @@ export async function changePassword(
     if ((await open(oldKey, before)) === null) {
       return unchanged(walletCopy.store.currentPasswordWrong);
     }
+    if (next.normalize("NFKC") === current.normalize("NFKC")) {
+      return unchanged(walletCopy.store.samePassword);
+    }
     const strength = await assessPassword(next);
     if (!strength.ok) return unchanged(strength.reason);
     if (!onRekey) {
@@ -1130,10 +1140,50 @@ async function rekey(
 }
 
 /** Forgets the key, the decrypted phrase and the decrypted wallet without touching the stored record. */
-export function lock() {
+function lockHere() {
   generation += 1;
   session = null;
   current = null;
   disarmIdleLock();
   emit();
+}
+
+/** The signal this copy of the app last published, so its own echo is not taken for another's. */
+let ownLockSignal: string | null = null;
+
+/**
+ * Tells every other running copy of the app to lock. The signal is a counter
+ * under its own key: nothing secret, nothing about the wallet. One that
+ * cannot be written is left at that: this copy is locked whatever happens.
+ */
+function announceLock() {
+  void vault()
+    .update(LOCK_SIGNAL_KEY, (stored) => {
+      ownLockSignal = String((Number(stored) || 0) + 1);
+      return { write: ownLockSignal };
+    })
+    .catch(() => undefined);
+}
+
+/** Another copy of the app announced a lock. One this copy announced itself is passed over. */
+function handleLockSignal() {
+  void vault()
+    .read(LOCK_SIGNAL_KEY)
+    .then((read) => {
+      if (read.ok && read.value === ownLockSignal) return;
+      if (session) lockHere();
+    })
+    .catch(() => {
+      if (session) lockHere();
+    });
+}
+
+/**
+ * Locks the wallet: here at once, and in every other tab or running copy of
+ * the app, which hear of it through the vault and lock themselves. A person
+ * who locks their wallet has locked it everywhere it was open.
+ */
+export function lock() {
+  lockHere();
+  announceLock();
 }

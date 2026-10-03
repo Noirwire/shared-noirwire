@@ -62,6 +62,15 @@ export function createCatalog(market: MarketData) {
     ...market.stocks.map(stockAsset),
   ];
   const bySymbol = new Map(assets.map((asset) => [asset.symbol, asset]));
+  const byLowercase = new Map(assets.map((asset) => [asset.symbol.toLowerCase(), asset.symbol]));
+
+  /**
+   * The symbol as the catalog writes it, however it was typed or arrived in a
+   * link: "nvdax" is NVDAx. Undefined for one the catalog does not know.
+   */
+  function canonicalSymbol(symbol: string): string | undefined {
+    return bySymbol.has(symbol) ? symbol : byLowercase.get(symbol.trim().toLowerCase());
+  }
   const listed = new Map(market.stocks.map((stock) => [stock.symbol, stock]));
 
   function isStock(symbol: string) {
@@ -108,9 +117,10 @@ export function createCatalog(market: MarketData) {
    * Both are 0 while there is no live price, so anything showing or deciding on
    * them checks `isLivePrice` first.
    */
-  function asset(symbol: string) {
-    const entry = bySymbol.get(symbol);
-    if (!entry) return undefined;
+  function asset(typed: string) {
+    const symbol = canonicalSymbol(typed);
+    const entry = symbol === undefined ? undefined : bySymbol.get(symbol);
+    if (!entry || symbol === undefined) return undefined;
     const live = isLivePrice(symbol) ? shownPrice(symbol) : undefined;
     return { ...entry, price: live?.usd ?? 0, change24h: live?.change24h ?? 0 };
   }
@@ -142,6 +152,7 @@ export function createCatalog(market: MarketData) {
 
   return {
     asset,
+    canonicalSymbol,
     isLivePrice,
     price,
     shownUnits,

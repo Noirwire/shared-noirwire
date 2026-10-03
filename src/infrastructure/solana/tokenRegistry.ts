@@ -114,9 +114,20 @@ export function tokenBySymbol(symbol: string): TokenDefinition | undefined {
   return TOKEN_BY_SYMBOL.get(symbol);
 }
 
+const STOCK_BY_LOWERCASE = new Map(STOCKS.map((stock) => [stock.symbol.toLowerCase(), stock]));
+
+/**
+ * The tracker a symbol names, however it was typed or arrived in a link:
+ * "nvdax", "NVDAX" and "NVDAx" all find NVDAx. Listed or retired alike.
+ * This is the one finder: every lookup of a tracker by symbol goes through it.
+ */
+export function findStock(symbol: string): StockDefinition | undefined {
+  return STOCK_BY_SYMBOL.get(symbol) ?? STOCK_BY_LOWERCASE.get(symbol.trim().toLowerCase());
+}
+
 /** A stock that can be held, listed or retired. Buying checks `retired` on top. */
 export function stockBySymbol(symbol: string): StockDefinition | undefined {
-  return STOCK_BY_SYMBOL.get(symbol);
+  return findStock(symbol);
 }
 
 /** Listed and retired alike: a held stock keeps its price and its history. */

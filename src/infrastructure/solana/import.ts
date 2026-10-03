@@ -69,10 +69,17 @@ async function inTurn<T>(request: () => Promise<T>): Promise<T> {
 }
 
 function accountInfoBatch(addresses: PublicKey[]) {
-  return withRetries(async () => {
-    await pacer?.turn();
-    return inTurn(() => connection.getMultipleAccountsInfo(addresses));
-  }, LOOKUP_RETRY);
+  // The turn is taken once the request holds its slot, right before it is
+  // sent. Taken earlier, requests that waited for a slot behind slow answers
+  // would all start together the moment those came back.
+  return withRetries(
+    () =>
+      inTurn(async () => {
+        await pacer?.turn();
+        return connection.getMultipleAccountsInfo(addresses);
+      }),
+    LOOKUP_RETRY,
+  );
 }
 
 /** Whether each address exists and what it holds, in as few requests as the batch limit allows. */

@@ -9,7 +9,7 @@ const keptOnly = (place: string, elsewhere: string) =>
 
 /** Only the newest entries are kept where the wallet is: "in this browser" or "on this phone". */
 const olderNotKept = (place: string) => (count: number) =>
-  `Only your ${count} most recent entries are kept ${place}. Older ones are no longer shown here. Your money is not affected.`;
+  `Only your ${count} most recent ${count === 1 ? "entry is" : "entries are"} kept ${place}. Older ones are no longer shown here. Your money is not affected.`;
 
 /** What the detail sheet says about where the entry was written down. */
 const recordedWhere = (place: string) =>

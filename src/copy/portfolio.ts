@@ -54,7 +54,7 @@ export const portfolioCopy = {
     excludesEarn: "Excludes money in Earn, which could not be read yet",
     valueUnavailable: "Value unavailable",
     yourInvestments: "Your investments",
-    assets: (count: number) => `${count} assets`,
+    assets: (count: number) => plural(count, "asset"),
     columns: {
       asset: "Asset",
       units: "Units",

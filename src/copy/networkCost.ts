@@ -1,3 +1,4 @@
+import { plural } from "./plural.js";
 import type { Opens } from "../domain/networkCost.js";
 
 /**
@@ -29,7 +30,7 @@ export const networkCostCopy = {
   } satisfies Record<Opens, string>,
 
   openingSeveral: (count: number) =>
-    `The network cost includes opening this portfolio's accounts for ${count} trackers, a one-time cost.`,
+    `The network cost includes opening this portfolio's accounts for ${plural(count, "tracker")}, a one-time cost.`,
 
   /** The sentence before and after the link that takes the user to move money in. */
   needsCash: (cash: string, underOneCent: boolean, free: string) =>

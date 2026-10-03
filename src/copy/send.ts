@@ -14,7 +14,7 @@ export const sendCopy = {
   amountLabel: (symbol: string) => `Amount in ${symbol}`,
   amountLine: (amount: string, available: string) => `${amount} · Available ${available}`,
   moreThanHeld: "More than this portfolio holds",
-  invalidAmount: "Enter a finite amount greater than zero.",
+  invalidAmount: "Enter an amount, like 12.50.",
   review: "Review",
   explainer: (network: string, symbol: string) =>
     `Real transfer on ${network}, straight from this portfolio's own ${symbol} balance to the recipient. It cannot be reversed. Before sending, the address is checked to be a wallet and not a token, a token account or a program; who owns it is not verified. This portfolio pays its own network cost, including opening the recipient's account for this asset when they have none, because paying from the funding wallet would publicly link the two. The cost is a few cents, taken from its cash as part of the send, and the review shows the amount first.`,
@@ -105,7 +105,7 @@ export const mobileSendCopy = {
 
   pasteWarning:
     "Pasted text contains characters that cannot be part of an address. Check the address before continuing.",
-  invalidAmount: "Enter an amount greater than zero.",
+  invalidAmount: "Enter an amount, like 12.50.",
   moreThanHeld: "More than this portfolio holds.",
 
   reviewTitle: "Review",

@@ -26,7 +26,7 @@ export const pieCopy = {
   /** Why a mix cannot be saved. */
   problems: {
     empty: "Add at least one tracker.",
-    tooMany: (max: number) => `A pie holds at most ${max} trackers.`,
+    tooMany: (max: number) => `A pie holds at most ${plural(max, "tracker")}.`,
     repeated: "Each tracker can appear once.",
     unlisted: "Only listed trackers can be added.",
     retired: (symbol: string) => `${symbol} is no longer offered to buy. Remove it from the mix.`,
@@ -140,8 +140,9 @@ export const pieCopy = {
     openingAccounts: "Opening the accounts...",
     placing: (side: "buy" | "sell") => `Placing ${side === "buy" ? "buys" : "sells"}...`,
     nonePlaced: "No order was placed",
-    allPlaced: (count: number) => `All ${count} orders placed`,
-    somePlaced: (placed: number, total: number) => `${placed} of ${total} orders placed`,
+    allPlaced: (count: number) =>
+      count === 1 ? "Order placed" : `All ${plural(count, "order")} placed`,
+    somePlaced: (placed: number, total: number) => `${placed} of ${plural(total, "order")} placed`,
 
     newPriceLabel: "New price",
     newPriceWorse: (name: string) => `The price for ${name} expired, and the new one is worse.`,

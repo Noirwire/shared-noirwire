@@ -29,3 +29,20 @@ export function typedAmount(text: string): number {
   const value = decimalAmount(text);
   return value !== null && Number.isFinite(value) && value > 0 ? value : 0;
 }
+
+/**
+ * Whether the typed amount has more decimals than an asset with `decimals`
+ * can hold, trailing zeros aside. An amount below the asset's smallest unit
+ * is one of these: it needs a decimal the asset does not have. False for
+ * text that is not an amount at all, which has its own message.
+ */
+export function tooPrecise(text: string, decimals: number): boolean {
+  if (decimalAmount(text) === null) return false;
+  const fraction = text.trim().split(/[.,]/)[1] ?? "";
+  return fraction.replace(/0+$/, "").length > decimals;
+}
+
+/** The smallest amount an asset with `decimals` can hold, written out: "0.000001". */
+export function smallestAmount(decimals: number): string {
+  return decimals <= 0 ? "1" : `0.${"0".repeat(decimals - 1)}1`;
+}

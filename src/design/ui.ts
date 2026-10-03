@@ -18,8 +18,19 @@ export const h1 =
 export const h2 =
   "text-[clamp(24px,3.2vw,34px)] font-medium leading-[1.1] tracking-[-0.035em] text-ink";
 
+/**
+ * The keyboard focus ring, on every control: two pixels of the strongest ink,
+ * set off from the control by two more, so it shows against the page beside
+ * a filled button as well as an outlined one. The colour is named outright:
+ * an outline left to the text colour is invisible on a primary button, whose
+ * text is the colour of the page.
+ */
+export const focusRing =
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ink-strong";
+
 const btn =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-tile px-5 text-[15px] font-medium transition-all duration-200 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40 disabled:active:translate-y-0";
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-tile px-5 text-[15px] font-medium transition-all duration-200 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40 disabled:active:translate-y-0 " +
+  focusRing;
 
 export const btnPrimary = `${btn} bg-ink-strong text-base hover:bg-ink`;
 
@@ -28,7 +39,8 @@ export const btnGhost = `${btn} border border-line text-ink hover:border-line-st
 export const btnQuiet = `${btn} text-dim hover:text-ink`;
 
 export const iconButton =
-  "inline-flex h-11 w-11 items-center justify-center rounded-tile text-faint transition-colors duration-200 hover:bg-elevated hover:text-ink active:translate-y-px";
+  "inline-flex h-11 w-11 items-center justify-center rounded-tile text-faint transition-colors duration-200 hover:bg-elevated hover:text-ink active:translate-y-px " +
+  focusRing;
 
 export const label = "text-[12px] font-medium text-faint";
 
@@ -44,10 +56,11 @@ export const dialog =
 export const dialogActions = "mt-7 flex justify-end gap-3";
 
 export const input =
-  "min-h-11 min-w-0 w-full rounded-tile border border-line bg-elevated px-4 text-[15px] text-ink placeholder:text-faint";
+  "min-h-11 min-w-0 w-full rounded-tile border border-line bg-elevated px-4 text-[15px] text-ink placeholder:text-faint " +
+  focusRing;
 
 export function chipClass(active: boolean) {
-  return `min-h-11 rounded-full border px-4 py-2 text-[13px] whitespace-nowrap transition-colors duration-150 ${
+  return `min-h-11 rounded-full border px-4 py-2 text-[13px] whitespace-nowrap transition-colors duration-150 ${focusRing} ${
     active
       ? "border-line-strong bg-surface-strong text-ink"
       : "border-line bg-surface text-dim hover:border-line-strong"

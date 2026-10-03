@@ -1,3 +1,4 @@
+import { plural } from "./plural.js";
 import { stillWorkingOnAction } from "./waiting.js";
 
 /** Moving money from the funding wallet into a portfolio, privately or in public. */
@@ -115,7 +116,7 @@ export const mobileFundingCopy = {
     {
       title: "Waiting in the queue",
       caption: (min: number, max: number) =>
-        `Delivered after ${min} to ${max} seconds, split across several entries.`,
+        `Delivered after ${min} to ${plural(max, "second")}, split across several entries.`,
     },
     {
       title: (portfolio: string) => `Arrived in ${portfolio}`,

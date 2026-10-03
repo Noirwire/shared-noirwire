@@ -1,3 +1,5 @@
+import { plural } from "./plural.js";
+
 /** Finding trackers, their prices and a tracker's own page. */
 export const marketsCopy = {
   title: "Search",
@@ -7,7 +9,7 @@ export const marketsCopy = {
   searchPlaceholder: "Company or ticker",
   searchLabel: "Search investments",
   tickerLabel: "Live market ticker",
-  results: (count: number) => `${count} results`,
+  results: (count: number) => plural(count, "result"),
   noMatch: "No matching investment.",
   noMatches: "No matching investments.",
   groups: {
@@ -32,7 +34,7 @@ export const marketsCopy = {
   noLivePrice: "No live price",
   liveIndicative: "Live indicative",
   issuerLine: (symbol: string, issuer: string | undefined) => `${symbol} · ${issuer ?? ""}`,
-  assets: (count: number) => `${count} assets`,
+  assets: (count: number) => plural(count, "asset"),
   columns: {
     asset: "Asset",
     price: "Price",

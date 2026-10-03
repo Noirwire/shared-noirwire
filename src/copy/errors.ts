@@ -8,6 +8,7 @@ export const errorsCopy = {
   portfolioGone: "That portfolio no longer exists.",
   portfolioInactive: "This portfolio is not active.",
   portfolioNotSaved: portfolioCopy.create.notSaved,
+  duplicateName: "You already have a portfolio with that name. Choose another name.",
   unusedPortfolios:
     "You have several portfolios that were never used. Use one of those first. An archived one can be restored.",
 

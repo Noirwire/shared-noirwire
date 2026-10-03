@@ -1,4 +1,4 @@
-import { typedAmount } from "../domain/amount.js";
+import { tooPrecise, typedAmount } from "../domain/amount.js";
 import { privateTransferCosts } from "../domain/privateTransfer.js";
 
 export type FundingInput = {
@@ -14,7 +14,8 @@ export type FundingInput = {
 /** What a move of money into a portfolio would take, and whether the typed amount can go. */
 export function fundingDraft(input: FundingInput) {
   const { privateRoute, decimals, fundingBalance } = input;
-  const customAmount = typedAmount(input.amountText);
+  const precise = tooPrecise(input.amountText, decimals);
+  const customAmount = precise ? 0 : typedAmount(input.amountText);
   const costsOf = (amount: number) => privateTransferCosts(amount, decimals);
   const minimum = privateRoute ? costsOf(0).minimum : 0;
   /** What leaves the funding wallet for `value`: on the private route, the fees come on top. */
@@ -23,6 +24,8 @@ export function fundingDraft(input: FundingInput) {
   const amountValid = customAmount > 0 && customAmount <= fundingBalance;
   return {
     customAmount,
+    /** The amount was typed with more decimals than the asset has. */
+    tooPrecise: precise,
     amountValid,
     minimum,
     leaving,

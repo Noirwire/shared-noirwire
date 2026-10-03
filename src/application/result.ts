@@ -22,6 +22,8 @@ export type RefusalReason =
   | "portfolioInactive"
   | "portfolioGone"
   | "portfolioNotSaved"
+  /** Another portfolio of this wallet already has that name. */
+  | "duplicateName"
   /** Too many portfolios in a row were never used; one more could be missed by an import. */
   | "unusedPortfolios"
   | "activePortfolioAmount"

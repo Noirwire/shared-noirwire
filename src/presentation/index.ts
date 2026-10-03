@@ -152,6 +152,7 @@ export {
   toneOf,
 } from "./portfolio.js";
 export { type ProgressStep, type StepStatus } from "./progress.js";
+export { privacySectionHelp } from "./settings.js";
 export { isWrongPassword, unlockProblemText } from "./unlock.js";
 export {
   IMPORT_LAST_STEP_AFTER_MS,

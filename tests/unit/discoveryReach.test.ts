@@ -67,10 +67,11 @@ describe("creating portfolios within an import's reach", () => {
     archivedAt: null,
     holdings: [{ symbol: "USDC", amount: 0, cost: 0 }],
   });
+  let named = 0;
   const create = (h: ReturnType<typeof harness>) =>
     createPortfolio(
       { ...h.deps, newPortfolio, fundingIndex: 0, pieProblem: () => null },
-      { label: "Empty" },
+      { label: `Empty ${++named}` },
     );
 
   it("keeps the limit on unused portfolios safely under the scan's gap", () => {
@@ -342,6 +343,30 @@ describe("an import against a provider that allows ten requests a second", () =>
     expect(new Set(provider.asked).size).toBe(provider.asked.length);
     // Two funding wallets, thirty candidates for the scheme with a find, twenty for the other.
     expect(provider.asked).toHaveLength(2 + 30 + 20);
+  });
+
+  it("never starts more than its rate in a second when slow answers come back together", async () => {
+    const mnemonic = generateWalletMnemonic();
+    const starts: number[] = [];
+    vi.spyOn(connection, "getMultipleAccountsInfo").mockImplementation(
+      async (pubkeys: PublicKey[]) => {
+        starts.push(Date.now());
+        // Every answer takes two seconds, so three requests fill the slots and
+        // the rest queue behind them, to be let go three at a time.
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        return pubkeys.map(() => null);
+      },
+    );
+
+    await finished(resolveImportedWallet(mnemonic));
+
+    expect(starts).toHaveLength(2 * 21);
+    for (const at of starts) {
+      const within = starts.filter((other) => other >= at && other < at + 1_000).length;
+      expect(within).toBeLessThanOrEqual(IMPORT_REQUESTS_PER_SECOND);
+    }
+    const gaps = starts.slice(1).map((at, index) => at - starts[index]);
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(1_000 / IMPORT_REQUESTS_PER_SECOND);
   });
 
   it("would be refused without pacing, which is what the pace is for", async () => {

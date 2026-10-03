@@ -1,6 +1,7 @@
 import type { FundingDraft } from "../application/funding.js";
 import { commonCopy } from "../copy/common.js";
 import { fundingCopy as copy, mobileFundingCopy as mobileCopy } from "../copy/funding.js";
+import { smallestAmount } from "../domain/amount.js";
 import type { AppPlatform } from "../domain/appPlatform.js";
 import { symbolAmount } from "../domain/format.js";
 import { PRIVACY_FEE_BPS, SETTLEMENT_DELAY_MS } from "../domain/privateTransfer.js";
@@ -68,6 +69,13 @@ export type FundingAmountState = {
   /** Null until the funding wallet has been read on opening. */
   fundingBalance: number | null;
   amountText: string;
+  /**
+   * Whether the person has typed in the amount field yet. False shows no
+   * error under it, whatever it holds. Taken as typed when absent.
+   */
+  touched?: boolean;
+  /** The asset's decimals, named in the message for an amount typed with too many. */
+  decimals?: number;
   presets: readonly number[];
   pending: { blocked: boolean };
   /** The words of the platform the step is drawn on. The web's when absent. */
@@ -112,9 +120,16 @@ export function fundingAmountView(state: FundingAmountState): FundingAmountView 
   const available = symbolAmount(asset, fundingBalance);
   const portfolioLabel = state.portfolioLabel ?? "";
   const typed = Number.isFinite(draft.customAmount) && draft.customAmount > 0;
-  const invalid = state.amountText.trim() !== "" && !draft.amountValid ? copy.invalidAmount : null;
+  const shown = (state.touched ?? true) && state.amountText.trim() !== "";
+  const invalid = !shown
+    ? null
+    : draft.tooPrecise && state.decimals !== undefined
+      ? commonCopy.tooPrecise(`${smallestAmount(state.decimals)} ${asset}`)
+      : !draft.amountValid
+        ? copy.invalidAmount
+        : null;
   const unaffordable =
-    draft.amountValid && !draft.affordable(draft.customAmount)
+    shown && draft.amountValid && !draft.affordable(draft.customAmount)
       ? draft.customAmount < draft.minimum
         ? copy.belowMinimum(symbolAmount(asset, draft.minimum))
         : copy.overBalance(symbolAmount(asset, draft.leaving(draft.customAmount)))

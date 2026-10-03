@@ -62,6 +62,19 @@ export function canCreatePortfolio(wallet: Wallet, fundingIndex: number): boolea
   return unusedPortfoliosInARow(wallet, fundingIndex) < MAX_UNUSED_PORTFOLIOS_IN_A_ROW;
 }
 
+const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/**
+ * Whether another portfolio of the wallet, archived ones included, already
+ * goes by `label`, whatever its capitals or the spaces around it. `exceptId`
+ * leaves out the portfolio being renamed.
+ */
+export function portfolioNameTaken(wallet: Wallet, label: string, exceptId?: string): boolean {
+  return wallet.portfolios.some(
+    (portfolio) => portfolio.id !== exceptId && sameName(portfolio.label, label),
+  );
+}
+
 /**
  * Creates the next portfolio: derive the keypair, remember it, done.
  * With `pie`, the portfolio is a pie steered toward that mix.
@@ -94,9 +107,11 @@ export async function createPortfolio<K extends Signer>(
 
     let portfolio: Portfolio | undefined;
     let tooManyUnused = false;
+    let nameTaken = false;
     const saved = await deps.store.update((current) => {
+      nameTaken = portfolioNameTaken(current, label, portfolio?.id);
       tooManyUnused = !canCreatePortfolio(current, deps.fundingIndex);
-      if (tooManyUnused) return current;
+      if (nameTaken || tooManyUnused) return current;
       const index = nextDerivationIndex(current, deps.fundingIndex);
       const key = session.keyAt(index);
       // Locked while this was waiting its turn: the wallet is left as it is.
@@ -113,6 +128,7 @@ export async function createPortfolio<K extends Signer>(
       return { ...current, portfolios: [portfolio, ...current.portfolios] };
     });
 
+    if (nameTaken) return refused("duplicateName");
     if (tooManyUnused) return refused("unusedPortfolios");
     if (!saved || !portfolio) return refused("portfolioNotSaved");
     deps.track("account_created", { kind: pie ? "pie" : "portfolio" });

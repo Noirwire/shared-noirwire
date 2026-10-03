@@ -5,6 +5,7 @@ import { commonCopy } from "../copy/common.js";
 import { errorsCopy } from "../copy/errors.js";
 import { networkCostCopy } from "../copy/networkCost.js";
 import { mobileTradeCopy, tradeCopy as copy } from "../copy/trade.js";
+import { smallestAmount } from "../domain/amount.js";
 import type { AppPlatform } from "../domain/appPlatform.js";
 import { shares, symbolAmount, usd } from "../domain/format.js";
 import type { NetworkCost } from "../domain/networkCost.js";
@@ -35,6 +36,8 @@ type TradeFormView = {
   available: string;
   estimateBasis: string;
   overCap: string | null;
+  /** The amount was typed with more decimals than what it is typed in has. */
+  tooPrecise: string | null;
   balanceUnavailable: string | null;
   /** Buying with no cash at all leads to adding money instead of a review. */
   action:
@@ -63,6 +66,12 @@ export function tradeFormView(state: TradeFormState): TradeFormView {
     available: copy.available(buying ? usd(cash) : `${shares(draft.held)} ${symbol}`),
     estimateBasis: copy.estimateBasis(displayLive),
     overCap: draft.overCap ? (buying ? copy.moreThanCash : copy.moreThanHeld) : null,
+    tooPrecise:
+      draft.tooPrecise && draft.decimals !== undefined
+        ? commonCopy.tooPrecise(
+            `${smallestAmount(draft.decimals)} ${denom === "cash" ? "USDC" : symbol}`,
+          )
+        : null,
     balanceUnavailable: draft.multiplierKnown ? null : commonCopy.balanceUnavailable,
     action:
       buying && cash <= 0
