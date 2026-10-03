@@ -1,0 +1,37 @@
+name: Contract
+
+# Read-only checks against live mainnet services (Solana RPC, Jupiter): the
+# shape of a live API is not knowable from its docs, so this catches a
+# response that silently stopped matching before it reaches a transaction
+# that costs money. Nothing is signed or sent. Never runs on a pull request;
+# dispatch it by hand when a change touches what one of these services
+# returns.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Contract tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Contract tests
+        env:
+          SOLANA_RPC_URL: ${{ secrets.CONTRACT_SOLANA_RPC_URL }}
+          JUPITER_API_KEY: ${{ secrets.CONTRACT_JUPITER_API_KEY }}
+        run: npm run test:contract
