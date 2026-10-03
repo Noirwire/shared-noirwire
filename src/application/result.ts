@@ -22,6 +22,8 @@ export type RefusalReason =
   | "portfolioInactive"
   | "portfolioGone"
   | "portfolioNotSaved"
+  /** Too many portfolios in a row were never used; one more could be missed by an import. */
+  | "unusedPortfolios"
   | "activePortfolioAmount"
   | "amountAboveZero"
   | "unknownAsset"
@@ -119,6 +121,15 @@ export function refused(
 /** A refusal about one asset, named by `symbol`. */
 export function refusedFor(reason: RefusalReason, symbol: string): Refused {
   return { kind: "refused", reason, symbol, completed: NOTHING_COMPLETED };
+}
+
+/**
+ * Whether the action went through and its new balances could not be read
+ * back yet. It is a success: a screen says it was done and that balances
+ * will update shortly, never that it failed.
+ */
+export function balancesUnread(result: ActionResult<unknown>): boolean {
+  return result.kind === "confirmed" && result.settlement === "balancesEstimated";
 }
 
 /** Whether the attempt left something that may still land, and so must be settled before the action is repeated. */

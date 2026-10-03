@@ -11,6 +11,7 @@ import {
 } from "../walletRecord.js";
 import {
   counted,
+  ended,
   failedOf,
   openSession,
   unknownOf,
@@ -99,13 +100,14 @@ export async function fundPrivately<K extends Signer>(
   );
   if (!reservation) return refused("actionPending");
   let outcome: unknown;
+  let accepted: { signature: string; feeTokens: number; balanceBefore: number };
 
   try {
     const recipient = owner.publicKey.toBase58();
     const balanceBefore = await token.balance(recipient);
 
     // Sign and submit.
-    const { signature, feeTokens } = await token.sendPrivately({
+    const sent = await token.sendPrivately({
       sender: funder,
       to: recipient,
       amount,
@@ -114,11 +116,7 @@ export async function fundPrivately<K extends Signer>(
       keepOut: session.wallet.portfolios.map((entry) => entry.address),
       stillUnlocked: session.live,
     });
-
-    await reservation.submitted(signature);
-    void deps.refresh.funding(session.wallet.funding.address, token.symbol);
-    deps.track("private_funding_started");
-    return { kind: "submitted", signature, feeTokens, balanceBefore };
+    accepted = { ...sent, balanceBefore };
   } catch (error) {
     outcome = error;
     const unknown = unknownOf(error);
@@ -135,8 +133,16 @@ export async function fundPrivately<K extends Signer>(
       failedOf("privateNotStarted", error),
     );
   } finally {
-    await reservation.finish(outcome);
+    if (outcome !== undefined) await ended(reservation, outcome);
   }
+
+  // The service accepted the transfer. From here nothing may report it as
+  // not started: the reservation is kept under its signature until the chain
+  // shows it, and a record that cannot be written leaves it reserved.
+  await reservation.submitted(accepted.signature).catch(() => undefined);
+  void deps.refresh.funding(session.wallet.funding.address, token.symbol).catch(() => undefined);
+  deps.track("private_funding_started");
+  return { kind: "submitted", ...accepted };
 }
 
 /**

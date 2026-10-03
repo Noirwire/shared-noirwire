@@ -7,6 +7,10 @@ const fromEarn = "Returned from Earn";
 const keptOnly = (place: string, elsewhere: string) =>
   `History is kept ${place} only. A wallet restored ${elsewhere} starts with an empty list.`;
 
+/** Only the newest entries are kept where the wallet is: "in this browser" or "on this phone". */
+const olderNotKept = (place: string) => (count: number) =>
+  `Only your ${count} most recent entries are kept ${place}. Older ones are no longer shown here. Your money is not affected.`;
+
 /** What the detail sheet says about where the entry was written down. */
 const recordedWhere = (place: string) =>
   `Recorded ${place} when it happened. The transfer itself is public on chain.`;
@@ -75,6 +79,7 @@ export const activityCopy = {
   today: "Today",
   yesterday: "Yesterday",
   emptyDetail: keptOnly("in this browser", "in another browser"),
+  olderNotKept: olderNotKept("in this browser"),
   plus: "plus",
   minus: "minus",
 
@@ -100,6 +105,7 @@ export const activityCopy = {
 /** What the phone says differently on Activity. Everything else is `activityCopy`. */
 export const mobileActivityCopy = {
   emptyDetail: keptOnly("on this phone", "on a new phone"),
+  olderNotKept: olderNotKept("on this phone"),
   detail: {
     recorded: recordedWhere("on this phone"),
   },

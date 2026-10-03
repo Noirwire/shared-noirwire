@@ -1,3 +1,5 @@
+import { stillWorkingOnAction } from "./waiting.js";
+
 function list(items: readonly string[]) {
   return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
 }
@@ -29,7 +31,8 @@ export const tradeCopy = {
   gettingPrice: "Getting a live price...",
   review: (side: "buy" | "sell") => `Review ${side}`,
   priceAboveCash: "The live price exceeds your available cash. Enter a smaller amount.",
-  costCheckFailed: "Could not check the network cost of this order. Get a new price.",
+  costCheckFailed:
+    "We couldn't work out the network cost of this order. Nothing was charged. Get a new price.",
 
   reviewLead: (portfolio: string) =>
     `Review this live quote before moving funds from ${portfolio}. USDC is shown as dollars.`,
@@ -126,7 +129,7 @@ export const tradeCopy = {
     pricing: "Getting the price for your order",
     placing: "Placing the order",
     reading: "Reading the new balance",
-    stillWorking: "Still working. You can leave this open; nothing more is needed from you.",
+    stillWorking: stillWorkingOnAction,
   },
 
   result: {

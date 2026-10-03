@@ -1,5 +1,6 @@
 import type { NetworkCost, Opens } from "../domain/networkCost.js";
 import type { RelayerQuote } from "./ports.js";
+import { readWithRetries } from "./retries.js";
 
 /**
  * Every action has a network cost, charged by the network in SOL. Nobody
@@ -75,13 +76,14 @@ const LAMPORTS_PER_SOL = 1_000_000_000;
  * met. The relayer is asked first, whatever the portfolio holds. Only when
  * it cannot be used does a portfolio's own SOL pay, and only when there is a
  * live price to state that cost in dollars with: a cost that cannot be shown
- * is not charged.
+ * is not charged. Each read is asked for again on a busy moment; nothing here
+ * signs or sends.
  */
 export async function planNetworkCost(need: Need, chain: CostChain): Promise<NetworkCost> {
   const { owner, lamportsNeeded, cashFree, relayer, solPrice } = need;
   if (lamportsNeeded <= 0) return { kind: "covered" };
 
-  const quoted = await relayer?.quote().catch(() => null);
+  const quoted = relayer ? await readWithRetries(relayer.quote).catch(() => null) : null;
   if (quoted && relayer) {
     const count = relayer.count ?? 1;
     const fee = (Number(quoted.feeRaw) * count) / CASH_UNIT;
@@ -98,8 +100,9 @@ export async function planNetworkCost(need: Need, chain: CostChain): Promise<Net
     };
   }
 
-  const balance = await chain.balance(owner);
-  if ((await chain.shortfall(balance, lamportsNeeded)) !== null || !solPrice) {
+  const balance = await readWithRetries(() => chain.balance(owner));
+  const shortfall = await readWithRetries(() => chain.shortfall(balance, lamportsNeeded));
+  if (shortfall !== null || !solPrice) {
     return { kind: "unavailable" };
   }
   return { kind: "ownSol", usd: (lamportsNeeded / LAMPORTS_PER_SOL) * solPrice };

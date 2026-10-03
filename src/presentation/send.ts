@@ -351,9 +351,23 @@ export function sendProgressView(stage: SendStage, amount: string) {
   };
 }
 
-/** How a send ended: it landed, or it was sent and not confirmed. */
-export function sendResultView(outcome: "landed" | "unknown", amount: string, portfolio: string) {
+/**
+ * How a send ended: it landed, or it was sent and not confirmed. A send that
+ * landed while its new balance could not be read back (`balancesUnread`) is
+ * still sent, and says the balances will follow.
+ */
+export function sendResultView(
+  outcome: "landed" | "unknown",
+  amount: string,
+  portfolio: string,
+  balancesUnread = false,
+) {
+  const sentBody = copy.sentBody(portfolio);
   return outcome === "landed"
-    ? { title: copy.sent(amount), body: copy.sentBody(portfolio), close: commonCopy.done }
+    ? {
+        title: copy.sent(amount),
+        body: balancesUnread ? `${sentBody} ${commonCopy.balancesUpdateShortly}` : sentBody,
+        close: commonCopy.done,
+      }
     : { title: copy.unknownTitle, body: copy.unknownBody(portfolio), close: commonCopy.close };
 }

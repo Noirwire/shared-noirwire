@@ -9,6 +9,7 @@ export {
   type ReviewChange,
   type Settlement,
   type Unsuccessful,
+  balancesUnread,
   completedSteps,
   leavesPending,
   movedNothing,
@@ -23,7 +24,11 @@ export {
   userClearable,
 } from "./pending.js";
 export { type ActionDeps } from "./actions/common.js";
-export { createPortfolio } from "./actions/createPortfolio.js";
+export {
+  canCreatePortfolio,
+  createPortfolio,
+  unusedPortfoliosInARow,
+} from "./actions/createPortfolio.js";
 export { type EarnChain, earn, reviewEarnCost } from "./actions/earn.js";
 export { fundDirectly } from "./actions/fundDirectly.js";
 export { type PrivateToken, awaitPrivateArrival, fundPrivately } from "./actions/fundPrivately.js";
@@ -56,7 +61,17 @@ export {
 export { sendDraft } from "./send.js";
 export { type Denomination, tradeDraft } from "./trade.js";
 export { mapPortfolio, walletUsage } from "./walletRecord.js";
+export { type Pacer, type PacerOptions, createPacer } from "./pacer.js";
 export { processLocks } from "./processLocks.js";
+export {
+  READ_RETRY,
+  type RetryOptions,
+  isBusyStatus,
+  isTransient,
+  readWithRetries,
+  saysTransportFailure,
+  withRetries,
+} from "./retries.js";
 export { type ScreenReads, createScreenReads } from "./screenReads.js";
 export {
   type OpenSession,

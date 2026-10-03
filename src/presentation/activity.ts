@@ -4,7 +4,12 @@ import { commonCopy } from "../copy/common.js";
 import type { AppPlatform } from "../domain/appPlatform.js";
 import { dateAndTime, sinceDate, spokenDay, usd } from "../domain/format.js";
 import { resolvePortfolioIcon, type PortfolioIcon } from "../domain/portfolioIcon.js";
-import type { Activity, ActivityKind, Wallet } from "../domain/wallet.js";
+import {
+  MAX_ACTIVITY_ENTRIES,
+  type Activity,
+  type ActivityKind,
+  type Wallet,
+} from "../domain/wallet.js";
 import { activityAmountOf } from "./amount.js";
 
 type Reads = Pick<ScreenReads, "asset" | "isPosition">;
@@ -148,7 +153,17 @@ export function dayHeading(at: number, now: number): string {
 export type ActivityListView =
   | { kind: "none"; title: string; detail: string }
   | { kind: "noMatch"; title: string }
-  | { kind: "list"; sections: ActivitySection[]; more: boolean };
+  | {
+      kind: "list";
+      sections: ActivitySection[];
+      more: boolean;
+      /**
+       * Said under the last row once the list has reached the most the
+       * record keeps: older entries are no longer on this device. Null while
+       * more rows are still to be shown, or the list is short of the limit.
+       */
+      olderNotKept: string | null;
+    };
 
 /**
  * The Activity screen: the log this device keeps, newest first, filtered,
@@ -181,7 +196,13 @@ export function activityListView(
     if (last?.title === title) last.rows.push(row);
     else sections.push({ title, rows: [row] });
   }
-  return { kind: "list", sections, more: matching.length > limit };
+  const more = matching.length > limit;
+  const words = state.platform === "mobile" ? mobileActivityCopy : activityCopy;
+  const olderNotKept =
+    !more && wallet.activity.length >= MAX_ACTIVITY_ENTRIES
+      ? words.olderNotKept(MAX_ACTIVITY_ENTRIES)
+      : null;
+  return { kind: "list", sections, more, olderNotKept };
 }
 
 /** The most recent rows, for Home (every portfolio) or one portfolio's screen. */

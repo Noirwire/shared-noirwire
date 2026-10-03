@@ -304,6 +304,8 @@ export function fundingOutcomeView(state: {
   /** The fees a private transfer charged on top. */
   fee: number;
   portfolioLabel: string;
+  /** The money moved, and the portfolio's balance could not be read back yet. */
+  balancesUnread?: boolean;
   /** The words of the platform the step is drawn on. The web's when absent. */
   platform?: AppPlatform;
 }): FundingOutcomeView {
@@ -313,7 +315,7 @@ export function fundingOutcomeView(state: {
     case "done":
       return {
         title: copy.arrivedTitle,
-        body: `${(mobile ? mobileCopy.arrived : copy.arrived)(symbolAmount(asset, state.arrived), portfolioLabel)}${
+        body: `${(state.balancesUnread ? copy.movedUnread : mobile ? mobileCopy.arrived : copy.arrived)(symbolAmount(asset, state.balancesUnread ? state.amount : state.arrived), portfolioLabel)}${
           state.privateRoute && state.fee > 0 ? copy.feesCharged(exactAmount(asset, state.fee)) : ""
         }`,
         observerLink: !state.privateRoute

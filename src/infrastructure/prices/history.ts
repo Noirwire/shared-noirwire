@@ -1,5 +1,6 @@
 import { SERIES_TTL_SECONDS, type PriceRange } from "../../domain/priceRanges.js";
 import { relayInit, relayUrl } from "../httpConfig.js";
+import { readFetch } from "../readFetch.js";
 
 /**
  * Price history as an app gets it: from its own relay's `/api/history`,
@@ -20,7 +21,7 @@ import { relayInit, relayUrl } from "../httpConfig.js";
 const seriesCache = new Map<string, { at: number; points: Promise<number[] | null> }>();
 
 async function fetchSeries(symbol: string, range: PriceRange): Promise<number[] | null> {
-  const response = await fetch(
+  const response = await readFetch(
     relayUrl(`/api/history/${encodeURIComponent(symbol)}/${range}`),
     relayInit(),
   );

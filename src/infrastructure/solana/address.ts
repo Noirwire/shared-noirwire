@@ -9,6 +9,7 @@ import {
 } from "@solana/spl-token";
 import { PublicKey, SystemProgram, type AccountInfo } from "@solana/web3.js";
 import type { Unsendable } from "../../domain/recipients.js";
+import { readWithRetries } from "../../application/retries.js";
 import { connection } from "./client.js";
 
 /**
@@ -85,12 +86,14 @@ function recipientAccount(account: AccountInfo<Uint8Array> | null): RecipientAcc
 /**
  * Reads the recipient from the network and says why it cannot receive, or
  * null for a wallet. The same reading every send makes before signing, so a
- * review can say which it is before anything is asked of the person.
+ * review can say which it is before anything is asked of the person. Asked
+ * again on a busy moment, which the reading inside a send is not.
  */
 export async function checkRecipient(address: string): Promise<Unsendable | null> {
+  const key = new PublicKey(address);
   return unsendable(
     address,
-    recipientAccount(await connection.getAccountInfo(new PublicKey(address))),
+    recipientAccount(await readWithRetries(() => connection.getAccountInfo(key))),
   );
 }
 

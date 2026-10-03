@@ -1,6 +1,6 @@
 # Architecture
 
-The layer table and the one-paragraph summary of each piece live in [README.md](../README.md#architecture). This is the detail: how the dependency rule is enforced, the platform seam an app wires in, the wallet store's guarantees, biometric unlock, the one-reservation-per-action lifecycle, the presentation model, where a moved-in module goes, and the files that decide whether money is safe.
+The layer table and the one-paragraph summary of each piece live in [README.md](../README.md#architecture). This is the detail: how the dependency rule is enforced, the platform seam an app wires in, the wallet store's guarantees, biometric unlock, the one-reservation-per-action lifecycle, the presentation model, how waiting and retried reads work, where a moved-in module goes, and the files that decide whether money is safe.
 
 ## The dependency rule
 
@@ -17,17 +17,17 @@ The layer table and the one-paragraph summary of each piece live in [README.md](
    nothing imports wallet; nothing imports from an app, a framework or Node
 ```
 
-| Layer             | May import                                                                            |
-| ----------------- | ------------------------------------------------------------------------------------- |
-| `domain/`         | nothing of ours                                                                       |
-| `design/`         | nothing of ours                                                                       |
-| `platform.ts`     | `domain/` (the usage event types)                                                     |
-| `copy/`           | `domain/`                                                                             |
-| `application/`    | `domain/`, `platform.ts`                                                              |
-| `infrastructure/` | `domain/`, `application/`, `platform.ts`                                              |
-| `presentation/`   | `domain/`, `application/`, `copy/`                                                    |
-| `wallet/`         | `domain/`, `application/`, `infrastructure/`, `presentation/`, `copy/`, `platform.ts` |
-| `testing/`        | `platform.ts`                                                                         |
+| Layer             | May import                                                                               |
+| ----------------- | ---------------------------------------------------------------------------------------- |
+| `domain/`         | nothing of ours                                                                          |
+| `design/`         | nothing of ours                                                                          |
+| `platform.ts`     | `domain/` (the usage event types)                                                        |
+| `copy/`           | `domain/`                                                                                |
+| `application/`    | `domain/`, `platform.ts`                                                                 |
+| `infrastructure/` | `domain/`, `application/`, `platform.ts`                                                 |
+| `presentation/`   | `domain/`, `application/`, `copy/`                                                       |
+| `wallet/`         | `domain/`, `application/`, `infrastructure/`, `presentation/`, `copy/`, `platform.ts`    |
+| `testing/`        | `platform.ts`, `infrastructure/` (the signing entry point, for a test's stand-in client) |
 
 A use case reaches the chain, the store and the price feeds only through the interfaces it declares (`src/application/ports.ts` and each use case's own); an app wires the clients in. Use cases answer with reason codes from closed unions; only `presentation/` chooses the words. `wallet/` is where the keys live and where the catalog is bound to the price feeds: it composes the other layers, and nothing imports it.
 
@@ -166,6 +166,38 @@ const view = networkCostView({
 //   confirmDisabled: false }
 ```
 
+## Importing a phrase
+
+An import reads, for each of the two derivation conventions, what the funding address and the addresses after it show on chain (`src/infrastructure/solana/import.ts`). Creating a portfolio writes nothing on chain, so the scan cannot tell an unused portfolio from one that was never made, and it stops after `DISCOVERY_GAP` (20) unused addresses in a row.
+
+- **Creation stays within that reach.** `createPortfolio` refuses once the wallet ends in `MAX_UNUSED_PORTFOLIOS_IN_A_ROW` (10) portfolios that never held or did anything, by the wallet's own record and archived ones included. Whatever is created and funded next is then at most eleven addresses past the last used one. `tests/unit/discoveryReach.test.ts` holds the limit under the gap, and runs an import over the furthest case.
+- **A person can ask for more.** `lookFurtherForPortfolios` carries on from `scannedThrough`, where the first scan stopped, with a gap of `EXTENDED_DISCOVERY_GAP` (100). `lookFurtherView` is the control both apps show on the import's result.
+- **Requests are paced.** Every lookup of both conventions takes its turn from one pacer (`createPacer`, `IMPORT_REQUESTS_PER_SECOND`, 8), at most three are in flight, and one that is refused is tried again after a pause with jitter. `paceImportWith` sets another pace, or none for a local validator. Each request names one address's accounts and nobody else's.
+- **A failed attempt is not lost.** The scan is kept in memory, by funding address, after every completed step of ten addresses. Calling `resolveImportedWallet` again with the same phrase carries on from there, and it is forgotten once the import has its answer.
+
+The wallet's record keeps its `MAX_ACTIVITY_ENTRIES` (500) most recent activity entries; `logged` drops the oldest as it writes. A pending action is kept on its portfolio, not in that list, so it is never dropped, and the Activity view says when older entries are no longer kept on the device.
+
+## Landed means done
+
+Once the chain or the venue has confirmed an action, its answer is a success, whatever the reads after it do. Reporting a payment that went through as failed invites paying it again. Every use case in `application/actions/` therefore ends its submit step before it settles: a failure before a confirmed outcome is `failed` (nothing was sent), an outcome nobody could learn is `unknown` and stays reserved, and after a confirmed outcome the only thing left to vary is `settlement`: `balancesRead`, or `balancesEstimated` when the new balances could not be read back even after being asked for again. `balancesUnread(result)` tells a screen to say it was done and that balances will update shortly. `tests/unit/landed.test.ts` holds each action to this, and to never submitting twice.
+
+## Waiting, and reads that are asked again
+
+Both apps wait the same way. `waitingView(elapsedMs, kind)` in `presentation/` says what to show as time passes (nothing before 300 ms, then a quiet signal, then a calm "still working" line after 4 seconds, or 8 for an action under way), and which step of multi-step work is current. It holds no timer: each platform passes the time elapsed. The thresholds, the kinds and the wording rule are in [src/presentation/README.md](../src/presentation/README.md#waiting).
+
+A read that fails on a busy moment is asked for again before anyone is told. `readWithRetries` in `src/application/retries.ts` tries three times, 400 ms and then 800 ms apart, on a failure of the asking only: a request that never got through or ran out of time, or a 429 or 5xx answer.
+
+| Asked again                                                                                                                                  | Where                                                                            |
+| -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| The balance refresh: one balance, a portfolio's balances, the funding wallet's                                                               | `src/application/actions/refreshBalances.ts`                                     |
+| Live prices, a chart's history, the trackers' multipliers                                                                                    | `src/infrastructure/prices/live.ts`, `history.ts`, `multipliers.ts`              |
+| The lending rate and a portfolio's Earn position                                                                                             | `src/wallet/money.ts`                                                            |
+| Import: each lookup of what a phrase holds (four tries, 1, 2 and 4 seconds apart)                                                            | `src/infrastructure/solana/import.ts`                                            |
+| A recipient checked while the address is typed                                                                                               | `checkRecipient` in `src/infrastructure/solana/address.ts`                       |
+| Preparing a review: a trade's price, what a send costs, whether a holding is open, the relayer's price and keys, the portfolio's own balance | `quoteTrade`, `reviewSend`, `reviewOrdersCost`, `planNetworkCost`, `relayerPins` |
+
+Never asked again: anything that signs or submits (`send`, `fundDirectly`, `fundPrivately`, `placeTrade`, `earn`, opening a holding, every relayer-paid transaction), the price taken again inside `placeTrade`, the recipient check inside a send, the network's identity before a signature, and settling a sent transaction. A second attempt at one of those could do the same thing twice. A refusal is never asked again either: a `ChainError`, "no price", a 4xx or a guard's own account is an answer. `tests/unit/retries.test.ts` holds each path to this with fake timers.
+
 ## Moving a module in
 
 1. Pick its layer from the table above. Split the file if it spans two.
@@ -204,3 +236,4 @@ The files that decide whether money is safe.
 | Outcome of a money action                                                           | `src/application/result.ts`                                                                                          |
 | Runtime check for WebCrypto                                                         | `src/platform.ts`                                                                                                    |
 | What a review says about its cost, and whether it can be confirmed                  | `src/presentation/networkCost.ts`                                                                                    |
+| Which reads are asked again, and that nothing which moves money is                  | `src/application/retries.ts`                                                                                         |

@@ -1,5 +1,6 @@
 import type { LivePrice } from "./liveSource.js";
 import { relayInit, relayUrl } from "../httpConfig.js";
+import { readFetch } from "../readFetch.js";
 import { onMultipliersChange, refreshMultipliers } from "./multipliers.js";
 
 /**
@@ -41,7 +42,7 @@ async function refresh() {
   // chain only when the last read has aged out.
   void refreshMultipliers();
   try {
-    const response = await fetch(relayUrl("/api/prices"), relayInit());
+    const response = await readFetch(relayUrl("/api/prices"), relayInit());
     if (response.ok) {
       const payload = (await response.json()) as { prices: Record<string, LivePrice> | null };
       if (payload.prices) {

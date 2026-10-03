@@ -9,6 +9,13 @@ const keysStay = (where: string) =>
 const onlyWayBack = (platformNoun: string) =>
   `These words are the only way back into your money if this ${platformNoun} is lost. Write them on paper. Anyone who sees them can take everything.`;
 
+/** `keepOpen` is what must stay open while an import runs: "Keep this tab open." or "Keep the app open." */
+const importLead = (keepOpen: string) => `${keepOpen} This usually takes a few seconds.`;
+
+/** `where` is where nothing was saved: "in this browser" or "on this phone". */
+const importFailed = (where: string) =>
+  `We couldn't finish importing your wallet. Nothing was saved ${where}. Try again.`;
+
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** Creating a wallet or importing one, up to the password that seals it. */
@@ -72,8 +79,20 @@ export const onboardingCopy = {
     phraseLabel: "Recovery phrase",
     phrasePlaceholder: "word1 word2 word3 ...",
     wordCount: (count: number) => (count > 0 ? plural(count, "word") : "12 or 24 words"),
-    networkFailed: "Could not reach the network to check balances. Try again.",
-    checking: "Checking balances and recovering portfolios onchain...",
+    networkFailed: importFailed("in this browser"),
+    checking: "Finding your portfolios...",
+    /** The import while it works: a title, a lead, the three steps, the slow line and the failure. */
+    progress: {
+      title: "Importing your wallet",
+      lead: importLead("Keep this tab open."),
+      steps: [
+        "Reading your recovery phrase",
+        "Finding your portfolios",
+        "Getting everything ready",
+      ],
+      slow: "Still working. A wallet with many portfolios takes a little longer.",
+      failed: importFailed("in this browser"),
+    },
     submit: "Import wallet",
     testNetworkOnly: "Devnet SOL only. ",
     twoSets:
@@ -102,6 +121,14 @@ export const onboardingCopy = {
     discovered: (count: number) =>
       `Found ${plural(count, "portfolio")} this phrase already had onchain.`,
     otherSet: "Open the other set instead",
+    /** Asked for from the result of an import, when a portfolio the person expects is not there. */
+    lookFurther: {
+      action: "Missing a portfolio? Look further",
+      looking: "Looking further for your portfolios...",
+      found: (count: number) => `Found ${plural(count, "more portfolio")}.`,
+      nothing: "No more portfolios were found for this phrase.",
+      failed: "We couldn't finish looking. Nothing was changed. Try again.",
+    },
   },
 
   password: {
@@ -110,7 +137,7 @@ export const onboardingCopy = {
       "Your recovery phrase is encrypted with this password before it is stored. We never see it and it is never sent anywhere. Anyone who copies this browser's data can try to guess it, so it has to be hard to guess.",
     forgotten:
       "If you forget this password, your recovery phrase still opens your wallet. Without the phrase, nobody can.",
-    encryptFailed: "Could not encrypt the wallet. Try again.",
+    encryptFailed: "We couldn't encrypt your wallet, so nothing was saved. Try again.",
     encrypting: "Encrypting...",
     finish: "Encrypt and finish",
   },
@@ -143,8 +170,13 @@ export const mobileOnboardingCopy = {
     paste: "Paste",
     checking: "Checking what this phrase holds...",
     slow: "Looking for portfolios this phrase already has. This can take a moment.",
-    networkFailed: "Could not reach the network to check this phrase. Try again.",
-    offline: "You're offline. Importing needs the network to find what this phrase holds.",
+    networkFailed: importFailed("on this phone"),
+    offline:
+      "You're offline. Nothing was saved on this phone. Go back online to import your wallet.",
+    progress: {
+      lead: importLead("Keep the app open."),
+      failed: importFailed("on this phone"),
+    },
   },
   source: {
     title: "Where did this phrase come from?",

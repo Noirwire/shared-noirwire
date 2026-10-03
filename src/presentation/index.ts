@@ -5,6 +5,7 @@ export {
   chainAnswer,
   chainErrorMessage,
   describeFailure,
+  failureAccount,
   failureMessage,
   refusalMessage,
 } from "./actionResult.js";
@@ -85,6 +86,8 @@ export {
   importResultView,
   importSchemeFor,
   importSourceView,
+  type LookFurtherView,
+  lookFurtherView,
 } from "./importFindings.js";
 export {
   type ChangeView,
@@ -149,6 +152,20 @@ export {
   toneOf,
 } from "./portfolio.js";
 export { type ProgressStep, type StepStatus } from "./progress.js";
+export { isWrongPassword, unlockProblemText } from "./unlock.js";
+export {
+  IMPORT_LAST_STEP_AFTER_MS,
+  type ImportWaitingView,
+  STILL_WORKING_AFTER_MS,
+  WAITING_DELAY_MS,
+  type WaitingKind,
+  type WaitingSignal,
+  type WaitingSteps,
+  type WaitingView,
+  importFailedText,
+  importWaitingView,
+  waitingView,
+} from "./waiting.js";
 export {
   type ReceiveTarget,
   type ReceiveView,

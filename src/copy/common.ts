@@ -23,6 +23,8 @@ export const commonCopy = {
   tracker: (name: string) => `${name} tracker`,
   available: (amount: string) => `Available ${amount}`,
   cashAvailable: (amount: string) => `${amount} cash available`,
+  /** After an action that went through whose new balances could not be read back yet. */
+  balancesUpdateShortly: "Balances will update shortly.",
   balanceUnavailable: "This token's balance cannot be shown right now. Try again in a moment.",
   tradingUnavailableOn: (network: string) =>
     `Live stock trading is unavailable on ${network}. You can explore investments, but cannot place an order here.`,

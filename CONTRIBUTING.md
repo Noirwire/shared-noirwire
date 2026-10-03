@@ -39,7 +39,7 @@ Each folder under `src/` may import only what its `README.md` allows:
 | `infrastructure/` | `domain/`, `application/`, `platform.ts` |
 | `presentation/`   | `domain/`, `application/`, `copy/`       |
 | `wallet/`         | every layer above but `design/`          |
-| `testing/`        | `platform.ts`                            |
+| `testing/`        | `platform.ts`, `infrastructure/`         |
 
 Nothing imports from an app, from React, React Native, Next or Expo, or from Node. `npm run lint` enforces this through `eslint-rules/dependency-rule.mjs`, which checks where each import resolves to, and `tests/dependencyRule.test.ts` proves it. If you change the table, change that rule and that test with it.
 

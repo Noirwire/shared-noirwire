@@ -1,3 +1,4 @@
+import { typedAmount } from "../domain/amount.js";
 import { privateTransferCosts } from "../domain/privateTransfer.js";
 
 export type FundingInput = {
@@ -13,14 +14,13 @@ export type FundingInput = {
 /** What a move of money into a portfolio would take, and whether the typed amount can go. */
 export function fundingDraft(input: FundingInput) {
   const { privateRoute, decimals, fundingBalance } = input;
-  const customAmount = Number(input.amountText);
+  const customAmount = typedAmount(input.amountText);
   const costsOf = (amount: number) => privateTransferCosts(amount, decimals);
   const minimum = privateRoute ? costsOf(0).minimum : 0;
   /** What leaves the funding wallet for `value`: on the private route, the fees come on top. */
   const leaving = (value: number) => (privateRoute ? costsOf(value).total : value);
   const affordable = (value: number) => value >= minimum && leaving(value) <= fundingBalance;
-  const amountValid =
-    Number.isFinite(customAmount) && customAmount > 0 && customAmount <= fundingBalance;
+  const amountValid = customAmount > 0 && customAmount <= fundingBalance;
   return {
     customAmount,
     amountValid,

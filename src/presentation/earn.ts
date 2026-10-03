@@ -440,6 +440,8 @@ export function earnResultView(state: {
   amount: number;
   fee: number;
   portfolioLabel: string;
+  /** It landed, and the new balances could not be read back yet. */
+  balancesUnread?: boolean;
 }) {
   const { action, portfolioLabel } = state;
   if (state.outcome === "unknown") {
@@ -452,7 +454,9 @@ export function earnResultView(state: {
   const moved = action === "deposit" ? state.amount : state.amount - state.fee;
   return {
     title: copy.landed[action](symbolAmount(CASH, moved)),
-    body: copy.landedBody[action](portfolioLabel),
+    body: state.balancesUnread
+      ? `${copy.landedBody[action](portfolioLabel)} ${commonCopy.balancesUpdateShortly}`
+      : copy.landedBody[action](portfolioLabel),
     close: commonCopy.done,
   };
 }

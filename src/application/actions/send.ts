@@ -1,6 +1,7 @@
 import type { NetworkCost } from "../../domain/networkCost.js";
 import { planSendCost, type CostAgreed, type CostChain } from "../networkCost.js";
 import type { RelayerQuote, Signer, StillUnlocked } from "../ports.js";
+import { readWithRetries } from "../retries.js";
 import { refused, refusedFor, type Attempt } from "../result.js";
 import {
   activePortfolio,
@@ -14,8 +15,10 @@ import {
 import {
   costChangedOf,
   counted,
+  ended,
   failedOf,
   openSession,
+  readAfterLanding,
   unknownOf,
   type ActionDeps,
 } from "./common.js";
@@ -87,7 +90,7 @@ export async function reviewSend<K extends Signer>(
   if (!token || !portfolio) return { cost: { kind: "covered" }, amount: send.amount };
   let lamports: number;
   try {
-    lamports = await token.sendLamports(send.to);
+    lamports = await readWithRetries(() => token.sendLamports(send.to));
   } catch {
     return { cost: { kind: "unavailable" }, amount: send.amount };
   }
@@ -167,6 +170,8 @@ export async function send<K extends Signer>(
   );
   if (!reservation) return refused("actionPending");
   let outcome: unknown;
+  let signature: string | undefined;
+  let realBalance: number;
 
   const resync = async () => {
     const balance = await handle.balance(ownerAddress);
@@ -177,7 +182,7 @@ export async function send<K extends Signer>(
   };
 
   try {
-    const realBalance = await handle.balance(ownerAddress);
+    realBalance = await handle.balance(ownerAddress);
     if (amount > realBalance) return refused("moreThanOnchain");
 
     // Sign and submit. Sending SOL pays its own way out of the amount.
@@ -185,7 +190,6 @@ export async function send<K extends Signer>(
     // showed that, and otherwise by the portfolio itself, which the send
     // checks it can.
     const withdraw = () => handle.withdraw(owner, funder, amount, recipient, session.live);
-    let signature: string | undefined;
     if (!handle.sendRelayed) await withdraw();
     else if (network?.relayerFeeRaw !== undefined) {
       signature = await handle.sendRelayed({
@@ -199,13 +203,29 @@ export async function send<K extends Signer>(
     } else {
       await withdraw();
     }
+  } catch (error) {
+    outcome = error;
+    await resync().catch(() => undefined);
+    return (
+      unknownOf(error) ??
+      costChangedOf(error) ??
+      counted(deps, "send_failed", {}, failedOf("sendFailed", error))
+    );
+  } finally {
+    await ended(reservation, outcome);
+  }
 
-    // Settle. A portfolio pays its own fee, so sending all of its SOL
-    // delivers the balance less that fee.
-    const sent =
-      handle.symbol === "SOL" && amount === realBalance ? amount - chain.networkFeeSol : amount;
-    const newBalance = await handle.balance(ownerAddress);
-    deps.store.update((current) =>
+  // Settle. From here the send has landed, so nothing below may report it as
+  // failed: that would invite sending it again. When the balance cannot be
+  // read back yet, what was held less what was sent stands in until a
+  // refresh replaces it. A portfolio pays its own fee, so sending all of its
+  // SOL delivers the balance less that fee.
+  const sent =
+    handle.symbol === "SOL" && amount === realBalance ? amount - chain.networkFeeSol : amount;
+  const read = await readAfterLanding(() => handle.balance(ownerAddress));
+  const newBalance = read ?? Math.max(realBalance - amount, 0);
+  void deps.store
+    .update((current) =>
       logged(
         mapPortfolio(current, id, (entry) =>
           setRealHolding(prices, entry, handle.symbol, newBalance),
@@ -220,22 +240,12 @@ export async function send<K extends Signer>(
         },
         prices,
       ),
-    );
-    deps.track("sent");
-    return {
-      kind: "confirmed",
-      ...(signature ? { signature } : {}),
-      settlement: "balancesRead",
-    };
-  } catch (error) {
-    outcome = error;
-    await resync().catch(() => undefined);
-    return (
-      unknownOf(error) ??
-      costChangedOf(error) ??
-      counted(deps, "send_failed", {}, failedOf("sendFailed", error))
-    );
-  } finally {
-    await reservation.finish(outcome);
-  }
+    )
+    .catch(() => false);
+  deps.track("sent");
+  return {
+    kind: "confirmed",
+    ...(signature ? { signature } : {}),
+    settlement: read === null ? "balancesEstimated" : "balancesRead",
+  };
 }

@@ -6,6 +6,10 @@ Pure rules and types: what a wallet, a portfolio, a holding, an order or a pie i
 
 `usageEvents.ts` is the closed list of everything usage analytics may say, with the server's check of an event against it; the platform's `track` takes only what it allows.
 
+`amount.ts` reads a typed amount one way on every keypad: a period or a comma is the decimal separator, and text that could be read two ways ("1,234", "1,234.50") is refused, not guessed.
+
+`importResolution.ts` also holds the three numbers that keep a restore whole: how many unused addresses end an import's scan, the larger gap of the scan a person asks for, and how many never-used portfolios a wallet may have in a row, which is kept under the first.
+
 **Belongs here:** types, validation, arithmetic, formatting rules (`format.ts`).
 
 **May import:** nothing of ours. No other folder in this package, no platform seam, no library that talks to a network.

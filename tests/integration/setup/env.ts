@@ -1,4 +1,5 @@
 import { configureHttp } from "../../../src/infrastructure/httpConfig.js";
+import { paceImportWith } from "../../../src/infrastructure/solana/import.js";
 import { guardSigningWith } from "../../../src/infrastructure/solana/signerAccounts.js";
 import { installPlatform } from "../../../src/platform.js";
 import { memoryPlatform } from "../../../src/testing/index.js";
@@ -16,4 +17,6 @@ import { RPC_URL } from "../global-setup.js";
  */
 installPlatform(memoryPlatform());
 configureHttp({ baseUrl: "", headers: () => ({}), rpcUrl: RPC_URL });
+// A local validator has no request limit to keep under.
+paceImportWith(null);
 guardSigningWith({ confirmNetwork: async () => undefined, record: async () => undefined });

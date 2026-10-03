@@ -2,6 +2,19 @@
 export const notSaved = (platformNoun: string) =>
   `This ${platformNoun} would not save the wallet (storage is full or blocked). Nothing was changed.`;
 
+/** A reset deletes the wallet from where it is kept. `platformNoun` is "browser" or "phone". */
+const resetWarning = (platformNoun: string) =>
+  `This deletes the wallet from this ${platformNoun}. Your recovery phrase is the only way back in. Without it, everything in your funding wallet and in every portfolio is gone for good, and nobody can restore it.`;
+
+/** The stored wallet cannot be read. `where` is "in this browser" or "on this phone". */
+const damaged = (where: string) =>
+  `The wallet stored ${where} cannot be read. Reset it and import it again from your recovery phrase.`;
+
+/** `where` is "in this browser" or "on this phone". */
+const noWallet = (where: string) => `There is no wallet ${where}.`;
+
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
 /** Unlocking, passwords, resetting and copying: the wallet itself rather than what is in it. */
 export const walletCopy = {
   unlock: {
@@ -30,10 +43,23 @@ export const walletCopy = {
 
   resetConfirm: {
     word: "RESET",
-    warning:
-      "This deletes the wallet from this browser. Your recovery phrase is the only way back in. Without it, everything in your funding wallet and in every portfolio is gone for good, and nobody can restore it.",
+    warning: resetWarning("browser"),
     typeToConfirm: (word: string) => `Type ${word} to confirm`,
     delete: "Delete this wallet",
+  },
+
+  /** A reset that did not remove the wallet. */
+  reset: {
+    notRemoved:
+      "This browser would not delete the wallet. It is still on this device, locked. Try again.",
+  },
+
+  /** A browser that cannot hold a lock across tabs, so two tabs could not be kept from acting at once. */
+  crossTab: {
+    notice:
+      "This browser cannot keep your wallet safe across tabs, so nothing can be changed or sent from here. You can still look. To use your wallet, open it in a current browser.",
+    refused:
+      "This browser cannot keep your wallet safe across tabs, so nothing was changed or sent. Open your wallet in a current browser.",
   },
 
   copyButton: {
@@ -56,11 +82,10 @@ export const walletCopy = {
       "A wallet already exists on this device, most likely created in another tab. Nothing was saved here. Reload this page to unlock that wallet.",
     wrongPassword: "That password does not match this wallet.",
     interrupted: "The wallet was locked or changed while it was being unlocked. Try again.",
-    damaged:
-      "The wallet stored in this browser cannot be read. Reset it and import it again from your recovery phrase.",
+    damaged: damaged("in this browser"),
     addressMismatch:
       "The addresses stored for this wallet do not match its recovery phrase, so it was not opened. Reset the wallet and import it again from your recovery phrase.",
-    noWallet: "There is no wallet in this browser.",
+    noWallet: noWallet("in this browser"),
     noWalletToChange: "There is no wallet to change.",
     currentPasswordWrong: "Your current password is not right.",
     passwordNotChanged: "Could not change the password. Your old password still works.",
@@ -73,5 +98,39 @@ export const walletCopy = {
       "The password change may have been saved, but the stored wallet could not be read back to check. Unlock with the new password first; if it does not open, use the old one. Another change waits until the wallet can be read.",
     rekeyNotUndone:
       "The password was changed, but quick unlock could not be updated. Use the new password, and turn quick unlock on again.",
+  },
+} as const;
+
+/**
+ * What the phone says differently about unlocking and resetting, and its
+ * words for unlocking with a fingerprint or a face. Everything else is
+ * `walletCopy`. `method` is the device's own name for its biometric check.
+ */
+export const mobileWalletCopy = {
+  unlock: {
+    lead: "Your wallet is stored encrypted on this phone, so it has to be unlocked each time the app opens.",
+    forgotten:
+      "Forgotten the password? It cannot be recovered. It never left this phone. Reset the wallet and import it again from your recovery phrase.",
+    use: (method: string) => `Use ${method}`,
+    lockedOut: (method: string) =>
+      `${sentence(method)} is unavailable right now. Enter your password.`,
+    changed: (method: string) =>
+      `${sentence(method)} settings changed on this phone, so it was turned off for NoirWire. Enter your password.`,
+    prompt: "Unlock NoirWire",
+  },
+
+  resetConfirm: {
+    warning: resetWarning("phone"),
+  },
+
+  reset: {
+    notRemoved:
+      "The wallet could not be deleted from this phone (storage is blocked). It is still stored here, locked. Try again.",
+    deleting: "Deleting...",
+  },
+
+  store: {
+    damaged: damaged("on this phone"),
+    noWallet: noWallet("on this phone"),
   },
 } as const;

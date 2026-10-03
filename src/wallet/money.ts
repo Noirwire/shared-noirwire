@@ -15,6 +15,7 @@ import {
   type PendingActions,
   type PendingActionsDeps,
 } from "../application/pendingActions.js";
+import { readWithRetries } from "../application/retries.js";
 import { errorsCopy } from "../copy/errors.js";
 import { failureReason } from "../domain/usageEvents.js";
 import { checkRecipient, isRecipientAddress } from "../infrastructure/solana/address.js";
@@ -58,7 +59,7 @@ import {
   tokenSendLamports,
 } from "../infrastructure/solana/tokens.js";
 import { getPlatform } from "../platform.js";
-import { failureMessage } from "../presentation/actionResult.js";
+import { failureAccount } from "../presentation/actionResult.js";
 import { pendingWords } from "../presentation/pendingAction.js";
 import { catalog } from "./market.js";
 import { unlockedSession } from "./session.js";
@@ -272,8 +273,8 @@ const earnChain: EarnChain<Keypair> = {
 
 const earnVenue: EarnVenue = {
   name: jupiterLend.name,
-  rate: () => jupiterLend.rate(),
-  position: (owner) => jupiterLend.position(address(owner)),
+  rate: () => readWithRetries(() => jupiterLend.rate()),
+  position: (owner) => readWithRetries(() => jupiterLend.position(address(owner))),
   lamportsNeeded: (position) =>
     EARN_NETWORK_FEE_LAMPORTS + (position.hasReceiptAccount ? 0 : EARN_FIRST_DEPOSIT_LAMPORTS),
 };
@@ -312,7 +313,7 @@ export function installMoney(locks: MoneyLocks): Money {
       store,
       prices: catalog,
       track,
-      failureBand: (result) => failureReason(failureMessage(result)),
+      failureBand: (result) => failureReason(failureAccount(result)),
       pending: { reserve: pending.reserve },
       words: pendingWords(catalog.shownUnits),
     },

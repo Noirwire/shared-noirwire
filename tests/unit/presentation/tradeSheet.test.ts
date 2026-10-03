@@ -211,7 +211,7 @@ describe("tradeOutcome", () => {
         context,
       ),
     ).toMatchObject({
-      notice: { text: expect.stringMatching(/different chain.*Nothing was signed/) },
+      notice: { text: expect.stringMatching(/not connected to Solana.*Nothing was signed/) },
     });
   });
 });

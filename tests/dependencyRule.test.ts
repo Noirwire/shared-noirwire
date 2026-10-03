@@ -59,6 +59,7 @@ const ALLOWED: [file: string, specifier: string][] = [
   ["src/presentation/send.ts", "../copy/networkCost.js"],
   ["src/presentation/send.ts", "../domain/format.js"],
   ["src/testing/index.ts", "../platform.js"],
+  ["src/testing/signing.ts", "../infrastructure/solana/signerAccounts.js"],
   ["src/application/send.ts", "@solana/web3.js"],
   ["src/infrastructure/rpc.ts", "buffer"],
   ["src/wallet/store.ts", "../infrastructure/solana/keys.js"],

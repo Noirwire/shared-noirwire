@@ -9,6 +9,7 @@ import { failureReason } from "../../../src/domain/usageEvents.js";
 import {
   actionFailure,
   chainAnswer,
+  failureAccount,
   failureMessage,
   refusalMessage,
 } from "../../../src/presentation/actionResult.js";
@@ -34,7 +35,10 @@ describe("what a refused action says", () => {
     ["portfolioNotSaved", "The new portfolio could not be saved in this browser."],
     ["activePortfolioAmount", "Enter an amount for an active portfolio."],
     ["amountAboveZero", "Enter an amount greater than zero."],
-    ["sendNotCompleted", "Transfer could not be completed. Check the balance and recipient."],
+    [
+      "sendNotCompleted",
+      "This send can't be made. Nothing was sent. Check the amount and the recipient's address.",
+    ],
     ["moreThanOnchain", "More than this portfolio holds onchain."],
     ["tradingMainnetOnly", "Live trading is only available on mainnet."],
     ["earnMainnetOnly", "Earning is only available on Solana mainnet."],
@@ -57,6 +61,46 @@ describe("what a refused action says", () => {
 });
 
 describe("what a failed action says", () => {
+  const failed = (detail: string, reason: "sendFailed" | "noPrice" | "orderNotPlaced") =>
+    ({ kind: "failed", reason, detail, completed: [] }) as const;
+
+  it.each([
+    "fetch failed",
+    "Failed to fetch",
+    "Network request failed",
+    "The operation timed out.",
+    "429 Too Many Requests: slow down",
+    "502 Bad Gateway",
+    "Jupiter returned 500.",
+    "The private payment service returned 403.",
+  ])("never passes on how a request failed: %s", (detail) => {
+    expect(failureMessage(failed(detail, "sendFailed"))).toBe(
+      "We couldn't complete this send. Nothing was sent. Try again.",
+    );
+    expect(failureMessage(failed(detail, "noPrice"))).toBe(
+      "We couldn't get a price for this trade. Nothing was traded. Try again.",
+    );
+  });
+
+  it("still counts such a failure under its own account", () => {
+    expect(failureAccount(failed("Jupiter returned 429.", "noPrice"))).toBe(
+      "Jupiter returned 429.",
+    );
+    expect(failureReason(failureAccount(failed("Jupiter returned 429.", "noPrice")))).toBe(
+      "rate_limited",
+    );
+    expect(failureReason(failureAccount(failed("fetch failed", "sendFailed")))).toBe("network");
+  });
+
+  it("says the cost is already paid whichever words it uses", () => {
+    expect(failureMessage(failed("fetch failed", "orderNotPlaced"))).toBe(
+      "The order was not placed. The network cost is already paid, so you can try again at no further cost.",
+    );
+    expect(failureMessage(failed("The swap did not go through.", "orderNotPlaced"))).toBe(
+      "The swap did not go through. The network cost is already paid, so you can try again at no further cost.",
+    );
+  });
+
   it("is the refusal's own account, or what the action was doing", () => {
     expect(
       failureMessage({
@@ -67,16 +111,16 @@ describe("what a failed action says", () => {
       }),
     ).toBe("Simulation refused.");
     expect(failureMessage({ kind: "failed", reason: "sendFailed", completed: [] })).toBe(
-      "Transfer failed.",
+      "We couldn't complete this send. Nothing was sent. Try again.",
     );
     expect(failureMessage({ kind: "failed", reason: "fundingFailed", completed: [] })).toBe(
-      "Funding failed.",
+      "We couldn't move this money. Nothing was moved. Try again.",
     );
     expect(failureMessage({ kind: "failed", reason: "noPrice", completed: [] })).toBe(
-      "Could not get a price for this trade.",
+      "We couldn't get a price for this trade. Nothing was traded. Try again.",
     );
     expect(failureMessage({ kind: "failed", reason: "earnFailed", completed: [] })).toBe(
-      "The transaction did not complete.",
+      "This did not go through. Nothing was moved. Try again.",
     );
   });
 

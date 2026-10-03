@@ -157,7 +157,8 @@ describe("moving money in, on the phone", () => {
     expect(fundingWalletView({ balance: null, readFailed: false }).move.disabled).toBe(true);
     expect(fundingWalletView({ balance: 0, readFailed: true })).toMatchObject({
       lead: "Nothing is waiting. Send USDC on Solana to your funding address to add money.",
-      readFailed: "Could not refresh. Pull down to try again.",
+      readFailed:
+        "We couldn't update your balance. What you see may be out of date. Pull down to try again.",
       move: { quiet: true, disabled: true },
     });
     expect(fundingWalletView({ balance: 12, readFailed: false })).toMatchObject({

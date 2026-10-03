@@ -1,6 +1,16 @@
 export { RAVEN_PATH, RAVEN_VIEWBOX } from "./brandGeometry.js";
 export { type ChartPaths, chartPaths } from "./chartPath.js";
 export {
+  MIN_TARGET,
+  fonts,
+  layout,
+  mobileRadius,
+  motion,
+  opacity,
+  overlayColor,
+  size,
+} from "./mobile.js";
+export {
   type ColorToken,
   type TextStyleToken,
   type TextVariant,

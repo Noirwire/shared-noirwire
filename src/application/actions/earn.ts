@@ -7,6 +7,7 @@ import { holdingIn, logged, othersOf, positive } from "../walletRecord.js";
 import {
   costChangedOf,
   counted,
+  ended,
   failedOf,
   openSession,
   unknownOf,
@@ -124,10 +125,13 @@ export async function earn<K extends Signer>(
   );
   if (!reservation) return refused("actionPending");
   let outcome: unknown;
+  let signature: string;
+  /** Everything the portfolio holds, re-read. False when it could not be: never a reason to fail. */
+  const reread = () => refresh.portfolioCash(id, portfolio.address).catch(() => false);
 
   try {
     // Sign and submit, with the network cost met the way the review showed.
-    const signature =
+    signature =
       network?.relayerFeeRaw !== undefined
         ? await chain.moveRelayed({
             action,
@@ -138,24 +142,24 @@ export async function earn<K extends Signer>(
             stillUnlocked: session.live,
           })
         : await chain.move(action, owner, amount, session.live);
-    // Settle.
-    await refresh.portfolioCash(id, portfolio.address);
-    deps.store.update((current) => logged(current, { portfolioId: id, ...entry }, deps.prices));
-    deps.track(`earn_${action}`);
-    return { kind: "confirmed", signature, settlement: "balancesRead" };
   } catch (error) {
     outcome = error;
-    const unknown = unknownOf(error);
-    if (!unknown) {
-      await refresh.portfolioCash(id, portfolio.address);
-      return (
-        costChangedOf(error) ??
-        counted(deps, "earn_failed", { action }, failedOf("earnFailed", error))
-      );
-    }
-    await refresh.portfolioCash(id, portfolio.address);
-    return unknown;
+    await reread();
+    return (
+      unknownOf(error) ??
+      costChangedOf(error) ??
+      counted(deps, "earn_failed", { action }, failedOf("earnFailed", error))
+    );
   } finally {
-    await reservation.finish(outcome);
+    await ended(reservation, outcome);
   }
+
+  // Settle. From here the move has landed, so nothing below may report it
+  // as failed.
+  const read = await reread();
+  void deps.store
+    .update((current) => logged(current, { portfolioId: id, ...entry }, deps.prices))
+    .catch(() => false);
+  deps.track(`earn_${action}`);
+  return { kind: "confirmed", signature, settlement: read ? "balancesRead" : "balancesEstimated" };
 }

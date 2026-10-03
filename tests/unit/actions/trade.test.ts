@@ -115,7 +115,7 @@ describe("quoting a trade", () => {
     const result = await quote(t);
     expect(result).toMatchObject({ kind: "failed", reason: "noPrice", cause: "noQuote" });
     expect(actionFailure(result as never)?.error).toBe(
-      "Jupiter has no price for this order right now.",
+      "There is no price for this order right now. Nothing was traded. Try again in a moment.",
     );
     expect(t.h.track).toHaveBeenCalledWith("trade_quote_failed", { side: "buy", reason: "other" });
   });

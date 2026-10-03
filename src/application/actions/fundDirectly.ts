@@ -3,6 +3,7 @@ import { FUNDING } from "../pendingActions.js";
 import { refused, refusedFor, type Attempt } from "../result.js";
 import {
   activePortfolio,
+  holdingIn,
   logged,
   mapPortfolio,
   positive,
@@ -10,8 +11,10 @@ import {
 } from "../walletRecord.js";
 import {
   counted,
+  ended,
   failedOf,
   openSession,
+  readAfterLanding,
   unknownOf,
   type ActionDeps,
   type Refresh,
@@ -79,10 +82,29 @@ export async function fundDirectly<K extends Signer>(
     // Sign and submit.
     await handle.ensureAccount(owner, funder, session.live);
     await handle.deposit(funder, owner, amount, session.live);
+  } catch (error) {
+    outcome = error;
+    const unknown = unknownOf(error);
+    if (!unknown) {
+      return counted(deps, "funding_failed", { route: "direct" }, failedOf("fundingFailed", error));
+    }
+    await Promise.allSettled([
+      deps.refresh.portfolioAsset(id, portfolio.address, handle.symbol),
+      deps.refresh.funding(session.wallet.funding.address, handle.symbol),
+    ]);
+    return unknown;
+  } finally {
+    await ended(reservation, outcome);
+  }
 
-    // Settle: what the chain now holds.
-    const newBalance = await handle.balance(owner.publicKey.toBase58());
-    deps.store.update((current) =>
+  // Settle: what the chain now holds. From here the money has moved, so
+  // nothing below may report the move as failed. When the balance cannot be
+  // read back yet, what was held plus what was moved stands in until a
+  // refresh replaces it.
+  const read = await readAfterLanding(() => handle.balance(owner.publicKey.toBase58()));
+  const newBalance = read ?? holdingIn(portfolio, handle.symbol).amount + amount;
+  void deps.store
+    .update((current) =>
       logged(
         mapPortfolio(current, id, (entry) =>
           setRealHolding(prices, entry, handle.symbol, newBalance),
@@ -96,22 +118,9 @@ export async function fundDirectly<K extends Signer>(
         },
         prices,
       ),
-    );
-    void deps.refresh.funding(session.wallet.funding.address, handle.symbol);
-    deps.track("funded_directly");
-    return { kind: "confirmed", settlement: "balancesRead" };
-  } catch (error) {
-    outcome = error;
-    const unknown = unknownOf(error);
-    if (!unknown) {
-      return counted(deps, "funding_failed", { route: "direct" }, failedOf("fundingFailed", error));
-    }
-    await Promise.allSettled([
-      deps.refresh.portfolioAsset(id, portfolio.address, handle.symbol),
-      deps.refresh.funding(session.wallet.funding.address, handle.symbol),
-    ]);
-    return unknown;
-  } finally {
-    await reservation.finish(outcome);
-  }
+    )
+    .catch(() => false);
+  void deps.refresh.funding(session.wallet.funding.address, handle.symbol).catch(() => undefined);
+  deps.track("funded_directly");
+  return { kind: "confirmed", settlement: read === null ? "balancesEstimated" : "balancesRead" };
 }

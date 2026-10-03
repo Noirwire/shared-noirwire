@@ -200,7 +200,7 @@ describe("fundingOutcomeView", () => {
       alert: true,
     });
     expect(unknown.body).toBe(
-      "The transfer of 10.00 USDC was sent, and the answer never came back. It may still arrive. Do not send it again yet: check your funding wallet’s USDC balance first. If it has gone down, the money is on its way to Investing and needs nothing more from you.",
+      "The transfer of 10.00 USDC was sent, but we could not confirm that it arrived. It may still arrive. Do not send it again yet: check your funding wallet’s USDC balance first. If it has gone down, the money is on its way to Investing and needs nothing more from you.",
     );
     expect(fundingOutcomeView({ ...base, outcome: "pending", privateRoute: true })).toMatchObject({
       title: "Still settling",

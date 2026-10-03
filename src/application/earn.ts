@@ -1,3 +1,4 @@
+import { typedAmount } from "../domain/amount.js";
 import type { NetworkCost } from "../domain/networkCost.js";
 
 export type EarnAction = "deposit" | "withdraw";
@@ -20,11 +21,11 @@ export function earnDraft(input: {
   cost: NetworkCost | null;
 }) {
   const { action, cost } = input;
-  const amount = Number(input.amountText);
+  const amount = typedAmount(input.amountText);
   // Cash that pays the network cost cannot also be lent.
   const kept = cost?.kind === "relayer" && action === "deposit" ? cost.fee : 0;
   const max = action === "deposit" ? Math.max(input.cash - kept, 0) : (input.deposited ?? 0);
-  const valid = Number.isFinite(amount) && amount > 0 && amount <= max;
+  const valid = amount > 0 && amount <= max;
   return { amount, max, valid };
 }
 

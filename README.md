@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="https://github.com/Noirwire/shared-noirwire/actions/workflows/ci.yml"><img src="https://github.com/Noirwire/shared-noirwire/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
-  <img src="https://img.shields.io/badge/version-0.4.0-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.4.1-blue" alt="Version">
   <img src="https://img.shields.io/badge/license-proprietary-black" alt="License">
 </p>
 
@@ -16,6 +16,7 @@ NoirWire is a non-custodial Solana wallet. One recovery phrase derives a funding
 - Keys are sealed on the device; the vault behind this package only ever sees ciphertext.
 - The web app and the mobile app are the same product, so the wallet, its checks, the money actions and the words on screen live here once, not twice.
 - Every money action reserves its portfolio before anything is signed, so a double tap, or two tabs, cannot pay for the same decision twice.
+- Waiting looks and reads the same on both: a quiet signal after a short delay, a calm line when it runs long, and never a word about requests or services. Reads are asked for again on a busy moment; nothing that moves money ever is.
 - A small dependency rule, enforced by lint, keeps the layers from leaking into each other.
 - Published openly so anyone can read what actually runs on their device.
 
@@ -42,7 +43,7 @@ src/
   wallet/          the encrypted keystore, the stored record, the store and its session (keys stay here),
                    the catalog bound to the price feeds
   platform.ts      what differs between web and mobile
-  testing/         in-memory ports for tests
+  testing/         in-memory ports for tests, and signing for a test's stand-in client
 ```
 
 Each folder has a `README.md` saying what belongs there.
@@ -57,7 +58,7 @@ Each folder has a `README.md` saying what belongs there.
 | `infrastructure/` | `domain/`, `application/`, `platform.ts` |
 | `presentation/`   | `domain/`, `application/`, `copy/`       |
 | `wallet/`         | every layer above but `design/`          |
-| `testing/`        | `platform.ts`                            |
+| `testing/`        | `platform.ts`, `infrastructure/`         |
 
 A local ESLint rule enforces this table on every import and a fixture suite proves it. The full diagram, what each layer may never do, and how a module moves in from an app are in [docs/architecture.md](docs/architecture.md).
 
@@ -83,9 +84,9 @@ Import by subpath. There is no root entry.
 | `@noirwire/shared/infrastructure` | `configureHttp`, `envFrom`, the chain client, the venues, the guards, the prices |
 | `@noirwire/shared/presentation`   | View models                                                                      |
 | `@noirwire/shared/copy`           | Strings                                                                          |
-| `@noirwire/shared/design`         | Tokens, class tokens, brand geometry, chart paths                                |
+| `@noirwire/shared/design`         | Tokens, the phone's layout tokens, class tokens, brand geometry, chart paths     |
 | `@noirwire/shared/wallet`         | The wallet store, its session, wallet creation, the bound catalog                |
-| `@noirwire/shared/testing`        | In-memory ports                                                                  |
+| `@noirwire/shared/testing`        | In-memory ports, and signing for a test's stand-in chain client                  |
 
 Each index exports the public surface of its layer, not every helper. A file that is not exported is internal and may change in any release.
 
@@ -110,10 +111,10 @@ installMoney(inProcessLocks());
 Pin the tarball attached to a release in the app's `package.json`:
 
 ```json
-"@noirwire/shared": "https://github.com/Noirwire/shared-noirwire/releases/download/v0.4.0/noirwire-shared-0.4.0.tgz"
+"@noirwire/shared": "https://github.com/Noirwire/shared-noirwire/releases/download/v0.4.1/noirwire-shared-0.4.1.tgz"
 ```
 
-or `npm install https://github.com/Noirwire/shared-noirwire/releases/download/v0.4.0/noirwire-shared-0.4.0.tgz`. The tarball already contains the built `dist/`, so npm just unpacks and installs it; nothing here is cloned or built on the app's machine. Moving to a newer version is changing the URL's tag and filename to the new version and installing again. See [Releasing](#releasing) for how a tag becomes that tarball.
+or `npm install https://github.com/Noirwire/shared-noirwire/releases/download/v0.4.1/noirwire-shared-0.4.1.tgz`. The tarball already contains the built `dist/`, so npm just unpacks and installs it; nothing here is cloned or built on the app's machine. Moving to a newer version is changing the URL's tag and filename to the new version and installing again. See [Releasing](#releasing) for how a tag becomes that tarball.
 
 The app must also carry the peer dependencies at these exact versions, so it has one copy of each:
 
@@ -171,7 +172,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for commit style, tests, and what belongs
 
 ## Releasing
 
-This package has no production deployment of its own: it reaches an app by git tag, pinned in that app's `package.json` (see [Install](#install)). Semver tags: `v0.1.0` through `v0.4.0` so far. While the version is below 1.0, a minor bump may break; a patch never does. Every change is recorded in [CHANGELOG.md](CHANGELOG.md).
+This package has no production deployment of its own: it reaches an app by git tag, pinned in that app's `package.json` (see [Install](#install)). Semver tags: `v0.1.0` through `v0.4.1` so far. While the version is below 1.0, a minor bump may break; a patch never does. Every change is recorded in [CHANGELOG.md](CHANGELOG.md).
 
 Pushing a tag matching `v*` runs the full check suite (lint, types, format, unit tests, integration tests, build), confirms `package.json`'s version matches the tag, packs the tarball and checks it contains `dist/` and no test files, then publishes a GitHub Release with that tarball attached and its notes taken from the matching `CHANGELOG.md` section. To cut a release: bump `version` in `package.json`, add its section to `CHANGELOG.md`, commit, then push a `vX.Y.Z` tag matching the version.
 

@@ -17,6 +17,10 @@ The install steps, the exports map and the peer dependency versions are in [READ
 - The stock catalog is a JSON module imported with `with { type: "json" }`. Turbopack and Babel 7.26 or later read that syntax by default.
 - `package.json` names `dist/infrastructure/solana/buffer-polyfill.js` as the one file with a side effect: it puts the `buffer` package's `Buffer` on the global object before the Solana libraries need it, and a bundler must not drop it.
 
+## Faking a chain client in an app's tests
+
+A test that stands in for a chain client signs through `signAsClient(signer, stillUnlocked)` from `@noirwire/shared/testing`, never through a file under `dist/`. It goes through the installed signing guard exactly as the real clients do, so the fake is held to the same rules. That entry loads `@solana/web3.js`, which both apps already carry.
+
 ## Local iteration
 
 ```sh

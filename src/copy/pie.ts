@@ -92,7 +92,8 @@ export const pieCopy = {
     retired: (symbol: string) =>
       `${symbol} is no longer offered to buy. Edit the mix to remove it first.`,
     legFailed: (symbol: string, error: string) => `${symbol}: ${error}`,
-    costCheckFailed: "Could not check the network cost of these orders. Try again.",
+    costCheckFailed:
+      "We couldn't work out the network cost of these orders. Nothing was charged. Try again.",
     tooLittle: (minimum: string) => `Too little to split. Each order needs at least ${minimum}.`,
     noOrderPlaced: (error: string) => `${error} No order was placed.`,
     balancesUnread: "Balances could not be read, so nothing was placed. Try again.",

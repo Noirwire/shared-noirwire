@@ -6,6 +6,7 @@ import type {
   Refused,
   Unsuccessful,
 } from "../application/result.js";
+import { saysTransportFailure } from "../application/retries.js";
 import type { ChainErrorCode } from "../domain/chainError.js";
 import type { AppPlatform } from "../domain/appPlatform.js";
 import { errorsCopy as copy, mobileErrorsCopy } from "../copy/errors.js";
@@ -34,6 +35,7 @@ const REFUSALS: Record<RefusalReason, (symbol: string, platform: AppPlatform) =>
   portfolioInactive: () => copy.portfolioInactive,
   portfolioGone: () => copy.portfolioGone,
   portfolioNotSaved: (_symbol, platform) => placeWords(platform).portfolioNotSaved,
+  unusedPortfolios: () => copy.unusedPortfolios,
   activePortfolioAmount: () => copy.activePortfolioAmount,
   amountAboveZero: () => copy.amountAboveZero,
   unknownAsset: (symbol) => copy.unknownAsset(symbol),
@@ -65,16 +67,48 @@ const FAILURES: Record<FailureReason, string> = {
   earnFailed: copy.earn.failed,
 };
 
+/** A status a service answered with, as a failed request words it: "502 Bad Gateway", "returned 502". */
+const STATUS_WORDS = /^\d{3}\b|\breturned \d{3}\b/;
+
 /**
- * What a person is told when an attempt failed: the code's words, else the
- * refusal's own account, else what the action was doing. An order that
+ * Whether a failure's own account is about how the app asked, not about the
+ * person's money: a request that did not get through, a status code. A
+ * person is never told that; they are told what it means for them.
+ */
+function isTechnical(detail: string): boolean {
+  return saysTransportFailure(detail) || STATUS_WORDS.test(detail);
+}
+
+/**
+ * A failed attempt in its own account: the code's words, else what the
+ * refusal itself said, else what the action was doing. This is what a
+ * failure is counted under; a person is told `failureMessage`. An order that
  * failed after its account was opened says the cost is already paid.
  */
-export function failureMessage(result: Failed, platform: AppPlatform = "web"): string {
-  const said = result.cause
-    ? chainErrorMessage(result.cause, platform)
-    : result.detail || FAILURES[result.reason];
+export function failureAccount(result: Failed, platform: AppPlatform = "web"): string {
+  return withCostPaid(
+    result,
+    result.cause
+      ? chainErrorMessage(result.cause, platform)
+      : result.detail || FAILURES[result.reason],
+  );
+}
+
+/** An order that failed after its account was opened says the cost is already paid. */
+function withCostPaid(result: Failed, said: string): string {
   return result.reason === "orderNotPlaced" ? `${said} ${networkCostCopy.alreadyCovered}` : said;
+}
+
+/**
+ * What a person is told when an attempt failed: the code's words, else the
+ * refusal's own account unless that is about a request and not about their
+ * money, else what the action was doing.
+ */
+export function failureMessage(result: Failed, platform: AppPlatform = "web"): string {
+  const technical = !result.cause && result.detail !== undefined && isTechnical(result.detail);
+  return technical
+    ? withCostPaid(result, FAILURES[result.reason])
+    : failureAccount(result, platform);
 }
 
 /**

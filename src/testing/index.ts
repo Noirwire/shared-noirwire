@@ -112,3 +112,5 @@ export function memoryPlatform(overrides: Partial<Platform> = {}): Platform {
     ...overrides,
   };
 }
+
+export { signAsClient, unsignedTransaction } from "./signing.js";

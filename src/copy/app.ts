@@ -26,8 +26,8 @@ export const appCopy = {
 
   networkGate: {
     wrongNetwork: (network: string) =>
-      `This app is built for ${network}, but its network connection serves a different chain. Nothing can be sent until that is fixed.`,
-    unreachable: "The network could not be reached, so balances cannot be shown safely.",
+      `NoirWire is not connected to ${network} as it should be. Your money has not moved, and nothing can be sent until this is fixed. Try again later.`,
+    unreachable: "We can't show your balances right now. Your money has not moved. Try again.",
     retry: "Try again",
   },
 
@@ -50,7 +50,7 @@ export const appCopy = {
 /** The phone's network gate and offline banner. */
 export const mobileAppCopy = {
   network: {
-    checking: "Checking the network...",
+    checking: "Getting things ready...",
     offline:
       "You're offline. Balances and prices may be out of date, and nothing can be sent until you're back online.",
   },

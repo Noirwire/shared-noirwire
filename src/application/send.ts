@@ -1,3 +1,4 @@
+import { typedAmount } from "../domain/amount.js";
 /** What a send form holds, as typed, and what it knows about the asset and the address. */
 export type SendInput = {
   /** What the portfolio holds of the asset, as stored. */
@@ -33,9 +34,8 @@ export function sendDraft(input: SendInput): SendDraft {
   const { heldRaw, unitsPerHeld } = input;
   const multiplierKnown = unitsPerHeld !== undefined;
   const held = multiplierKnown ? heldRaw * unitsPerHeld : 0;
-  const parsed = Number(input.amountText);
-  const validAmount = Number.isFinite(parsed) && parsed > 0;
-  const amount = validAmount ? parsed : 0;
+  const amount = typedAmount(input.amountText);
+  const validAmount = amount > 0;
   // Sending the full shown balance moves the exact stored raw amount, so
   // converting shown units back to raw leaves no rounding dust behind.
   const sendingAll = validAmount && amount === held;

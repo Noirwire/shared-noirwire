@@ -52,7 +52,10 @@ export { type EarnPosition, type EarnRate } from "./solana/earn/types.js";
 export { NETWORK_FEE_LAMPORTS, shortfallFor } from "./solana/fees.js";
 export {
   type ImportResolution,
+  IMPORT_REQUESTS_PER_SECOND,
   type SchemeActivity,
+  lookFurtherForPortfolios,
+  paceImportWith,
   resolveImportedWallet,
   shuffled,
 } from "./solana/import.js";

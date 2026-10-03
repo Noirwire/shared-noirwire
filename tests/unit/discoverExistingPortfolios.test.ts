@@ -1,11 +1,14 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PublicKey, type AccountInfo } from "@solana/web3.js";
 import { connection } from "../../src/infrastructure/solana/client.js";
 import { deriveKeypair, generateWalletMnemonic } from "../../src/infrastructure/solana/keys.js";
 import { lamportsToSol } from "../../src/infrastructure/solana/sol.js";
 import { ataFor } from "../../src/infrastructure/solana/tokens.js";
 import { ALL_STOCKS, SUPPORTED_TOKENS } from "../../src/infrastructure/solana/tokenRegistry.js";
-import { discoverExistingPortfolios } from "../../src/infrastructure/solana/import.js";
+import {
+  discoverExistingPortfolios,
+  paceImportWith,
+} from "../../src/infrastructure/solana/import.js";
 
 /** One probe for the keypair itself plus one per registered token's ATA. */
 const PROBES_PER_INDEX = 1 + SUPPORTED_TOKENS.length;
@@ -51,6 +54,8 @@ function mockChain(mnemonic: string, balancesByIndex: Record<number, number>) {
     );
 }
 
+beforeEach(() => paceImportWith(null));
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -63,11 +68,11 @@ describe("discoverExistingPortfolios", () => {
     const result = await discoverExistingPortfolios(mnemonic, "app");
 
     expect(result).toEqual([]);
-    // Per candidate: its SOL and cash, then its stock accounts when those
-    // showed nothing. Never two candidates in one request.
-    expect(spy).toHaveBeenCalledTimes(20 * 2);
+    // One request per candidate: its SOL, its cash and its stock accounts.
+    // Never two candidates in one request.
+    expect(spy).toHaveBeenCalledTimes(20);
     for (const [addresses] of spy.mock.calls) {
-      expect([PROBES_PER_INDEX, ALL_STOCKS.length]).toContain(addresses.length);
+      expect(addresses.length).toBe(PROBES_PER_INDEX + ALL_STOCKS.length);
     }
   });
 

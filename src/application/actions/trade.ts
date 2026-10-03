@@ -4,6 +4,7 @@ import type { PricedOrder, Side } from "../../domain/order.js";
 import { isChainError, UnknownOutcomeError } from "../../domain/chainError.js";
 import { planNetworkCost, type CostAgreed, type CostChain } from "../networkCost.js";
 import type { RelayerQuote, Signer, StillUnlocked } from "../ports.js";
+import { readWithRetries } from "../retries.js";
 import {
   refused,
   refusedFor,
@@ -26,6 +27,7 @@ import { noWorse } from "./pieOrder.js";
 import {
   costChangedOf,
   counted,
+  ended,
   failedOf,
   openSession,
   unknownOf,
@@ -133,9 +135,11 @@ export async function quoteTrade<K extends Signer, P extends TradeOrder>(
     // network cost. The review of such a trade shows a price with no
     // order behind it, and the order is priced once the cost is covered.
     const unpaid = holdingIn(portfolio, "SOL").amount < NO_SOL_TO_SPEAK_OF;
-    const plan = await chain.plan(order).catch((error: unknown) => {
+    // Pricing signs nothing, so a busy moment is asked again. "No price" is
+    // an answer and is not.
+    const plan = await readWithRetries(() => chain.plan(order)).catch((error: unknown) => {
       if (!unpaid || !isChainError(error, "noQuote")) throw error;
-      return chain.plan({ ...order, priceOnly: true });
+      return readWithRetries(() => chain.plan({ ...order, priceOnly: true }));
     });
     deps.track("trade_quoted", { side });
     return { kind: "quoted", plan };
@@ -178,7 +182,8 @@ export async function reviewOrdersCost<K extends Signer, P extends TradeOrder>(
       const candidate =
         plan.side === "buy" && !chain.isBuilt(plan) && dollars(plan) >= chain.gaslessFromUsd;
       if (!candidate) continue;
-      if (!(await chain.holdingOpen(owner, plan.stock))) firstBuys.push(plan);
+      const open = await readWithRetries(() => chain.holdingOpen(owner, plan.stock));
+      if (!open) firstBuys.push(plan);
     }
     const onlyFirstBuys = firstBuys.length > 0 && firstBuys.length === unpaid.length;
     const cost = await planNetworkCost(
@@ -305,7 +310,9 @@ export async function placeTrade<K extends Signer, P extends TradeOrder>(
     completed = [
       { step: "accountOpened", opens: "holding", ...(opened ? { signature: opened } : {}) },
     ];
-    await refresh.portfolioCash(id, portfolio.address);
+    // The account is open and paid for; a balance that cannot be re-read
+    // here does not stop the order it was opened for.
+    await refresh.portfolioCash(id, portfolio.address).catch(() => false);
     network?.onStep?.("acting");
     try {
       return await place();
@@ -356,7 +363,7 @@ export async function placeTrade<K extends Signer, P extends TradeOrder>(
     );
     return unknown;
   } finally {
-    await reservation.finish(outcome);
+    await ended(reservation, outcome);
   }
   deps.track("trade_placed", { side: plan.side });
 

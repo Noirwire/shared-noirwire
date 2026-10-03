@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { mobileOnboardingCopy, onboardingCopy } from "../../src/copy/onboarding.js";
-import { walletCopy } from "../../src/copy/wallet.js";
+import { mobileWalletCopy, walletCopy } from "../../src/copy/wallet.js";
+import { appCopy } from "../../src/copy/app.js";
+import { commonCopy } from "../../src/copy/common.js";
+import { networkCostCopy } from "../../src/copy/networkCost.js";
+import { mobileSettingsCopy, settingsCopy } from "../../src/copy/settings.js";
+import { waitingCopy } from "../../src/copy/waiting.js";
 import { activityCopy, mobileActivityCopy } from "../../src/copy/activity.js";
 import { mobileAppCopy } from "../../src/copy/app.js";
 import { earnCopy, mobileEarnCopy } from "../../src/copy/earn.js";
@@ -27,6 +32,28 @@ const PHONE = [
   mobilePortfolioCopy,
   mobileSendCopy,
   mobileTradeCopy,
+  mobileSettingsCopy,
+  mobileWalletCopy,
+];
+
+const WEB = [
+  appCopy,
+  commonCopy,
+  onboardingCopy,
+  walletCopy,
+  settingsCopy,
+  activityCopy,
+  earnCopy,
+  errorsCopy,
+  fundingCopy,
+  marketsCopy,
+  networkCostCopy,
+  pendingActionCopy,
+  pieCopy,
+  portfolioCopy,
+  sendCopy,
+  tradeCopy,
+  waitingCopy,
 ];
 
 /**
@@ -107,6 +134,164 @@ describe("per-platform copy", () => {
     );
   });
 
+  it("keeps the web's wording exactly where settings, unlock and reset became templates", () => {
+    expect(settingsCopy.saveFailing).toBe(
+      "Changes are not being saved in this browser (storage is full or blocked). What you see here will be gone after a reload. Your funds are not affected.",
+    );
+    expect(settingsCopy.password.changed).toBe(
+      "Password changed. Use the new one next time you unlock. This protects the copy in this browser only: if you think someone already copied this wallet, move your funds to a new recovery phrase.",
+    );
+    expect(walletCopy.resetConfirm.warning).toBe(
+      "This deletes the wallet from this browser. Your recovery phrase is the only way back in. Without it, everything in your funding wallet and in every portfolio is gone for good, and nobody can restore it.",
+    );
+    expect(walletCopy.store.damaged).toBe(
+      "The wallet stored in this browser cannot be read. Reset it and import it again from your recovery phrase.",
+    );
+    expect(walletCopy.store.noWallet).toBe("There is no wallet in this browser.");
+  });
+
+  it("carries the words the web app used to keep for itself", () => {
+    expect(walletCopy.reset.notRemoved).toBe(
+      "This browser would not delete the wallet. It is still on this device, locked. Try again.",
+    );
+    expect(walletCopy.crossTab.notice).toBe(
+      "This browser cannot keep your wallet safe across tabs, so nothing can be changed or sent from here. You can still look. To use your wallet, open it in a current browser.",
+    );
+    expect(walletCopy.crossTab.refused).toBe(
+      "This browser cannot keep your wallet safe across tabs, so nothing was changed or sent. Open your wallet in a current browser.",
+    );
+  });
+
+  it("says settings, unlock and reset in the phone's words", () => {
+    expect(mobileSettingsCopy.saveFailing).toBe(
+      "Changes are not being saved on this phone (storage is full or blocked). What you see here will be gone when the app closes. Your funds are not affected.",
+    );
+    expect(mobileSettingsCopy.password.changed).toMatch(/protects the copy on this phone only/);
+    expect(mobileSettingsCopy.biometric.changed("face ID")).toBe(
+      "Face ID settings changed on this phone, so this was turned off. Turn it on again to keep using it.",
+    );
+    expect(mobileWalletCopy.unlock.lead).toBe(
+      "Your wallet is stored encrypted on this phone, so it has to be unlocked each time the app opens.",
+    );
+    expect(mobileWalletCopy.unlock.lockedOut("fingerprint")).toBe(
+      "Fingerprint is unavailable right now. Enter your password.",
+    );
+    expect(mobileWalletCopy.resetConfirm.warning).toMatch(
+      /^This deletes the wallet from this phone\./,
+    );
+    expect(mobileWalletCopy.reset).toEqual({
+      notRemoved:
+        "The wallet could not be deleted from this phone (storage is blocked). It is still stored here, locked. Try again.",
+      deleting: "Deleting...",
+    });
+  });
+
+  it("says what happened, what it means for the money and what to do, never how the app asked", () => {
+    const changed: [string, string][] = [
+      [
+        onboardingCopy.import.networkFailed,
+        "We couldn't finish importing your wallet. Nothing was saved in this browser. Try again.",
+      ],
+      [onboardingCopy.import.checking, "Finding your portfolios..."],
+      [
+        mobileOnboardingCopy.import.networkFailed,
+        "We couldn't finish importing your wallet. Nothing was saved on this phone. Try again.",
+      ],
+      [
+        mobileOnboardingCopy.import.offline,
+        "You're offline. Nothing was saved on this phone. Go back online to import your wallet.",
+      ],
+      [
+        onboardingCopy.password.encryptFailed,
+        "We couldn't encrypt your wallet, so nothing was saved. Try again.",
+      ],
+      [
+        appCopy.networkGate.wrongNetwork("Solana mainnet"),
+        "NoirWire is not connected to Solana mainnet as it should be. Your money has not moved, and nothing can be sent until this is fixed. Try again later.",
+      ],
+      [
+        appCopy.networkGate.unreachable,
+        "We can't show your balances right now. Your money has not moved. Try again.",
+      ],
+      [mobileAppCopy.network.checking, "Getting things ready..."],
+      [
+        errorsCopy.chain.noQuote,
+        "There is no price for this order right now. Nothing was traded. Try again in a moment.",
+      ],
+      [
+        errorsCopy.chain.wrongNetwork,
+        "NoirWire is not connected to Solana as it should be, so this was stopped. Nothing was signed or sent. Try again later.",
+      ],
+      [errorsCopy.funding.failed, "We couldn't move this money. Nothing was moved. Try again."],
+      [
+        errorsCopy.funding.privateNotStarted,
+        "The private transfer could not be started. Nothing left your funding wallet. Try again.",
+      ],
+      [
+        errorsCopy.send.notCompleted,
+        "This send can't be made. Nothing was sent. Check the amount and the recipient's address.",
+      ],
+      [errorsCopy.send.failed, "We couldn't complete this send. Nothing was sent. Try again."],
+      [
+        errorsCopy.trade.noPrice,
+        "We couldn't get a price for this trade. Nothing was traded. Try again.",
+      ],
+      [errorsCopy.earn.failed, "This did not go through. Nothing was moved. Try again."],
+      [sendCopy.sending, "Sending..."],
+      [
+        tradeCopy.costCheckFailed,
+        "We couldn't work out the network cost of this order. Nothing was charged. Get a new price.",
+      ],
+      [
+        pieCopy.order.costCheckFailed,
+        "We couldn't work out the network cost of these orders. Nothing was charged. Try again.",
+      ],
+      [
+        mobilePortfolioCopy.home.refreshFailed,
+        "We couldn't update your balances. What you see may be out of date. Pull down to try again.",
+      ],
+      [
+        mobilePortfolioCopy.detail.refreshFailed,
+        "We couldn't update your balances. What you see may be out of date. Pull down to try again.",
+      ],
+      [
+        mobileFundingCopy.page.readFailed,
+        "We couldn't update your balance. What you see may be out of date. Pull down to try again.",
+      ],
+    ];
+    for (const [said, expected] of changed) expect(said).toBe(expected);
+    expect(fundingCopy.unknown("10.00 USDC", "USDC", "Investing")).toMatch(
+      /^The transfer of 10\.00 USDC was sent, but we could not confirm that it arrived\. It may still arrive\./,
+    );
+  });
+
+  it("never blames a request, a service or a timeout on either platform", () => {
+    const blame =
+      /could not reach|couldn't reach|did not answer|never came back|timed out|time out|rate limit|\bAPI\b|\bRPC\b|\bHTTP\b|\bendpoint\b/i;
+    for (const text of strings([WEB, PHONE])) expect(text).not.toMatch(blame);
+  });
+
+  it("names no request, server or provider in a failure or a waiting message", () => {
+    const technical =
+      /\brequests?\b|\bserver\b|\bprovider\b|\brelay(er|ed)?\b|\bJupiter\b|\bMagicBlock\b/i;
+    const failuresAndWaiting = [
+      errorsCopy,
+      mobileErrorsCopy,
+      waitingCopy,
+      appCopy.networkGate,
+      mobileAppCopy,
+      pendingActionCopy,
+      mobilePendingActionCopy,
+      walletCopy.store,
+      mobileWalletCopy.store,
+      onboardingCopy.import.progress,
+      mobileOnboardingCopy.import.progress,
+      networkCostCopy.notNow,
+      networkCostCopy.noPrice,
+    ];
+    for (const text of strings(failuresAndWaiting)) expect(text).not.toMatch(technical);
+  });
+
   it("never says browser on the phone", () => {
     for (const text of strings(PHONE)) expect(text).not.toMatch(/browser/i);
     expect(mobilePortfolioCopy.publicView.relayed).toMatch(/^These stay on this phone\./);
@@ -155,6 +340,7 @@ describe("per-platform copy", () => {
         portfolioCopy,
         sendCopy,
         tradeCopy,
+        WEB,
         PHONE,
       ]),
     );

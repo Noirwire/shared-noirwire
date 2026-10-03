@@ -1,4 +1,4 @@
-export { typedAmount } from "./amount.js";
+export { decimalAmount, typedAmount } from "./amount.js";
 export { type AppPlatform } from "./appPlatform.js";
 export {
   type ChangeTone,
@@ -14,6 +14,9 @@ export {
   usd,
 } from "./format.js";
 export {
+  DISCOVERY_GAP,
+  EXTENDED_DISCOVERY_GAP,
+  MAX_UNUSED_PORTFOLIOS_IN_A_ROW,
   type DiscoveredPortfolio,
   type ImportResolution,
   type SchemeActivity,
@@ -58,6 +61,7 @@ export {
 export { entryHref, safeDestination } from "./safeDestination.js";
 export {
   ACTIVITY_KINDS,
+  MAX_ACTIVITY_ENTRIES,
   type Activity,
   type ActivityKind,
   type AssetKind,

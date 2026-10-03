@@ -101,3 +101,51 @@ export function importResultView(activity: SchemeActivity): ImportResultView {
 export function groupsOfFour(address: string): string[] {
   return address.match(/.{1,4}/g) ?? [];
 }
+
+export type LookFurtherView = {
+  /** The label of the control that starts the further scan, or null while one is running. */
+  action: string | null;
+  /** What to show while it runs. */
+  waiting: string | null;
+  /** How the last one ended. */
+  note: { text: string; tone: "safe" | "dim" | "danger" } | null;
+};
+
+/**
+ * The "Missing a portfolio? Look further" control on an import's result, on
+ * both platforms: offered until it is running, and afterwards saying how
+ * many more were found, that there were none, or that it could not finish.
+ * `before` is the result it was asked from and `after` what came back.
+ */
+export function lookFurtherView(
+  state:
+    | { status: "idle" }
+    | { status: "looking" }
+    | { status: "failed" }
+    | { status: "done"; before: SchemeActivity; after: SchemeActivity },
+): LookFurtherView {
+  const words = onboardingCopy.import.lookFurther;
+  switch (state.status) {
+    case "idle":
+      return { action: words.action, waiting: null, note: null };
+    case "looking":
+      return { action: null, waiting: words.looking, note: null };
+    case "failed":
+      return {
+        action: words.action,
+        waiting: null,
+        note: { text: words.failed, tone: "danger" },
+      };
+    case "done": {
+      const more = state.after.portfolios.length - state.before.portfolios.length;
+      return {
+        action: words.action,
+        waiting: null,
+        note:
+          more > 0
+            ? { text: words.found(more), tone: "safe" }
+            : { text: words.nothing, tone: "dim" },
+      };
+    }
+  }
+}

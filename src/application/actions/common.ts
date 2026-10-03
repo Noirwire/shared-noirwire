@@ -11,6 +11,7 @@ import type {
   Track,
   WalletStore,
 } from "../ports.js";
+import { readWithRetries } from "../retries.js";
 import {
   refused,
   type ActionResult,
@@ -106,6 +107,28 @@ export function failedOf(
   if (error instanceof ChainError) return { kind: "failed", reason, cause: error.code, completed };
   const detail = error instanceof Error && error.message ? error.message : undefined;
   return { kind: "failed", reason, ...(detail ? { detail } : {}), completed };
+}
+
+/**
+ * Ends a reservation with what the action came to. What the action answers
+ * is already decided by then, so a record that cannot be written does not
+ * change it: the reservation stays, and the chain settles it later.
+ */
+export async function ended(reservation: Reservation, outcome?: unknown): Promise<void> {
+  await reservation.finish(outcome).catch(() => undefined);
+}
+
+/**
+ * A read made after an action landed, to show what it left. Asked again on a
+ * busy moment, and null when it still cannot be had: the action went
+ * through whatever this read does, and nothing here may say otherwise.
+ */
+export async function readAfterLanding<T>(read: () => Promise<T>): Promise<T | null> {
+  try {
+    return await readWithRetries(read);
+  } catch {
+    return null;
+  }
 }
 
 /** Counts a failure, by the kind of failure it was, and hands it back. */

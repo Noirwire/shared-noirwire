@@ -5,7 +5,7 @@ import type { PriceReader, Session, Signer } from "../../../src/application/port
 import type { Failed } from "../../../src/application/result.js";
 import { failureReason } from "../../../src/domain/usageEvents.js";
 import type { Portfolio, Wallet } from "../../../src/domain/wallet.js";
-import { failureMessage } from "../../../src/presentation/actionResult.js";
+import { failureAccount } from "../../../src/presentation/actionResult.js";
 import { pendingWords } from "../../../src/presentation/pendingAction.js";
 
 /**
@@ -120,7 +120,7 @@ export function harness(initial: Wallet = wallet()) {
     store,
     prices,
     track,
-    failureBand: (result: Failed) => failureReason(failureMessage(result)),
+    failureBand: (result: Failed) => failureReason(failureAccount(result)),
     pending,
     words: pendingWords(prices.shownUnits),
   };

@@ -4,6 +4,7 @@ import { refused, type Attempt, type CompletedStep } from "../result.js";
 import { othersOf } from "../walletRecord.js";
 import {
   costChangedOf,
+  ended,
   failedOf,
   openSession,
   unknownOf,
@@ -192,6 +193,8 @@ export async function openHoldings<K extends Signer, S>(
   if (!reservation) return refused("actionPending");
   let outcome: unknown;
   const completed: CompletedStep[] = [];
+  /** Everything the portfolio holds, re-read. False when it could not be: never a reason to fail. */
+  const reread = () => deps.refresh.portfolioCash(id, portfolio.address).catch(() => false);
   try {
     for (const symbol of symbols) {
       const stock = deps.chain.stock(symbol);
@@ -209,17 +212,18 @@ export async function openHoldings<K extends Signer, S>(
         ...(opened ? { signature: opened } : {}),
       });
     }
-    await deps.refresh.portfolioCash(id, portfolio.address);
-    return { kind: "confirmed", settlement: "balancesRead" };
   } catch (error) {
     outcome = error;
-    await deps.refresh.portfolioCash(id, portfolio.address);
+    await reread();
     return (
       unknownOf(error, completed) ??
       costChangedOf(error, completed) ??
       failedOf("holdingsNotOpened", error, completed)
     );
   } finally {
-    await reservation.finish(outcome);
+    await ended(reservation, outcome);
   }
+  // Every account is open and paid for. A balance that cannot be re-read
+  // does not undo that.
+  return { kind: "confirmed", settlement: (await reread()) ? "balancesRead" : "balancesEstimated" };
 }

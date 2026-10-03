@@ -1,6 +1,12 @@
 import { withChainAmount } from "../domain/holdings.js";
 import { ageBand, countBand, tradeBand } from "../domain/usageEvents.js";
-import type { Activity, Holding, Portfolio, Wallet } from "../domain/wallet.js";
+import {
+  MAX_ACTIVITY_ENTRIES,
+  type Activity,
+  type Holding,
+  type Portfolio,
+  type Wallet,
+} from "../domain/wallet.js";
 import type { PriceReader } from "./ports.js";
 
 /** How every use case reads and changes the wallet record, without touching the chain. */
@@ -11,9 +17,18 @@ export function randomId(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/** The newest `MAX_ACTIVITY_ENTRIES` of `activity`, newest first. A list within the limit is left as it is. */
+function newestKept(activity: Activity[]): Activity[] {
+  if (activity.length <= MAX_ACTIVITY_ENTRIES) return activity;
+  return [...activity].sort((a, b) => b.at - a.at).slice(0, MAX_ACTIVITY_ENTRIES);
+}
+
 /**
  * Adds an entry to the activity log. A stock amount is also recorded as it is
  * shown today, so a later dividend or split cannot rewrite what was traded.
+ * The list is newest first and keeps `MAX_ACTIVITY_ENTRIES`: the oldest are
+ * dropped as new ones are written. Only this list is cut. A portfolio's
+ * pending action, and the entry it will write if it lands, are not in it.
  */
 export function logged(
   wallet: Wallet,
@@ -25,10 +40,10 @@ export function logged(
     : undefined;
   return {
     ...wallet,
-    activity: [
+    activity: newestKept([
       { ...entry, ...(shown === undefined ? {} : { shown }), id: randomId("act"), at: Date.now() },
       ...wallet.activity,
-    ],
+    ]),
   };
 }
 

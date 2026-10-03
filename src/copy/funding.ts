@@ -1,3 +1,5 @@
+import { stillWorkingOnAction } from "./waiting.js";
+
 /** Moving money from the funding wallet into a portfolio, privately or in public. */
 export const fundingCopy = {
   titlePrivate: "Fund portfolio privately",
@@ -52,12 +54,15 @@ export const fundingCopy = {
   arrivedTitle: "Funds arrived",
   arrived: (amount: string, portfolio: string) =>
     `${amount} is now in ${portfolio}, read back from its real onchain balance.`,
+  /** The money moved, and the portfolio's balance could not be read back yet. */
+  movedUnread: (amount: string, portfolio: string) =>
+    `${amount} was moved into ${portfolio}. Its balance will update shortly.`,
   feesCharged: (fees: string) => ` ${fees} in fees was charged on top.`,
   observerLink: "See what an outside observer can and cannot connect.",
 
   unknownTitle: "Sent, but not confirmed",
   unknown: (amount: string, asset: string, portfolio: string) =>
-    `The transfer of ${amount} was sent, and the answer never came back. It may still arrive. Do not send it again yet: check your funding wallet’s ${asset} balance first. If it has gone down, the money is on its way to ${portfolio} and needs nothing more from you.`,
+    `The transfer of ${amount} was sent, but we could not confirm that it arrived. It may still arrive. Do not send it again yet: check your funding wallet’s ${asset} balance first. If it has gone down, the money is on its way to ${portfolio} and needs nothing more from you.`,
 
   settlingTitle: "Still settling",
   settling:
@@ -117,7 +122,7 @@ export const mobileFundingCopy = {
       caption: "Confirmed by reading this portfolio's real balance.",
     },
   ],
-  stillWorking: "Still working. You can leave this open; nothing more is needed from you.",
+  stillWorking: stillWorkingOnAction,
 
   arrived: (amount: string, portfolio: string) =>
     `${amount} is now in ${portfolio}, read back from its real balance.`,
@@ -132,7 +137,8 @@ export const mobileFundingCopy = {
     empty: "Nothing is waiting. Send USDC on Solana to your funding address to add money.",
     move: "Move to a portfolio",
     showAddress: "Show my funding address",
-    readFailed: "Could not refresh. Pull down to try again.",
+    readFailed:
+      "We couldn't update your balance. What you see may be out of date. Pull down to try again.",
     balanceLabel: (amount: string) => `${amount} waiting to be moved`,
   },
 } as const;

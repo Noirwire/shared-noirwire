@@ -255,7 +255,7 @@ describe("sendReviewView", () => {
       }).confirm.disabled,
     ).toBe(false);
     expect(review({ submitting: true }).confirm).toEqual({
-      label: "Sending onchain...",
+      label: "Sending...",
       disabled: true,
     });
   });

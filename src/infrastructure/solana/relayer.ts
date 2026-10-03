@@ -12,6 +12,7 @@ import {
 import { bytesEqual } from "./bytes.js";
 import { connection } from "./client.js";
 import { relayInit, relayUrl } from "../httpConfig.js";
+import { readFetch } from "../readFetch.js";
 import { usdcMint, usdcMintKey } from "./config.js";
 import { type BalanceLimits, verifyBalancesBeforeSigning } from "./presign-guard.js";
 import {
@@ -101,7 +102,7 @@ const PINS_TTL_MS = 60_000;
 let pinsCache: { at: number; pins: Promise<RelayerPins | null> } | null = null;
 
 async function fetchPins(): Promise<RelayerPins | null> {
-  const response = await fetch(relayUrl(RELAYER_PATH), relayInit());
+  const response = await readFetch(relayUrl(RELAYER_PATH), relayInit());
   const payload = (await response.json()) as {
     available?: boolean;
     feePayers?: string[];

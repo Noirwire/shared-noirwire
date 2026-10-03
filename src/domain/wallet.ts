@@ -39,6 +39,14 @@ export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
  */
 export type DerivationScheme = "app" | "walletDefault";
 
+/**
+ * The most activity entries the wallet's record keeps. Every entry is sealed
+ * and written again with each change, so a list that only grew would make
+ * every write and unlock slower until storage refused one. The oldest go
+ * first; a pending action is kept apart from this list and is never dropped.
+ */
+export const MAX_ACTIVITY_ENTRIES = 500;
+
 export type Activity = {
   id: string;
   portfolioId: string;

@@ -303,6 +303,38 @@ describe("the store with key bits", () => {
       });
       expect(await decryptsWith("quartz-meadow-lantern-ember-fjord")).toBe(true);
     });
+
+    it("forgets a change left unknown once the wallet is reset, so the next wallet's password can change", async () => {
+      const first = await storedWallet();
+      failNextWrite(true, true);
+      expect((await first.changePassword(PASSWORD, NEXT)).outcome).toBe("indeterminate");
+
+      device.vault.unavailable = false;
+      expect(await first.resetWallet()).toEqual({ ok: true });
+      await first.storeNewWallet(makeWallet(), FIXTURE_PHRASE, PASSWORD);
+      expect(await first.changePassword(PASSWORD, NEXT)).toEqual({
+        outcome: "changed",
+        notice: null,
+      });
+      expect(await decryptsWith(NEXT)).toBe(true);
+    });
+
+    it("settles a change left unknown when what is read back is another record", async () => {
+      const first = await storedWallet();
+      failNextWrite(true, true);
+      expect((await first.changePassword(PASSWORD, NEXT)).outcome).toBe("indeterminate");
+
+      device.vault.unavailable = false;
+      const elsewhere = "harbour-quilt-saffron-plum-anvil";
+      device.localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify(await seal(await newVaultKey(elsewhere), "{}")),
+      );
+      expect(await first.changePassword(PASSWORD, NEXT)).toEqual({
+        outcome: "unchanged",
+        reason: says.currentPasswordWrong,
+      });
+    });
   });
 
   describe("a password change that hands the new key on", () => {

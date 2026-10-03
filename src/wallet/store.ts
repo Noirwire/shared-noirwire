@@ -721,6 +721,8 @@ export async function resetWallet(): Promise<ResetResult> {
   emit();
   return exclusive(async () => {
     const removed = (await remove(STORAGE_KEY)) && (await remove(LEGACY_STORAGE_KEY));
+    // A password change left unknown was about the record that is now gone.
+    if (removed) unsettledRekey = null;
     exists = removed ? false : await hasStoredWallet();
     emit();
     return removed ? { ok: true as const } : { ok: false as const, reason: "notRemoved" as const };
@@ -930,15 +932,23 @@ let unsettledRekey: UnsettledRekey | null = null;
 /**
  * Reads the stored record back after a write that failed, to learn which key
  * opens it: the write may have landed before the failure was reported.
- * "indeterminate" when the read fails too, or neither key opens it.
+ * "replaced" when what is stored now is another record, or none.
+ * "indeterminate" when the read fails too, or the record does not open.
  */
 async function readBackRekey(
   pending: UnsettledRekey,
-): Promise<"changed" | "unchanged" | "indeterminate"> {
+): Promise<"changed" | "unchanged" | "replaced" | "indeterminate"> {
   const read = await vault().read(STORAGE_KEY);
   if (!read.ok) return "indeterminate";
   const envelope = parseEnvelope(read.value);
-  if (!envelope) return "indeterminate";
+  // Read back, and it is no longer the record either password sealed: it
+  // was reset or replaced since, so there is nothing left to settle.
+  if (
+    !envelope ||
+    (envelope.salt !== pending.newKey.salt && envelope.salt !== pending.oldKey.salt)
+  ) {
+    return "replaced";
+  }
   if (envelope.salt === pending.newKey.salt && (await openRecord(pending.newKey, envelope))) {
     return "changed";
   }
@@ -1089,6 +1099,7 @@ async function rekey(
     }
     keepOld();
     if (found === "unchanged") return unchanged(ifUnchanged);
+    if (found === "replaced") return unchanged(CHANGED_ELSEWHERE);
     unsettledRekey = pending;
     return INDETERMINATE;
   };

@@ -1,3 +1,4 @@
+import { readWithRetries } from "../../application/retries.js";
 import { connection } from "../solana/client.js";
 import { isMainnet } from "../solana/config.js";
 import { multiplierAt, multiplierSchedule } from "../solana/mintPolicy.mjs";
@@ -43,7 +44,9 @@ async function read() {
   let missed = false;
   for (let start = 0; start < ALL_STOCKS.length; start += ACCOUNTS_PER_REQUEST) {
     const stocks = ALL_STOCKS.slice(start, start + ACCOUNTS_PER_REQUEST);
-    const infos = await connection.getMultipleAccountsInfo(stocks.map((stock) => stock.mint));
+    const infos = await readWithRetries(() =>
+      connection.getMultipleAccountsInfo(stocks.map((stock) => stock.mint)),
+    );
     stocks.forEach((stock, index) => {
       const schedule = multiplierSchedule(stock.mint.toBase58(), infos[index]);
       if (schedule) schedules.set(stock.symbol, { schedule, readAt: Date.now() });

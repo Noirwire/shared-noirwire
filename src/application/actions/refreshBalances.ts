@@ -1,6 +1,7 @@
 import { reconcileTrackers, sameTrackerAmounts } from "../../domain/holdings.js";
 import { activePortfolios } from "../portfolio.js";
 import type { PriceReader, Track, WalletStore } from "../ports.js";
+import { readWithRetries } from "../retries.js";
 import { hasFunds, mapPortfolio, setRealHolding } from "../walletRecord.js";
 import type { Refresh } from "./common.js";
 
@@ -28,10 +29,16 @@ export type BalanceDeps = {
 /**
  * Keeps the stored balances in step with the chain. A read that comes back
  * after another tab swapped the wallet is dropped, and a refresh of every
- * portfolio asked for while one is running joins it.
+ * portfolio asked for while one is running joins it. Every read here is asked
+ * for again on a busy moment before it counts as failed (`readWithRetries`).
  */
 export function createBalanceRefresh(deps: BalanceDeps) {
-  const { store, chain, prices } = deps;
+  const { store, prices } = deps;
+  const chain: BalanceChain = {
+    balanceOf: (address, symbol) => readWithRetries(() => deps.chain.balanceOf(address, symbol)),
+    portfolioBalances: (address) => readWithRetries(() => deps.chain.portfolioBalances(address)),
+    cashBalances: (address) => readWithRetries(() => deps.chain.cashBalances(address)),
+  };
   let refreshingAll: Promise<boolean> | null = null;
 
   /**

@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PublicKey, type AccountInfo } from "@solana/web3.js";
 import { connection } from "../../src/infrastructure/solana/client.js";
 import { deriveKeypair, generateWalletMnemonic } from "../../src/infrastructure/solana/keys.js";
-import { resolveImportedWallet } from "../../src/infrastructure/solana/import.js";
+import { paceImportWith, resolveImportedWallet } from "../../src/infrastructure/solana/import.js";
 import { ataFor } from "../../src/infrastructure/solana/tokens.js";
 import { ALL_STOCKS } from "../../src/infrastructure/solana/tokenRegistry.js";
 import type { DerivationScheme } from "../../src/domain/wallet.js";
@@ -41,6 +41,8 @@ function mockChain(chain: { sol?: Record<string, number>; stockOnly?: string[] }
       }),
     );
 }
+
+beforeEach(() => paceImportWith(null));
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -106,15 +108,15 @@ describe("resolveImportedWallet", () => {
     expect(resolution.walletDefault.active).toBe(false);
   });
 
-  it("reads a never-used phrase in two requests per candidate address", async () => {
+  it("reads a never-used phrase in one request per candidate address", async () => {
     const mnemonic = generateWalletMnemonic();
     const batches = mockChain({});
 
     await resolveImportedWallet(mnemonic);
 
     // Two schemes, each a funding wallet and twenty candidates, each asked
-    // about on its own: its SOL and cash, then its stock accounts.
-    expect(batches.mock.calls.length).toBe(2 * 21 * 2);
+    // about on its own: its SOL, its cash and its stock accounts together.
+    expect(batches.mock.calls.length).toBe(2 * 21);
     for (const [addresses] of batches.mock.calls) expect(addresses.length).toBeLessThanOrEqual(100);
     expect(connection.getTokenAccountsByOwner).not.toHaveBeenCalled();
   });

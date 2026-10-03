@@ -1,3 +1,4 @@
+import { MAX_UNUSED_PORTFOLIOS_IN_A_ROW } from "../../domain/importResolution.js";
 import type { PortfolioIcon } from "../../domain/portfolioIcon.js";
 import type { PieSlice, Portfolio, Wallet } from "../../domain/wallet.js";
 import type { PieProblem } from "../pie.js";
@@ -29,6 +30,39 @@ export function nextDerivationIndex(wallet: Wallet, fundingIndex: number): numbe
 }
 
 /**
+ * Whether the wallet's own record shows the portfolio was ever used: it holds
+ * something, or something it did is in the activity list. A reservation that
+ * never sent anything is not use. This errs toward "never used": a portfolio
+ * that received something this device has not read yet counts as unused
+ * until it has.
+ */
+function everUsed(wallet: Wallet, portfolio: Portfolio): boolean {
+  return (
+    portfolio.holdings.some((holding) => holding.amount > 0) ||
+    wallet.activity.some((entry) => entry.portfolioId === portfolio.id)
+  );
+}
+
+/**
+ * How many derivation indices in a row, past the last portfolio that was
+ * ever used, have never been used, archived portfolios included. An import
+ * scans for portfolios until it meets `DISCOVERY_GAP` unused addresses in a
+ * row, so this run is what stands between a restore and the next portfolio
+ * to be created.
+ */
+export function unusedPortfoliosInARow(wallet: Wallet, fundingIndex: number): number {
+  const lastUsed = wallet.portfolios
+    .filter((portfolio) => everUsed(wallet, portfolio))
+    .reduce((max, portfolio) => Math.max(max, portfolio.derivationIndex), fundingIndex);
+  return nextDerivationIndex(wallet, fundingIndex) - 1 - lastUsed;
+}
+
+/** Whether another portfolio may be created without putting it out of an import's reach. */
+export function canCreatePortfolio(wallet: Wallet, fundingIndex: number): boolean {
+  return unusedPortfoliosInARow(wallet, fundingIndex) < MAX_UNUSED_PORTFOLIOS_IN_A_ROW;
+}
+
+/**
  * Creates the next portfolio: derive the keypair, remember it, done.
  * With `pie`, the portfolio is a pie steered toward that mix.
  *
@@ -40,6 +74,10 @@ export function nextDerivationIndex(wallet: Wallet, fundingIndex: number): numbe
  * tab has not seen, the store applies the change again to that newer
  * record, which picks the next index past it - so two tabs creating at
  * once can neither share a keypair nor lose a portfolio.
+ *
+ * Refused with `unusedPortfolios` while the wallet already ends in
+ * `MAX_UNUSED_PORTFOLIOS_IN_A_ROW` portfolios that were never used: one more,
+ * funded, could lie past where an import of the phrase stops looking.
  */
 export async function createPortfolio<K extends Signer>(
   deps: CreatePortfolioDeps<K>,
@@ -55,7 +93,10 @@ export async function createPortfolio<K extends Signer>(
     if ("kind" in session) return session;
 
     let portfolio: Portfolio | undefined;
+    let tooManyUnused = false;
     const saved = await deps.store.update((current) => {
+      tooManyUnused = !canCreatePortfolio(current, deps.fundingIndex);
+      if (tooManyUnused) return current;
       const index = nextDerivationIndex(current, deps.fundingIndex);
       const key = session.keyAt(index);
       // Locked while this was waiting its turn: the wallet is left as it is.
@@ -72,6 +113,7 @@ export async function createPortfolio<K extends Signer>(
       return { ...current, portfolios: [portfolio, ...current.portfolios] };
     });
 
+    if (tooManyUnused) return refused("unusedPortfolios");
     if (!saved || !portfolio) return refused("portfolioNotSaved");
     deps.track("account_created", { kind: pie ? "pie" : "portfolio" });
     return { kind: "created", portfolio };

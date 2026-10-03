@@ -49,7 +49,7 @@ export const sendCopy = {
     `Type the last 4 characters of the recipient address to confirm this ${large ? "large send" : "send"}`,
   lastFourLabel: "Last 4 characters of recipient address",
   irreversible: "This cannot be undone.",
-  sending: "Sending onchain...",
+  sending: "Sending...",
   send: "Send",
 
   /** Why the recipient cannot receive, read from the network before review. */

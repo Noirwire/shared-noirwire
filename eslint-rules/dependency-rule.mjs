@@ -19,7 +19,7 @@ export const MAY_IMPORT = {
   infrastructure: ["domain", "application", "platform"],
   presentation: ["domain", "application", "copy"],
   wallet: ["domain", "application", "infrastructure", "presentation", "copy", "platform"],
-  testing: ["platform"],
+  testing: ["platform", "infrastructure"],
 };
 
 const FRAMEWORK =

@@ -53,6 +53,7 @@ export const space = {
   5: 20,
   6: 24,
   7: 28,
+  8: 32,
   10: 40,
 } as const;
 

@@ -26,6 +26,8 @@ const publicViewWords = (place: string) => ({
 const notSavedIn = (place: string) => `The new portfolio could not be saved ${place}.`;
 const createToStart = "Create a portfolio to start investing.";
 const activityEmpty = "Money moves and trades appear here.";
+const refreshFailed =
+  "We couldn't update your balances. What you see may be out of date. Pull down to try again.";
 
 /** Home, a portfolio's own screen, and creating, naming and funding portfolios. */
 export const portfolioCopy = {
@@ -379,12 +381,12 @@ export const portfolioCopy = {
 export const mobilePortfolioCopy = {
   home: {
     togetherExplained: addedUpHere("on this phone"),
-    refreshFailed: "Could not refresh. Pull down to try again.",
+    refreshFailed,
   },
   detail: {
     offline: "You're offline. Nothing can be sent until you're back online.",
     moreLabel: "Portfolio settings",
-    refreshFailed: "Could not refresh. Pull down to try again.",
+    refreshFailed,
   },
   publicView: {
     ...publicViewWords("this phone"),
