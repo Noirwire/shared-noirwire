@@ -29,4 +29,4 @@ npm install ../shared-noirwire/noirwire-shared-<version>.tgz
 
 Repeat both after each change. Do not commit the tarball path in the app's `package.json`.
 
-Do not use `npm install ../shared-noirwire` or a `file:` path to the folder. npm makes that a symlink to a directory outside the app. Turbopack only resolves files under the app's root, so the import fails to resolve; Metro does not watch outside the project either; and a symlinked package resolves its own `node_modules`, which gives the app a second copy of every library the two share. A tarball installs as a real folder inside `node_modules` and behaves exactly like the git dependency.
+Do not use `npm install ../shared-noirwire` or a `file:` path to the folder. npm makes that a symlink to a directory outside the app. Turbopack only resolves files under the app's root, so the import fails to resolve; Metro does not watch outside the project either; and a symlinked package resolves its own `node_modules`, which gives the app a second copy of every library the two share. A tarball, local or released, installs as a real folder inside `node_modules` and behaves exactly like any other dependency.

@@ -107,13 +107,13 @@ installMoney(inProcessLocks());
 
 ### Install
 
-Pin a tag in the app's `package.json`:
+Pin the tarball attached to a release in the app's `package.json`:
 
 ```json
-"@noirwire/shared": "git+ssh://git@github.com/Noirwire/shared-noirwire.git#v0.4.0"
+"@noirwire/shared": "https://github.com/Noirwire/shared-noirwire/releases/download/v0.4.0/noirwire-shared-0.4.0.tgz"
 ```
 
-or `npm install git+ssh://git@github.com/Noirwire/shared-noirwire.git#v0.4.0`. npm clones the tag, installs the dev dependencies, runs `prepare` (the build) and installs the result. An install with `--ignore-scripts` skips that build and leaves the package empty, and so does npm 11's install-script policy until the app allows this one package: run `npm install-scripts approve @noirwire/shared` once, which records it under `allowScripts` in the app's `package.json`. Moving to a newer version is changing the tag and installing again.
+or `npm install https://github.com/Noirwire/shared-noirwire/releases/download/v0.4.0/noirwire-shared-0.4.0.tgz`. The tarball already contains the built `dist/`, so npm just unpacks and installs it; nothing here is cloned or built on the app's machine. Moving to a newer version is changing the URL's tag and filename to the new version and installing again. See [Releasing](#releasing) for how a tag becomes that tarball.
 
 The app must also carry the peer dependencies at these exact versions, so it has one copy of each:
 
