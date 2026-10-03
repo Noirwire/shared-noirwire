@@ -59,6 +59,34 @@ export type SigningGuard = {
 let guard: SigningGuard | null = null;
 
 /**
+ * How long the network's identity may take to answer before the action is
+ * refused. A read that comes back wrong already signs nothing; a read that
+ * never comes back at all must not leave a reserved action waiting forever.
+ */
+const CONFIRM_NETWORK_TIMEOUT_MS = 10_000;
+
+/**
+ * Runs `confirmNetwork`, but refuses the action - the same way a confirmed
+ * wrong network does - if it has not answered within the bound. No retry: a
+ * read that is this slow is treated the same as one that answered wrong.
+ */
+async function confirmNetworkWithin(confirmNetwork: SigningGuard["confirmNetwork"]): Promise<void> {
+  let timer: ReturnType<typeof setTimeout>;
+  const bound = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new ChainError("wrongNetwork")), CONFIRM_NETWORK_TIMEOUT_MS);
+  });
+  const read = confirmNetwork();
+  try {
+    await Promise.race([read, bound]);
+  } finally {
+    clearTimeout(timer!);
+    // A read that lost the race may still settle later; nothing awaits it by
+    // then, so an eventual rejection is caught here instead of going unhandled.
+    read.catch(() => undefined);
+  }
+}
+
+/**
  * Installs the one signing guard, or removes it with null. A second guard is
  * refused: two stores competing for the signatures is how a signature lands
  * in a store with no reservation for it while its own reservation goes
@@ -75,7 +103,9 @@ export function guardSigningWith(next: SigningGuard | null) {
  * Signs a transaction that is about to be sent, and has it recorded first.
  *
  * The network is asked for its identity right before, so a connection that
- * has come to serve another chain since the app started signs nothing. What
+ * has come to serve another chain since the app started signs nothing - and
+ * an identity read that never answers is refused the same way, once it has
+ * run past its bound, rather than leaving the action waiting forever. What
  * a signed transaction can do once it has left this device cannot be taken
  * back, so where it came from is written down in the wallet's own record
  * before it may go: its blockhash, the block height it expires at, and its
@@ -92,7 +122,7 @@ export async function signForSending(
 ): Promise<void> {
   const installed = guard;
   if (!installed) throw new ChainError("notRecorded");
-  await installed.confirmNetwork();
+  await confirmNetworkWithin(installed.confirmNetwork);
   signWhileUnlocked(transaction, signer, stillUnlocked);
   // The id is the fee payer's signature: this signer's own when it pays, or
   // one a sponsor already put there. A fee payer still to sign leaves none.

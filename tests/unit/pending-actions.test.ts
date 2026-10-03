@@ -247,6 +247,28 @@ describe("reserving an action", () => {
     await sending!.finish(new Error("refused"));
   });
 
+  it("refuses within the bound, signing nothing, when the genesis read never answers", async () => {
+    const { signing, pending } = await walletTab();
+    const sending = await pending.reserve("acc_1", PORTFOLIO, "a send", SEND);
+    const { connection } = await import("../../src/infrastructure/solana/client.js");
+    vi.spyOn(connection, "getGenesisHash").mockImplementation(() => new Promise(() => {}));
+    const transaction = ownTransaction();
+
+    vi.useFakeTimers();
+    const refusal = expect(
+      signing.signForSending(transaction, keyAt(1), () => true, LAST_VALID),
+    ).rejects.toMatchObject({ code: "wrongNetwork" });
+    await vi.advanceTimersByTimeAsync(10_000);
+    await refusal;
+    vi.useRealTimers();
+
+    expect(transaction.signatures.every((signature) => signature.every((byte) => byte === 0))).toBe(
+      true,
+    );
+    expect(pending.pendingFor("acc_1")).toMatchObject({ status: "reserved" });
+    await sending!.finish(new Error("refused"));
+  });
+
   it("refuses a second money wiring in the same app", async () => {
     await walletTab();
     const { installMoney } = await import("../../src/wallet/money.js");
