@@ -204,21 +204,22 @@ describe("the wallet store", () => {
       expect(window.backing.has("noirwire.selectedPortfolio")).toBe(false);
     });
 
-    it("keeps old plain text wallets through a failed unlock and drops them after a good one", async () => {
+    it("finishes deleting old plain text wallets at load once a current wallet is stored", async () => {
+      // Storing the current wallet already ordered them deleted; a copy still
+      // there is a deletion that did not complete, and it is completed now.
       await (await tab()).storeNewWallet(makeWallet(), FIXTURE_PHRASE, PASSWORD);
       seedPlaintext();
 
       const store = await tab();
       expect(await presence(store)).toBe(true);
-      expect(await store.unlock("not-the-password")).toMatch(/does not match/);
-      for (const key of PLAINTEXT_KEYS) expect(window.backing.has(key)).toBe(true);
-
-      expect(await store.unlock(PASSWORD)).toBeNull();
       await vi.waitFor(() =>
         expect([...window.backing.keys()].sort()).toEqual(
           [STORAGE_KEY, "noirwire.analytics"].sort(),
         ),
       );
+      expect(await store.unlock("not-the-password")).toMatch(/does not match/);
+      expect(await store.unlock(PASSWORD)).toBeNull();
+      expect(store.isPlaintextCleanupFailing()).toBe(false);
     });
 
     it("drops old plain text wallets once a new wallet is stored", async () => {
@@ -489,11 +490,12 @@ describe("the wallet store", () => {
     it("is discarded when the wallet was reset while the key was derived", async () => {
       const store = await tab();
       const pending = store.unlock(PASSWORD);
-      store.resetWallet();
+      const resetting = store.resetWallet();
       expect(await pending).toMatch(/locked or changed/);
       expect(store.isUnlocked()).toBe(false);
+      expect(await resetting).toEqual({ ok: true });
       expect(await presence(store)).toBe(false);
-      await vi.waitFor(() => expect(window.backing.size).toBe(0));
+      expect(window.backing.size).toBe(0);
     });
 
     it("is discarded when another tab replaced the wallet meanwhile", async () => {
@@ -516,9 +518,10 @@ describe("the wallet store", () => {
       window.localStorage.setItem(LEGACY_STORAGE_KEY, V8_WALLET_JSON);
       const store = await tab();
       const pending = store.unlock(FIXTURE_PASSWORD);
-      store.resetWallet();
+      const resetting = store.resetWallet();
       expect(await pending).toMatch(/locked or changed/);
       expect(store.isUnlocked()).toBe(false);
+      expect(await resetting).toEqual({ ok: true });
       expect(window.backing.size).toBe(0);
     });
   });
@@ -577,8 +580,8 @@ describe("the wallet store", () => {
       const second = await tab();
       expect(await second.unlock(PASSWORD)).toBeNull();
 
-      first.resetWallet();
-      await vi.waitFor(() => expect(window.backing.size).toBe(0));
+      expect(await first.resetWallet()).toEqual({ ok: true });
+      expect(window.backing.size).toBe(0);
 
       expect(await second.updateWallet(rename("too late"))).toBe(false);
       expect(window.backing.size).toBe(0);
@@ -703,9 +706,10 @@ describe("the wallet store", () => {
 
     it("refuses after a reset", async () => {
       const { store, session } = await unlockedTab();
-      store.resetWallet();
+      const resetting = store.resetWallet();
       expect(session.fundingSigner()).toBeNull();
       expect(session.refusal()).toBe("walletLocked");
+      expect(await resetting).toEqual({ ok: true });
     });
 
     it("refuses a key that is not the one for the stored address", async () => {
@@ -887,9 +891,103 @@ describe("the wallet store", () => {
       expect(await second.unlock(PASSWORD)).toBeNull();
       second.subscribe(() => undefined);
 
-      first.resetWallet();
+      expect(await first.resetWallet()).toEqual({ ok: true });
       await vi.waitFor(() => expect(second.walletExists()).toBe(false));
       expect(second.isUnlocked()).toBe(false);
+    });
+  });
+
+  describe("a reset", () => {
+    it("says the wallet is gone only once the vault has removed it", async () => {
+      const store = await tab();
+      await store.storeNewWallet(makeWallet(), FIXTURE_PHRASE, PASSWORD);
+      window.state.refuseWrites = true;
+
+      expect(await store.resetWallet()).toEqual({ ok: false, reason: "notRemoved" });
+      expect(store.isUnlocked()).toBe(false);
+      expect(store.walletExists()).toBe(true);
+      expect(window.vault.peek(STORAGE_KEY)).not.toBeNull();
+
+      window.state.refuseWrites = false;
+      expect(await store.resetWallet()).toEqual({ ok: true });
+      expect(store.walletExists()).toBe(false);
+      expect(window.vault.peek(STORAGE_KEY)).toBeNull();
+    });
+
+    it("keeps reporting the wallet as stored while the removal is under way", async () => {
+      const store = await tab();
+      await store.storeNewWallet(makeWallet(), FIXTURE_PHRASE, PASSWORD);
+      const resetting = store.resetWallet();
+      expect(store.isUnlocked()).toBe(false);
+      expect(store.walletExists()).toBe(true);
+      expect(await resetting).toEqual({ ok: true });
+      expect(store.walletExists()).toBe(false);
+    });
+
+    it("removes a previous format's record too", async () => {
+      const store = await tab();
+      await store.storeNewWallet(makeWallet(), FIXTURE_PHRASE, PASSWORD);
+      window.localStorage.setItem(LEGACY_STORAGE_KEY, V8_WALLET_JSON);
+      expect(await store.resetWallet()).toEqual({ ok: true });
+      expect(window.vault.peek(LEGACY_STORAGE_KEY)).toBeNull();
+    });
+  });
+
+  describe("a change not yet stored", () => {
+    it("is marked as saving until its write lands", async () => {
+      const store = await tab();
+      await store.storeNewWallet(makeWallet(), FIXTURE_PHRASE, PASSWORD);
+      expect(store.isSaving()).toBe(false);
+      const writing = store.updateWallet(rename("on its way"));
+      expect(store.isSaving()).toBe(true);
+      expect(await writing).toBe(true);
+      expect(store.isSaving()).toBe(false);
+    });
+
+    it("stays marked as saving, and says the save failed, while the vault refuses it", async () => {
+      const store = await tab();
+      await store.storeNewWallet(makeWallet(), FIXTURE_PHRASE, PASSWORD);
+      window.state.refuseWrites = true;
+      expect(await store.updateWallet(rename("not kept"))).toBe(false);
+      expect(store.isSaving()).toBe(true);
+      expect(store.isSaveFailing()).toBe(true);
+
+      window.state.refuseWrites = false;
+      expect(await store.syncFromStorage()).toBe(true);
+      expect(store.isSaving()).toBe(false);
+      expect(store.isSaveFailing()).toBe(false);
+    });
+  });
+
+  describe("old plain text phrases", () => {
+    const PLAINTEXT = ["noirwire.wallet.v3", "noirwire.prototype.wallet.v7"];
+
+    it("says when one could not be deleted, and deletes it on a later start", async () => {
+      await (await tab()).storeNewWallet(makeWallet(), FIXTURE_PHRASE, PASSWORD);
+      for (const key of PLAINTEXT) window.localStorage.setItem(key, '{"phrase":["legal"]}');
+
+      const store = await tab();
+      window.state.refuseWrites = true;
+      expect(await store.unlock(PASSWORD)).toBeNull();
+      expect(store.isPlaintextCleanupFailing()).toBe(true);
+      for (const key of PLAINTEXT) expect(window.vault.peek(key)).not.toBeNull();
+
+      window.state.refuseWrites = false;
+      const later = await tab();
+      expect(await presence(later)).toBe(true);
+      await vi.waitFor(() => {
+        for (const key of PLAINTEXT) expect(window.vault.peek(key)).toBeNull();
+      });
+      expect(later.isPlaintextCleanupFailing()).toBe(false);
+    });
+
+    it("is gone by the time an unlock answers", async () => {
+      await (await tab()).storeNewWallet(makeWallet(), FIXTURE_PHRASE, PASSWORD);
+      for (const key of PLAINTEXT) window.localStorage.setItem(key, '{"phrase":["legal"]}');
+      const store = await tab();
+      expect(await store.unlock(PASSWORD)).toBeNull();
+      for (const key of PLAINTEXT) expect(window.vault.peek(key)).toBeNull();
+      expect(store.isPlaintextCleanupFailing()).toBe(false);
     });
   });
 

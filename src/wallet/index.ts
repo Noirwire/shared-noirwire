@@ -35,12 +35,15 @@ export {
 export { assessPassword, suggestPassphrase } from "./passwordStrength.js";
 export { unlockedSession } from "./session.js";
 export {
+  type ResetResult,
   changePassword,
   getPhrase,
   getServerSnapshot,
   getSnapshot,
   isPasswordWeak,
+  isPlaintextCleanupFailing,
   isSaveFailing,
+  isSaving,
   isUnlocked,
   lock,
   lockIfIdle,

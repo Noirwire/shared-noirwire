@@ -9,6 +9,7 @@ import {
 import {
   ComputeBudgetProgram,
   Keypair,
+  MessageV0,
   PublicKey,
   TransactionInstruction,
   TransactionMessage,
@@ -258,6 +259,26 @@ describe("checkRelayFee", () => {
     expect(await checkRelayFee(transaction, SENDER, USDC)).toMatchObject({
       ok: false,
       reason: expect.stringContaining("more than its signature"),
+    });
+  });
+
+  it("refuses a transaction that names no account at all, rather than failing on it", async () => {
+    const empty = new VersionedTransaction(
+      new MessageV0({
+        header: {
+          numRequiredSignatures: 0,
+          numReadonlySignedAccounts: 0,
+          numReadonlyUnsignedAccounts: 0,
+        },
+        staticAccountKeys: [],
+        recentBlockhash: Keypair.generate().publicKey.toBase58(),
+        compiledInstructions: [],
+        addressTableLookups: [],
+      }),
+    );
+    expect(await checkRelayFee(empty, SENDER, USDC)).toEqual({
+      ok: false,
+      reason: "This transfer names no fee payer. Not signed.",
     });
   });
 });

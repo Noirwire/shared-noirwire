@@ -100,7 +100,8 @@ export async function checkRelayFee(
 ): Promise<{ ok: true; relayFeeRaw: bigint } | { ok: false; reason: string }> {
   const refuse = (reason: string) => ({ ok: false as const, reason: `${reason} Not signed.` });
   const { message } = transaction;
-  const feePayer = message.staticAccountKeys[0];
+  const [feePayer] = message.staticAccountKeys;
+  if (!feePayer) return refuse("This transfer names no fee payer.");
   const senderIndex = message.staticAccountKeys.findIndex((key) => key.equals(sender));
   if (feePayer.equals(sender)) {
     return refuse("This transfer would be paid for in SOL by your funding wallet.");

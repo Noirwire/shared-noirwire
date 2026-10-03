@@ -305,13 +305,31 @@ const STALE_SELECTION_KEY = "noirwire.selectedPortfolio";
  * also their only copy of the phrase, and deleting it on sight would lose
  * the wallet for good.
  */
-async function purgePlaintext() {
-  await Promise.all(PLAINTEXT_STORAGE_KEYS.map(remove));
+async function purgePlaintext(): Promise<boolean> {
+  const removed = await Promise.all(PLAINTEXT_STORAGE_KEYS.map(remove));
+  const cleared = removed.every(Boolean);
+  if (plaintextLeft !== !cleared) {
+    plaintextLeft = !cleared;
+    emit();
+  }
+  return cleared;
 }
 
-/** Removes `key`. A vault that cannot be written holds nothing this could remove either. */
-async function remove(key: string) {
-  await vault().update(key, (current) => (current === null ? { keep: true } : { write: null }));
+/** Set while an old plain text phrase could not be deleted. Each later start or unlock tries again. */
+let plaintextLeft = false;
+
+/**
+ * Removes `key`, and says whether it is gone: written away, or confirmed
+ * absent by a read. A vault that refuses the write leaves it where it was.
+ */
+async function remove(key: string): Promise<boolean> {
+  const update = await vault().update(key, (current) =>
+    current === null ? { keep: true } : { write: null },
+  );
+  if (update.persisted) return true;
+  if (update.reason === "kept") return update.value === null;
+  const read = await vault().read(key);
+  return read.ok && read.value === null;
 }
 
 type Written = "written" | "changed" | "failed";
@@ -544,6 +562,9 @@ export function walletExists(): boolean | undefined {
 async function readPresence() {
   await remove(STALE_SELECTION_KEY);
   const found = await hasStoredWallet();
+  // A current wallet has been stored on this device, so an older plain text
+  // copy is not its only phrase: a cleanup that failed before is tried again.
+  if (parseEnvelope(await readRaw())) await purgePlaintext();
   // A reset or a new wallet in the meantime already says what is true.
   if (exists === undefined) {
     exists = found;
@@ -554,6 +575,27 @@ async function readPresence() {
 /** Whether the vault is refusing to store changes, so what the screen shows will not survive a reload. */
 export function isSaveFailing(): boolean {
   return saveFailing;
+}
+
+/** Routine changes shown on screen whose write has not finished. */
+let unsaved = 0;
+
+/**
+ * Whether a change on screen is not stored yet: it would be lost if the app
+ * closed now. True from `updateWallet` until its write lands; it stays true,
+ * with `isSaveFailing`, for a change the vault refused, until a later write
+ * carries it.
+ */
+export function isSaving(): boolean {
+  return unsaved > 0 || (session?.pending.length ?? 0) > 0;
+}
+
+/**
+ * Whether an old plain text recovery phrase from an earlier version could not
+ * be deleted from this device, and so may still be readable.
+ */
+export function isPlaintextCleanupFailing(): boolean {
+  return plaintextLeft;
 }
 
 /** Moves on every lock, reset and wallet replacement. See `generation`. */
@@ -582,8 +624,14 @@ export function updateWallet(change: Change): Promise<boolean> {
   if (!live || !current) return Promise.resolve(false);
   current = change(current);
   live.pending.push(change);
+  unsaved += 1;
   emit();
-  return exclusive(() => sync(live)).catch(noteSaveFailed);
+  return exclusive(() => sync(live))
+    .catch(noteSaveFailed)
+    .finally(() => {
+      unsaved -= 1;
+      emit();
+    });
 }
 
 /**
@@ -604,8 +652,6 @@ function install(vaultKey: VaultKey, stored: OpenRecord, raw: string | null) {
   revision = stored.rev;
   exists = true;
   saveFailing = false;
-  // There is a working wallet on this device now, so older plain text copies can go.
-  void purgePlaintext();
   armIdleLock();
   emit();
 }
@@ -646,17 +692,31 @@ export async function storeNewWallet(
     generation += 1;
     install(vaultKey, stored, raw);
   });
+  // There is a working wallet on this device now, so older plain text copies can go.
+  await purgePlaintext();
 }
 
-/** Deletes the wallet from this device. The recovery phrase is the only way back. */
-export function resetWallet() {
+export type ResetResult =
+  | { ok: true }
+  /** The vault kept the wallet: it is still on this device, locked. */
+  | { ok: false; reason: "notRemoved" };
+
+/**
+ * Deletes the wallet from this device. The recovery phrase is the only way
+ * back. Locks at once, so nothing more can be signed, and says the wallet is
+ * gone only once the vault has removed and confirmed the removal of the
+ * record, with the pending actions kept inside it, and of the previous
+ * format's record.
+ */
+export async function resetWallet(): Promise<ResetResult> {
   lock();
-  exists = false;
   saveFailing = false;
   emit();
-  void exclusive(async () => {
-    await remove(STORAGE_KEY);
-    await remove(LEGACY_STORAGE_KEY);
+  return exclusive(async () => {
+    const removed = (await remove(STORAGE_KEY)) && (await remove(LEGACY_STORAGE_KEY));
+    exists = removed ? false : await hasStoredWallet();
+    emit();
+    return removed ? { ok: true as const } : { ok: false as const, reason: "notRemoved" as const };
   });
 }
 
@@ -744,6 +804,8 @@ export async function unlock(password: string): Promise<string | null> {
     const live = session;
     if (live) void exclusive(() => sync(live)).catch(noteSaveFailed);
   }
+  // There is a working wallet on this device now, so older plain text copies can go.
+  await purgePlaintext();
 
   void assessPassword(password)
     .then((result) => {
