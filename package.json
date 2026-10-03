@@ -62,7 +62,7 @@
     "prepack": "npm run build"
   },
   "peerDependencies": {
-    "@scure/bip39": "1.6.0",
+    "@scure/bip39": "2.4.0",
     "@solana/spl-token": "0.4.15",
     "@solana/web3.js": "1.99.0",
     "@zxcvbn-ts/core": "4.2.0",
@@ -71,19 +71,19 @@
     "ed25519-hd-key": "2.0.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.5",
-    "@scure/bip39": "1.6.0",
+    "@eslint/js": "^10.0.1",
+    "@scure/bip39": "2.4.0",
     "@solana/spl-token": "0.4.15",
     "@solana/web3.js": "1.99.0",
-    "@types/node": "^24",
+    "@types/node": "^26",
     "@zxcvbn-ts/core": "4.2.0",
     "@zxcvbn-ts/language-common": "4.1.3",
     "buffer": "6.0.3",
     "ed25519-hd-key": "2.0.0",
-    "eslint": "^9.39.5",
+    "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.9.9",
-    "typescript": "~5.9.3",
+    "typescript": "~7.0.2",
     "typescript-eslint": "^8.70.0",
     "vitest": "^5.0.1"
   },
