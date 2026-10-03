@@ -17,15 +17,16 @@ export function shownAmountWith(units: ShownUnits, symbol: string, held: number)
 }
 
 /**
- * The amount an activity entry moved, as it read on the day. A stock entry
- * from before shown amounts were recorded only has its raw token count, and
- * says so rather than passing it off as a share count.
+ * The amount an activity entry moved, in its own unit and as it read on the
+ * day: a tracker in shares to four decimals, cash with two like everywhere
+ * else. A tracker entry from before shown amounts were recorded only has its
+ * raw token count, and says so rather than passing it off as a share count.
  */
 export function activityAmountOf(
   entry: { symbol: string; amount: number; shown?: number },
   isPosition: boolean,
 ): string {
   if (typeof entry.shown === "number") return `${shares(entry.shown)} ${entry.symbol}`;
-  const amount = `${shares(entry.amount)} ${entry.symbol}`;
+  const amount = symbolAmount(entry.symbol, entry.amount);
   return isPosition ? activityCopy.rawTokens(amount) : amount;
 }

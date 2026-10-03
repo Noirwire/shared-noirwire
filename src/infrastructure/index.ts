@@ -12,7 +12,16 @@ export {
 } from "./prices/live.js";
 export { type JupiterUpstream, type LivePrice, loadLivePrices } from "./prices/liveSource.js";
 export { refreshMultipliers, stockMultiplier } from "./prices/multipliers.js";
-export { NOT_A_WALLET_ADDRESS, isOffCurveAddress, isRecipientAddress } from "./solana/address.js";
+export {
+  NOT_A_WALLET_ADDRESS,
+  type RecipientAccount,
+  type ScannedRecipient,
+  checkRecipient,
+  isOffCurveAddress,
+  isRecipientAddress,
+  recipientFromCode,
+  unsendable,
+} from "./solana/address.js";
 export { assetHandle } from "./solana/assets.js";
 export { getCashBalances, getPortfolioBalances } from "./solana/balances.js";
 export { connection } from "./solana/client.js";
@@ -83,7 +92,12 @@ export {
   quoteRelayed,
   runRelayed,
 } from "./solana/relayer.js";
-export { recordSignedWith, resolveAccountKeys } from "./solana/signerAccounts.js";
+export {
+  type SigningGuard,
+  guardSigningWith,
+  resolveAccountKeys,
+} from "./solana/signerAccounts.js";
+export { confirmNetwork } from "./solana/networkIdentity.js";
 export { lamportsToSol } from "./solana/sol.js";
 export {
   type TradePlan,

@@ -52,7 +52,7 @@ describe("pieProblem", () => {
         { symbol: "SPYx", weight: 50 },
       ]),
     ).toMatch(/once/);
-    expect(pieProblem([{ symbol: "USDC", weight: 100 }])).toMatch(/listed stocks/);
+    expect(pieProblem([{ symbol: "USDC", weight: 100 }])).toMatch(/listed trackers/);
     expect(
       pieProblem([
         { symbol: "SPYx", weight: 99.5 },

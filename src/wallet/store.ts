@@ -670,6 +670,7 @@ const {
   keyRefused: KEY_REFUSED,
   rekeyRefused: REKEY_REFUSED,
   rekeyNotUndone: REKEY_NOT_UNDONE,
+  passwordChangeUnknown: PASSWORD_CHANGE_UNKNOWN,
 } = walletCopy.store;
 
 /**
@@ -900,6 +901,64 @@ export async function verifyPassword(password: string): Promise<string[] | null>
   return stored?.phrase ?? null;
 }
 
+/**
+ * What became of a password change. "changed": the stored record opens with
+ * the new password (`notice` says what else to know, or is null).
+ * "unchanged": it still opens with the old one (`reason` says why).
+ * "indeterminate": a write failed and the record could not be read back, so
+ * which password opens it is not known; another change is refused until a
+ * read-back settles it.
+ */
+export type PasswordChange =
+  | { outcome: "changed"; notice: string | null }
+  | { outcome: "unchanged"; reason: string }
+  | { outcome: "indeterminate"; reason: string };
+
+const unchanged = (reason: string): PasswordChange => ({ outcome: "unchanged", reason });
+const changed = (notice: string | null = null): PasswordChange => ({ outcome: "changed", notice });
+const INDETERMINATE: PasswordChange = { outcome: "indeterminate", reason: PASSWORD_CHANGE_UNKNOWN };
+
+/** A password change whose write failed and whose result is still to be read back. */
+type UnsettledRekey = {
+  oldKey: VaultKey;
+  newKey: VaultKey;
+  adopt(): void;
+};
+
+let unsettledRekey: UnsettledRekey | null = null;
+
+/**
+ * Reads the stored record back after a write that failed, to learn which key
+ * opens it: the write may have landed before the failure was reported.
+ * "indeterminate" when the read fails too, or neither key opens it.
+ */
+async function readBackRekey(
+  pending: UnsettledRekey,
+): Promise<"changed" | "unchanged" | "indeterminate"> {
+  const read = await vault().read(STORAGE_KEY);
+  if (!read.ok) return "indeterminate";
+  const envelope = parseEnvelope(read.value);
+  if (!envelope) return "indeterminate";
+  if (envelope.salt === pending.newKey.salt && (await openRecord(pending.newKey, envelope))) {
+    return "changed";
+  }
+  if (envelope.salt === pending.oldKey.salt && (await openRecord(pending.oldKey, envelope))) {
+    return "unchanged";
+  }
+  return "indeterminate";
+}
+
+/** Settles a password change left unknown, if the record can be read now. */
+async function settleUnsettledRekey(): Promise<"settled" | "indeterminate"> {
+  const pending = unsettledRekey;
+  if (!pending) return "settled";
+  const found = await readBackRekey(pending);
+  if (found === "indeterminate") return "indeterminate";
+  if (found === "changed") pending.adopt();
+  unsettledRekey = null;
+  return "settled";
+}
+
 export type ChangePasswordOptions = {
   /**
    * Called once the record is stored under the new key, with that key's raw
@@ -927,14 +986,17 @@ export async function changePassword(
   current: string,
   next: string,
   { onRekey }: ChangePasswordOptions = {},
-): Promise<string | null> {
-  const run = async (): Promise<string | null> => {
+): Promise<PasswordChange> {
+  const run = async (): Promise<PasswordChange> => {
+    if ((await settleUnsettledRekey()) === "indeterminate") return INDETERMINATE;
     const before = parseEnvelope(await readRaw());
-    if (!before) return walletCopy.store.noWalletToChange;
+    if (!before) return unchanged(walletCopy.store.noWalletToChange);
     const oldKey = await vaultKeyFor(before, current);
-    if ((await open(oldKey, before)) === null) return walletCopy.store.currentPasswordWrong;
+    if ((await open(oldKey, before)) === null) {
+      return unchanged(walletCopy.store.currentPasswordWrong);
+    }
     const strength = await assessPassword(next);
-    if (!strength.ok) return strength.reason;
+    if (!strength.ok) return unchanged(strength.reason);
     if (!onRekey) {
       const newKey = await newVaultKey(next);
       return exclusive(() => rekey(oldKey, newKey));
@@ -950,9 +1012,11 @@ export async function changePassword(
   try {
     return await serialised("noirwire-wallet-password", run);
   } catch (error) {
-    return error instanceof Error && error.message === NOT_SAVED
-      ? NOT_SAVED
-      : walletCopy.store.passwordNotChanged;
+    return unchanged(
+      error instanceof Error && error.message === NOT_SAVED
+        ? NOT_SAVED
+        : walletCopy.store.passwordNotChanged,
+    );
   }
 }
 
@@ -976,11 +1040,11 @@ async function rekey(
   oldKey: VaultKey,
   newKey: VaultKey,
   confirm?: () => Promise<boolean>,
-): Promise<string | null> {
+): Promise<PasswordChange> {
   const latestRaw = await readRaw();
   const latest = parseEnvelope(latestRaw);
   const stored = latest && latest.salt === oldKey.salt ? await openRecord(oldKey, latest) : null;
-  if (!stored) return CHANGED_ELSEWHERE;
+  if (!stored) return unchanged(CHANGED_ELSEWHERE);
 
   // Changes this tab has not written yet go into the same write.
   const live = session?.vaultKey.salt === oldKey.salt ? session : null;
@@ -991,39 +1055,67 @@ async function rekey(
     wallet: changes.reduce(apply, stored.wallet),
   };
   const raw = await sealRecord(newKey, updated);
+
+  /** This tab carries on under the new key, with what it wrote. */
+  const adopt = () => {
+    if (live) live.vaultKey = newKey;
+    if (live && session === live) {
+      current = live.pending.reduce(apply, updated.wallet);
+      lastRaw = raw;
+      revision = updated.rev;
+    } else {
+      lastRaw = null;
+    }
+    passwordIsWeak = false;
+    emit();
+  };
+  /** The old record stands, and the changes this tab had not written yet wait for the next write. */
+  const keepOld = () => live?.pending.unshift(...changes);
+
+  /**
+   * After a write that reported failure, which may still have landed: read the
+   * record back and say which password opens it. When it cannot be read, the
+   * change is left unknown, and the next change settles it first.
+   */
+  const readBack = async (
+    ifUnchanged: string,
+    ifChanged: string | null,
+  ): Promise<PasswordChange> => {
+    const pending = { oldKey, newKey, adopt };
+    const found = await readBackRekey(pending);
+    if (found === "changed") {
+      adopt();
+      return changed(ifChanged);
+    }
+    keepOld();
+    if (found === "unchanged") return unchanged(ifUnchanged);
+    unsettledRekey = pending;
+    return INDETERMINATE;
+  };
+
   // Written only over the exact record this was built from.
   const outcome = await replace(latestRaw, raw);
   if (outcome === "changed") {
-    live?.pending.unshift(...changes);
-    return CHANGED_ELSEWHERE;
+    keepOld();
+    return unchanged(CHANGED_ELSEWHERE);
   }
-  if (outcome === "failed") {
-    live?.pending.unshift(...changes);
-    throw new Error(NOT_SAVED);
-  }
+  if (outcome === "failed") return readBack(NOT_SAVED, null);
 
-  let problem: string | null = null;
   if (confirm && !(await accepted(confirm))) {
-    if ((await replace(raw, latestRaw)) === "written") {
-      live?.pending.unshift(...changes);
-      return REKEY_REFUSED;
+    const undone = await replace(raw, latestRaw);
+    if (undone === "written") {
+      keepOld();
+      return unchanged(REKEY_REFUSED);
     }
-    // The old record could not be put back, so the new password is the one
-    // that opens what is stored, and this tab carries on under it.
-    problem = REKEY_NOT_UNDONE;
+    // When the old record did not go back, the new password is the one that
+    // opens what is stored, and this tab carries on under it.
+    if (undone === "failed") return readBack(REKEY_REFUSED, REKEY_NOT_UNDONE);
+    adopt();
+    return changed(REKEY_NOT_UNDONE);
   }
 
-  if (live) live.vaultKey = newKey;
-  if (live && session === live) {
-    current = live.pending.reduce(apply, updated.wallet);
-    lastRaw = raw;
-    revision = updated.rev;
-  } else {
-    lastRaw = null;
-  }
-  passwordIsWeak = false;
-  emit();
-  return problem;
+  adopt();
+  return changed();
 }
 
 /** Forgets the key, the decrypted phrase and the decrypted wallet without touching the stored record. */

@@ -3,7 +3,7 @@ import type { EarnAction } from "../earn.js";
 import { planNetworkCost, type CostAgreed, type CostChain } from "../networkCost.js";
 import type { RelayerQuote, Signer, StillUnlocked } from "../ports.js";
 import { refused, type Settlement, type Unsuccessful } from "../result.js";
-import { holdingIn, othersOf, positive } from "../walletRecord.js";
+import { holdingIn, logged, othersOf, positive } from "../walletRecord.js";
 import {
   costChangedOf,
   counted,
@@ -110,7 +110,18 @@ export async function earn<K extends Signer>(
   const owner = session.portfolioSigner(portfolio);
   if (!owner) return refused(session.refusal());
 
-  const reservation = await deps.pending.reserve(id, portfolio.address, deps.words.earn(action));
+  const entry = {
+    kind: action === "deposit" ? ("earnDeposit" as const) : ("earnWithdraw" as const),
+    symbol: chain.cashSymbol,
+    amount,
+    usd: amount * deps.prices.price(chain.cashSymbol),
+  };
+  const reservation = await deps.pending.reserve(
+    id,
+    portfolio.address,
+    deps.words.earn(action),
+    entry,
+  );
   if (!reservation) return refused("actionPending");
   let outcome: unknown;
 
@@ -129,6 +140,7 @@ export async function earn<K extends Signer>(
         : await chain.move(action, owner, amount, session.live);
     // Settle.
     await refresh.portfolioCash(id, portfolio.address);
+    deps.store.update((current) => logged(current, { portfolioId: id, ...entry }, deps.prices));
     deps.track(`earn_${action}`);
     return { kind: "confirmed", signature, settlement: "balancesRead" };
   } catch (error) {

@@ -236,6 +236,75 @@ describe("the store with key bits", () => {
     });
   });
 
+  describe("a password change whose write is reported as failed", () => {
+    /**
+     * The next vault update reports failure. `lands` says whether it was
+     * written all the same, and `thenUnreadable` whether the vault stops
+     * answering reads right after, so nothing can be read back.
+     */
+    function failNextWrite(lands: boolean, thenUnreadable = false) {
+      const update = device.vault.update.bind(device.vault);
+      vi.spyOn(device.vault, "update").mockImplementationOnce(async (key, change) => {
+        if (lands) await update(key, change);
+        device.vault.unavailable = thenUnreadable;
+        return { persisted: false, reason: "failed" };
+      });
+    }
+
+    it("reads the record back and says it changed when the write landed", async () => {
+      const first = await storedWallet();
+      failNextWrite(true);
+      expect(await first.changePassword(PASSWORD, NEXT)).toEqual({
+        outcome: "changed",
+        notice: null,
+      });
+      expect(await decryptsWith(NEXT)).toBe(true);
+      expect(await first.updateWallet((wallet) => ({ ...wallet, watchlist: ["SPYx"] }))).toBe(true);
+      expect(await decryptsWith(NEXT)).toBe(true);
+    });
+
+    it("reads the record back and says it did not change when the write did not land", async () => {
+      const first = await storedWallet();
+      failNextWrite(false);
+      expect(await first.changePassword(PASSWORD, NEXT)).toEqual({
+        outcome: "unchanged",
+        reason: says.notSaved,
+      });
+      expect(await decryptsWith(PASSWORD)).toBe(true);
+    });
+
+    it("says it may have changed when nothing can be read back, and holds the next change until it can", async () => {
+      const first = await storedWallet();
+      failNextWrite(true, true);
+      expect(await first.changePassword(PASSWORD, NEXT)).toEqual({
+        outcome: "indeterminate",
+        reason: says.passwordChangeUnknown,
+      });
+      expect(says.passwordChangeUnknown).toMatch(
+        /new password first; if it does not open, use the old one/,
+      );
+
+      const update = vi.spyOn(device.vault, "update");
+      update.mockClear();
+      expect(await first.changePassword(PASSWORD, "quartz-meadow-lantern-ember-fjord")).toEqual({
+        outcome: "indeterminate",
+        reason: says.passwordChangeUnknown,
+      });
+      expect(update).not.toHaveBeenCalled();
+
+      device.vault.unavailable = false;
+      expect(await first.changePassword(PASSWORD, "quartz-meadow-lantern-ember-fjord")).toEqual({
+        outcome: "unchanged",
+        reason: says.currentPasswordWrong,
+      });
+      expect(await first.changePassword(NEXT, "quartz-meadow-lantern-ember-fjord")).toEqual({
+        outcome: "changed",
+        notice: null,
+      });
+      expect(await decryptsWith("quartz-meadow-lantern-ember-fjord")).toBe(true);
+    });
+  });
+
   describe("a password change that hands the new key on", () => {
     it("gives the new key's bits once the record is sealed under it, then zeroes them", async () => {
       const first = await storedWallet();
@@ -249,7 +318,10 @@ describe("the store with key bits", () => {
         return true;
       });
 
-      expect(await first.changePassword(PASSWORD, NEXT, { onRekey })).toBeNull();
+      expect(await first.changePassword(PASSWORD, NEXT, { onRekey })).toEqual({
+        outcome: "changed",
+        notice: null,
+      });
       expect(onRekey).toHaveBeenCalledTimes(1);
       expect(storedWhenHanded).toBe(device.localStorage.getItem(STORAGE_KEY));
       expect(copy).toEqual(await vaultKeyBits(storedEnvelope(), NEXT));
@@ -285,7 +357,7 @@ describe("the store with key bits", () => {
               return onRekey();
             },
           }),
-        ).toBe(says.rekeyRefused);
+        ).toEqual({ outcome: "unchanged", reason: says.rekeyRefused });
         expect(device.localStorage.getItem(STORAGE_KEY)).toBe(before);
         expect([...handed!].every((byte) => byte === 0)).toBe(true);
         expect(await first.verifyPassword(PASSWORD)).toEqual(FIXTURE_PHRASE);
@@ -312,7 +384,7 @@ describe("the store with key bits", () => {
       const renaming = first.updateWallet((wallet) => ({ ...wallet, watchlist: ["NVDAx"] }));
       release(false);
 
-      expect(await changing).toBe(says.rekeyRefused);
+      expect(await changing).toEqual({ outcome: "unchanged", reason: says.rekeyRefused });
       expect(await renaming).toBe(true);
       const second = await tab();
       expect(await second.unlock(PASSWORD)).toBeNull();
@@ -329,7 +401,7 @@ describe("the store with key bits", () => {
       });
       device.state.refuseWrites = false;
 
-      expect(result).toBe(says.rekeyNotUndone);
+      expect(result).toEqual({ outcome: "changed", notice: says.rekeyNotUndone });
       expect(await decryptsWith(NEXT)).toBe(true);
       expect(first.isUnlocked()).toBe(true);
       expect(await first.updateWallet((wallet) => ({ ...wallet, watchlist: ["SPYx"] }))).toBe(true);
@@ -339,9 +411,10 @@ describe("the store with key bits", () => {
     it("does not call back when the current password is wrong", async () => {
       const first = await storedWallet();
       const onRekey = vi.fn(async () => true);
-      expect(await first.changePassword("not-the-password", NEXT, { onRekey })).toBe(
-        says.currentPasswordWrong,
-      );
+      expect(await first.changePassword("not-the-password", NEXT, { onRekey })).toEqual({
+        outcome: "unchanged",
+        reason: says.currentPasswordWrong,
+      });
       expect(onRekey).not.toHaveBeenCalled();
     });
   });

@@ -26,6 +26,7 @@ export {
   portfolioValue,
   positionAcross,
   price,
+  screenReads,
   searchMarkets,
   shownUnits,
   topMovers,
@@ -36,6 +37,7 @@ export { assessPassword, suggestPassphrase } from "./passwordStrength.js";
 export { unlockedSession } from "./session.js";
 export {
   type ChangePasswordOptions,
+  type PasswordChange,
   type ResetResult,
   type UnlockResult,
   changePassword,
@@ -84,3 +86,4 @@ export {
   fromStored,
   toStored,
 } from "./types.js";
+export { type EarnVenue, type Money, type MoneyLocks, installMoney, money } from "./money.js";

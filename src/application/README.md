@@ -4,7 +4,7 @@ One use case per money action, in `actions/`. Each has the same steps in its bod
 
 `pending.ts` is the life of one action as a pure reducer, from its reservation before signing until the chain settles it. `pendingActions.ts` keeps it in the encrypted wallet record through the store, reserving under a lock every tab shares, so a portfolio cannot have two actions under way. Only chain evidence settles an action, never the device's clock.
 
-The rest is what the screens read: the catalog and valuation (`catalog.ts`, `portfolio.ts`, `pie.ts`, `markets.ts`), how a network cost is met (`networkCost.ts`) and each action's draft. `phraseQuiz.ts` holds the phone's recovery phrase quiz: the positions it asks, the choices it offers and when a run of misses starts it again.
+The rest is what the screens read: the catalog and valuation (`catalog.ts`, `portfolio.ts`, `pie.ts`, `markets.ts`), how a network cost is met (`networkCost.ts`) and each action's draft. `screenReads.ts` bundles the catalog and the reads built on it for the view models. `processLocks.ts` is the one registry of live reservations for an app that runs as one process: a reservation it holds, the one being made included, is alive to every caller, and any other was left by an earlier run. `phraseQuiz.ts` holds the phone's recovery phrase quiz: the positions it asks, the choices it offers and when a run of misses starts it again.
 
 **Belongs here:** use cases, the result type, the pending-action reducer, and the interfaces a use case needs from the outside world (`ports.ts`).
 

@@ -16,7 +16,18 @@ export type Holding = {
   uncosted?: number;
 };
 
-export const ACTIVITY_KINDS = ["fund", "send", "buy", "sell"] as const;
+/**
+ * What an activity entry records: money arriving in a portfolio, a send out
+ * of it, a trade, or cash lent into Earn and returned from it.
+ */
+export const ACTIVITY_KINDS = [
+  "fund",
+  "send",
+  "buy",
+  "sell",
+  "earnDeposit",
+  "earnWithdraw",
+] as const;
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 
 /**
@@ -45,7 +56,10 @@ export type Activity = {
   shown?: number;
   /** Dollar value at the time, or 0 when there was no live price to value it with. */
   usd: number;
-  /** Only set for send. */
+  /**
+   * A send only: the address it went to, as the person entered it. Kept only
+   * inside the encrypted record, so a screen can reveal it on request.
+   */
   counterparty?: string;
 };
 

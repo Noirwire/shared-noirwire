@@ -207,12 +207,13 @@ export function createPendingActions(deps: PendingActionsDeps) {
   /**
    * Writes a transaction a portfolio has just signed into its running
    * reservation, before it can be sent. A transaction signed by an address
-   * with no reservation here is not this module's. One that cannot be written
-   * stops the send, with nothing sent.
+   * with no reservation running here, or one that cannot be written, stops
+   * the send with nothing sent: a signature that is not on record is one a
+   * later run could not settle, and would let the same payment be made twice.
    */
   async function recordSigned(record: SignedRecord): Promise<void> {
     const entry = running.get(record.signer);
-    if (!entry) return;
+    if (!entry) throw new ChainError("notRecorded");
     const saved = await store.update((wallet) =>
       applied(wallet, entry.portfolioId, entry.id, {
         type: "signed",

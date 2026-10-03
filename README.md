@@ -180,6 +180,18 @@ none ──reserve──► reserved ──signed──► unknown ──submitt
 
 Every transaction is written into the reservation as it is signed, before it can leave the device, so a reservation always says whether anything could have been sent. Only chain evidence settles it (a signature status, the block height against the transaction's last valid one, whether its blockhash is still valid), never the device's clock. With nothing to settle it by, only the person can clear it.
 
+## Moved from the mobile app in 0.4.0
+
+The phone's screens and its money wiring now live here, so the web and the phone draw the same logic and nothing is written twice.
+
+- **One view model per screen** in `@noirwire/shared/presentation`: Home (`homeView`), a portfolio (`portfolioView`, `publicView`, `portfolioSettingsView`, `newPortfolioView`), Activity (`activityListView`, `activityDetailView`, `recentActivity`), receiving (`receiveView`), markets and a tracker's page (`marketsView`, `trackerView`), the trade sheet (`tradeReviewView` with the phone's headline, total and countdown, `portfolioChoices`, `amountFloor`, `tradeProgressSteps`, `tradeOutcome`), the pie builder and orders (`pieMixView`, `pieLegSteps`, `pieResultHeadline`), moving money in (`fundingAmountView`, `fundingReviewView`, `fundingProgressView`, `fundingOutcomeView`, `choosePortfolioView`, `fundingWalletView`), sending (`sendFormView`, `sendReviewView`, `sendProgressView`, `sendResultView`) and Earn (`earnScreenView`, `earnChoiceView`, `earnAmountView`, `earnReviewView`, `earnProgressView`, `earnResultView`). Where the platforms differ they take `platform`; see [src/presentation/README.md](src/presentation/README.md). The ones that read prices take `screenReads` from `@noirwire/shared/wallet` first.
+- **Route parameters** as typed helpers (`portfolioParams`, `fundingReceiveParams`, `publicViewParams`, `readReceiveTarget` and the rest): `portfolio=<id>`, `portfolio=funding`, `view=public`.
+- **The phone's words** as variants beside the web's (`mobilePortfolioCopy`, `mobileActivityCopy`, `mobileMarketsCopy`, `mobileFundingCopy`, `mobileSendCopy`, `mobileEarnCopy`, `mobileTradeCopy`, `mobilePieCopy`, `mobileAppCopy`, `mobilePendingActionCopy`, `mobileErrorsCopy`). The phone never reads "browser", and never reads SOL where money moves in.
+- **Money wiring, once per app**: `installMoney(locks)` in `@noirwire/shared/wallet` makes the one pending-action store and installs the one signing guard. Signing refuses (`ChainError` `notRecorded`) when no guard is installed or no reservation holds the signer, and refuses (`wrongNetwork`) when the connection's genesis hash is not the app's network, checked right before every signature. A second `installMoney` throws. `processLocks()` in `@noirwire/shared/application` is one registry for the whole process.
+- **The recipient check** exported from `@noirwire/shared/infrastructure`: `unsendable`, `checkRecipient`, `recipientFromCode`; `hasForeignCharacters` in `@noirwire/shared/domain`.
+- **Pie mix rules** in `@noirwire/shared/domain`: `mixFrom`, `changeMix`, `wholePercent`, `investFloor`, `rebalanceSells`.
+- **Fixes**: pie copy says trackers; `activityAmount` prints USDC with two decimals and a tracker with its four; `sinceDate` writes "Sep" on every runtime (`dateAndTime` and `spokenDay` beside it); the balance refresh answers whether every read came back (`everything()`, `allPortfolios()`, `fundingBalances()` resolve to booleans); Earn moves are recorded as `earnDeposit` and `earnWithdraw` activity, which Activity filters under Earn; a send keeps its recipient in its activity entry, inside the encrypted record only; a password change whose write cannot be confirmed answers `indeterminate`.
+
 ## Moved from the mobile app in 0.3.0
 
 - **The phone's phrase quiz** (`src/application/phraseQuiz.ts`): three random positions asked in ascending order, four choices each, a wrong pick disables that choice and names the position, the third miss in an attempt restarts with new positions. `newQuizAttempt`, `pickQuizWord`, `resumeQuiz`, with the random source injectable for tests.
@@ -226,10 +238,10 @@ Each index exports the public surface of its layer, not every helper. A file tha
 Pin a tag in the app's `package.json`:
 
 ```json
-"@noirwire/shared": "git+ssh://git@github.com/Noirwire/shared-noirwire.git#v0.3.0"
+"@noirwire/shared": "git+ssh://git@github.com/Noirwire/shared-noirwire.git#v0.4.0"
 ```
 
-or `npm install git+ssh://git@github.com/Noirwire/shared-noirwire.git#v0.3.0`. npm clones the tag, installs the dev dependencies, runs `prepare` (the build) and installs the result. An install with `--ignore-scripts` skips that build and leaves the package empty, and so does npm 11's install-script policy until the app allows this one package: run `npm install-scripts approve @noirwire/shared` once, which records it under `allowScripts` in the app's `package.json`. Moving to a newer version is changing the tag and installing again.
+or `npm install git+ssh://git@github.com/Noirwire/shared-noirwire.git#v0.4.0`. npm clones the tag, installs the dev dependencies, runs `prepare` (the build) and installs the result. An install with `--ignore-scripts` skips that build and leaves the package empty, and so does npm 11's install-script policy until the app allows this one package: run `npm install-scripts approve @noirwire/shared` once, which records it under `allowScripts` in the app's `package.json`. Moving to a newer version is changing the tag and installing again.
 
 The app must also carry the peer dependencies at these exact versions, so it has one copy of each:
 
@@ -306,32 +318,33 @@ The package itself is type-checked with `lib: ["ES2022", "WebWorker"]` and `type
 
 ## Versioning
 
-Semver tags on this repository: `v0.1.0`, `v0.2.0`, `v0.3.0`. The apps pin an exact tag. While the version is below 1.0, a minor bump may break; a patch never does. A change to what is sealed, derived or signed is always called out in the tag's notes.
+Semver tags on this repository: `v0.1.0`, `v0.2.0`, `v0.3.0`, `v0.4.0`. The apps pin an exact tag. While the version is below 1.0, a minor bump may break; a patch never does. A change to what is sealed, derived or signed is always called out in the tag's notes.
 
 ## Where to look
 
 The files that decide whether money is safe.
 
-| What                                                                     | Where                                                                                       |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| Wallet sealing at rest (AES-256-GCM, PBKDF2-SHA256)                      | `src/wallet/keystore.ts`                                                                    |
-| The stored record, its validation and every write to it                  | `src/wallet/store.ts`, `src/wallet/types.ts`                                                |
-| The vault key's raw bytes for a device keystore, and unlocking with them | `src/wallet/keystore.ts`, `src/wallet/store.ts`                                             |
-| Key derivation and the recovery phrase                                   | `src/infrastructure/solana/keys.ts`                                                         |
-| Handing out a key only for the address on screen, only while unlocked    | `src/wallet/session.ts`                                                                     |
-| Pre-sign guard: balances simulated before any signature                  | `src/infrastructure/solana/presign-guard.ts`, `src/infrastructure/solana/signerAccounts.ts` |
-| Swap guard: a trade held to its own quote, and to an independent price   | `src/infrastructure/solana/swap/guard.ts`, `src/infrastructure/solana/swap/execute.ts`      |
-| What a mint may look like before it is listed or bought                  | `src/infrastructure/solana/mintPolicy.mjs`                                                  |
-| Relayer template checks and fee caps                                     | `src/infrastructure/solana/relayed.ts`                                                      |
-| Relayer pricing, and the check before a relayer-paid transaction         | `src/infrastructure/solana/relayer.ts`                                                      |
-| Private payments: what is built, checked and sent                        | `src/infrastructure/solana/private-payments.ts`, `src/domain/privateTransfer.ts`            |
-| Earn: the lending vault's price and the deposit and withdraw checks      | `src/infrastructure/solana/earn/jupiterLend.ts`                                             |
-| Settling a sent transaction from the chain                               | `src/infrastructure/solana/settlement.ts`, `src/infrastructure/solana/pending.ts`           |
-| One decision, one payment                                                | `src/application/pending.ts`, `src/application/pendingActions.ts`                           |
-| Atomic vault update contract                                             | `src/platform.ts`                                                                           |
-| Outcome of a money action                                                | `src/application/result.ts`                                                                 |
-| Runtime check for WebCrypto                                              | `src/platform.ts`                                                                           |
-| What a review says about its cost, and whether it can be confirmed       | `src/presentation/networkCost.ts`                                                           |
+| What                                                                                | Where                                                                                                                |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Wallet sealing at rest (AES-256-GCM, PBKDF2-SHA256)                                 | `src/wallet/keystore.ts`                                                                                             |
+| The stored record, its validation and every write to it                             | `src/wallet/store.ts`, `src/wallet/types.ts`                                                                         |
+| The vault key's raw bytes for a device keystore, and unlocking with them            | `src/wallet/keystore.ts`, `src/wallet/store.ts`                                                                      |
+| Key derivation and the recovery phrase                                              | `src/infrastructure/solana/keys.ts`                                                                                  |
+| Handing out a key only for the address on screen, only while unlocked               | `src/wallet/session.ts`                                                                                              |
+| Pre-sign guard: balances simulated before any signature                             | `src/infrastructure/solana/presign-guard.ts`, `src/infrastructure/solana/signerAccounts.ts`                          |
+| Swap guard: a trade held to its own quote, and to an independent price              | `src/infrastructure/solana/swap/guard.ts`, `src/infrastructure/solana/swap/execute.ts`                               |
+| What a mint may look like before it is listed or bought                             | `src/infrastructure/solana/mintPolicy.mjs`                                                                           |
+| Relayer template checks and fee caps                                                | `src/infrastructure/solana/relayed.ts`                                                                               |
+| Relayer pricing, and the check before a relayer-paid transaction                    | `src/infrastructure/solana/relayer.ts`                                                                               |
+| Private payments: what is built, checked and sent                                   | `src/infrastructure/solana/private-payments.ts`, `src/domain/privateTransfer.ts`                                     |
+| Earn: the lending vault's price and the deposit and withdraw checks                 | `src/infrastructure/solana/earn/jupiterLend.ts`                                                                      |
+| Settling a sent transaction from the chain                                          | `src/infrastructure/solana/settlement.ts`, `src/infrastructure/solana/pending.ts`                                    |
+| One decision, one payment                                                           | `src/application/pending.ts`, `src/application/pendingActions.ts`                                                    |
+| One pending store and one signing guard per app; the network checked before signing | `src/wallet/money.ts`, `src/infrastructure/solana/signerAccounts.ts`, `src/infrastructure/solana/networkIdentity.ts` |
+| Atomic vault update contract                                                        | `src/platform.ts`                                                                                                    |
+| Outcome of a money action                                                           | `src/application/result.ts`                                                                                          |
+| Runtime check for WebCrypto                                                         | `src/platform.ts`                                                                                                    |
+| What a review says about its cost, and whether it can be confirmed                  | `src/presentation/networkCost.ts`                                                                                    |
 
 ## Security
 

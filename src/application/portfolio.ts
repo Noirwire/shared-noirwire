@@ -7,6 +7,11 @@ export function cashOf(portfolio: Portfolio) {
   return portfolio.holdings.find((holding) => holding.symbol === "USDC")?.amount ?? 0;
 }
 
+/** What a portfolio holds besides its cash. */
+export function heldPositions(portfolio: Portfolio) {
+  return portfolio.holdings.filter((holding) => holding.symbol !== "USDC" && holding.amount > 0);
+}
+
 export function activePortfolios(wallet: Wallet) {
   return wallet.portfolios.filter((portfolio) => portfolio.archivedAt === null);
 }
@@ -123,6 +128,20 @@ export function createPortfolioReads(
     };
   }
 
+  /**
+   * Whether every holding in a portfolio can be valued right now: cash
+   * always, anything else only with a live price. A value that needs a
+   * missing price is unavailable, never partial.
+   */
+  function portfolioPriced(portfolio: Portfolio, updatedAt: number | null): boolean {
+    return portfolio.holdings.every(
+      (holding) =>
+        holding.amount <= 0 ||
+        holding.symbol === "USDC" ||
+        (updatedAt !== null && isLivePrice(holding.symbol)),
+    );
+  }
+
   /** The same holding can sit in several portfolios; the markets view needs it summed. */
   function positionAcross(wallet: Wallet, symbol: string) {
     let amount = 0;
@@ -160,6 +179,7 @@ export function createPortfolioReads(
     dayChangeFor,
     portfolioDayChange,
     portfolioOverview,
+    portfolioPriced,
     positionAcross,
   };
 }

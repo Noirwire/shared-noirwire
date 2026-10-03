@@ -31,12 +31,43 @@ export function symbolAmount(symbol: string, amount: number) {
   return symbol === "USDC" ? `${tokenAmount(amount)} ${symbol}` : `${shares(amount)} ${symbol}`;
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const LONG_MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+/**
+ * "3 Sep 2026", by the device's calendar. Written out rather than left to the
+ * runtime's locale data, which spells September "Sept" on Node and in some
+ * phone builds.
+ */
 export function sinceDate(timestamp: number) {
-  return new Date(timestamp).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  const date = new Date(timestamp);
+  return `${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+/** "3 Sep 2026, 14:32", by the device's calendar and clock. */
+export function dateAndTime(timestamp: number) {
+  const date = new Date(timestamp);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${sinceDate(timestamp)}, ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** "3 September", as a screen reader says a day. */
+export function spokenDay(timestamp: number) {
+  const date = new Date(timestamp);
+  return `${date.getDate()} ${LONG_MONTHS[date.getMonth()]}`;
 }
 
 export type ChangeTone = "safe" | "danger" | "neutral";

@@ -1,10 +1,15 @@
 import type { SendDraft } from "../application/send.js";
 import { commonCopy } from "../copy/common.js";
-import { sendCopy as copy } from "../copy/send.js";
+import { mobileSendCopy as mobileCopy, sendCopy as copy } from "../copy/send.js";
+import type { AppPlatform } from "../domain/appPlatform.js";
 import { symbolAmount, usd } from "../domain/format.js";
 import type { NetworkCost } from "../domain/networkCost.js";
-import type { RecipientClass } from "../domain/recipients.js";
+import type { RecipientClass, Unsendable } from "../domain/recipients.js";
+import { groupsOfFour } from "./importFindings.js";
 import { networkCostView, type NetworkCostView } from "./networkCost.js";
+import { addressSegments } from "./receive.js";
+
+const CASH = "USDC";
 
 /** A stored amount of `symbol` in shown units, or "Unavailable" while those are not known. */
 function amountOf(symbol: string, unitsPerHeld: number | undefined, held: number) {
@@ -29,6 +34,16 @@ export type SendFormState = {
   submitting: boolean;
   preparing: boolean;
   network: string;
+  /** The words of the platform the form is drawn on. The web's when absent. */
+  platform?: AppPlatform;
+  /** Nothing is reviewed while the device is offline. Online when absent. */
+  online?: boolean;
+  /** Whether pasted text held characters that cannot be part of an address. */
+  pastedForeign?: boolean;
+  /** What the network said the recipient is, when it cannot receive. */
+  unsendable?: Unsendable | null;
+  /** The recipient could not be checked with the network. */
+  recipientUnreadable?: boolean;
 };
 
 type SendFormView = {
@@ -39,6 +54,15 @@ type SendFormView = {
   canReview: boolean;
   reviewLabel: string;
   explainer: string;
+  recipientLabel: string;
+  recipientPlaceholder: string;
+  pasteWarning: string | null;
+  /** Why the recipient cannot receive, or could not be checked. */
+  refusal: string | null;
+  amountLabel: string;
+  amountPlaceholder: string;
+  available: { label: string; value: string };
+  review: { label: string; disabled: boolean };
 };
 
 /** The form a send starts from: what is wrong with what was typed, and whether it can be reviewed. */
@@ -52,7 +76,18 @@ export function sendFormView(state: SendFormState): SendFormView {
         : state.offCurve
           ? state.offCurveMessage
           : copy.invalidAddress;
+  const mobile = state.platform === "mobile";
+  const words = mobile ? { ...copy, ...mobileCopy } : copy;
   const amountWrong = state.amountTouched && (!draft.validAmount || draft.amount > draft.held);
+  const canReview =
+    draft.validRecipient &&
+    draft.validAmount &&
+    draft.amount <= draft.held &&
+    draft.multiplierKnown &&
+    !state.archived &&
+    !state.submitting &&
+    !state.preparing;
+  const reviewLabel = state.preparing ? commonCopy.checking : copy.review;
   return {
     recipientError,
     amountLine: copy.amountLine(
@@ -63,20 +98,49 @@ export function sendFormView(state: SendFormState): SendFormView {
     amountError:
       draft.multiplierKnown && amountWrong
         ? draft.amount > draft.held
-          ? copy.moreThanHeld
-          : copy.invalidAmount
+          ? words.moreThanHeld
+          : words.invalidAmount
         : null,
-    canReview:
-      draft.validRecipient &&
-      draft.validAmount &&
-      draft.amount <= draft.held &&
-      draft.multiplierKnown &&
-      !state.archived &&
-      !state.submitting &&
-      !state.preparing,
-    reviewLabel: state.preparing ? commonCopy.checking : copy.review,
-    explainer: copy.explainer(state.network, symbol),
+    canReview,
+    reviewLabel,
+    explainer: mobile ? mobileCopy.explainer : copy.explainer(state.network, symbol),
+    recipientLabel: words.recipientLabel,
+    recipientPlaceholder: words.recipientPlaceholder,
+    pasteWarning: state.pastedForeign ? words.pasteWarning : null,
+    refusal: state.unsendable
+      ? copy.unsendable[state.unsendable]
+      : state.recipientUnreadable
+        ? copy.recipientUnreadable
+        : null,
+    amountLabel: copy.amountLabel(symbol),
+    amountPlaceholder: commonCopy.amountPlaceholder,
+    available: {
+      label: mobileCopy.available,
+      value: amountOf(symbol, unitsPerHeld, state.heldRaw),
+    },
+    review: { label: reviewLabel, disabled: !canReview || !(state.online ?? true) },
   };
+}
+
+/** What can be sent from a portfolio: its cash, then one choice per tracker held. */
+export function sendAssets(
+  holdings: readonly { symbol: string; amount: number }[],
+  isTracker: (symbol: string) => boolean,
+): { symbol: string; label: string }[] {
+  const held = holdings.filter((holding) => holding.amount > 0);
+  return [
+    ...held
+      .filter((holding) => holding.symbol === CASH)
+      .map(() => ({ symbol: CASH, label: commonCopy.cash })),
+    ...held
+      .filter((holding) => isTracker(holding.symbol))
+      .map((holding) => ({ symbol: holding.symbol, label: holding.symbol })),
+  ];
+}
+
+/** What "Max" fills: the exact amount held. For cash the review then takes the network cost out of it. */
+export function maxAmountText(draft: SendDraft): string {
+  return String(draft.held);
 }
 
 /** The review's answers to the checks it asks for. */
@@ -104,6 +168,10 @@ export type SendReviewState = {
   network: string;
   /** The network fee of a SOL send, in SOL. */
   solFee: number;
+  /** The words of the platform the review is drawn on. The web's when absent. */
+  platform?: AppPlatform;
+  /** Nothing is confirmed while the device is offline. Online when absent. */
+  online?: boolean;
 };
 
 type Term = { label: string; value: string };
@@ -127,6 +195,16 @@ type SendReviewView = {
   irreversible: string;
   back: string;
   confirm: { label: string; disabled: boolean };
+  /** The address in groups of four, its first and last six characters marked to stand out. */
+  segments: readonly { text: string; strong: boolean }[];
+  /** Why the network cost is what it is, while it can be met. */
+  costReason: readonly string[];
+  /** Why it cannot be met right now. */
+  costNotNow: string | null;
+  /** The portfolio needs more cash for the network cost, and the action that moves money in. */
+  needsCash: { text: string; action: string } | null;
+  /** What is still to do before Send can be pressed. */
+  reason: string | null;
 };
 
 /** A send over this many dollars asks for the last characters of the address. */
@@ -144,27 +222,45 @@ export function sendReviewView(state: SendReviewState): SendReviewView {
     pending: state.pending,
     submitting: state.submitting,
   });
+  const mobile = state.platform === "mobile";
   const solFee = String(state.solFee);
+  const lastFourMissing = largeSend && checks.lastFour !== destination.slice(-4);
   const canSend =
     state.canReview &&
     !networkCost.confirmDisabled &&
     (recipient.kind !== "lookalike" || checks.checkedAddress) &&
     (recipient.kind !== "own" || checks.acceptedLink) &&
-    (!largeSend || checks.lastFour === destination.slice(-4));
+    !lastFourMissing;
+  const reason =
+    recipient.kind === "own" && !checks.acceptedLink
+      ? copy.reasons.acceptLink
+      : recipient.kind === "lookalike" && !checks.checkedAddress
+        ? copy.reasons.checkAddress
+        : lastFourMissing
+          ? copy.reasons.lastFour
+          : null;
   return {
-    title: copy.reviewTitle,
+    title: mobile ? mobileCopy.reviewTitle : copy.reviewTitle,
     recipient: {
       label: copy.recipientAddress,
-      aria: copy.recipientAria(destination),
+      aria: mobile
+        ? mobileCopy.recipientAria(groupsOfFour(destination).join(" "))
+        : copy.recipientAria(destination),
       head: destination.slice(0, 6),
       middle: destination.slice(6, -6),
       tail: destination.slice(-6),
     },
     terms: [
-      { label: copy.asset, value: symbol },
+      mobile
+        ? symbol === CASH
+          ? { label: mobileCopy.cash, value: CASH }
+          : { label: mobileCopy.tracker, value: symbol }
+        : { label: copy.asset, value: symbol },
       { label: copy.amount, value: amountOf(symbol, unitsPerHeld, sendAmount) },
-      ...(liveValue === null ? [] : [{ label: copy.usdValue, value: usd(liveValue) }]),
-      { label: copy.network, value: state.network },
+      ...(liveValue === null
+        ? []
+        : [{ label: mobile ? mobileCopy.value : copy.usdValue, value: usd(liveValue) }]),
+      ...(mobile ? [] : [{ label: copy.network, value: state.network }]),
       {
         label: copy.networkCost,
         value:
@@ -214,6 +310,50 @@ export function sendReviewView(state: SendReviewState): SendReviewView {
       : null,
     irreversible: copy.irreversible,
     back: commonCopy.back,
-    confirm: { label: state.submitting ? copy.sending : copy.send, disabled: !canSend },
+    confirm: {
+      label: state.submitting ? copy.sending : copy.send,
+      disabled: !canSend || !(state.online ?? true),
+    },
+    segments: addressSegments(destination),
+    costReason: networkCost.tone === "neutral" ? networkCost.explanation : [],
+    costNotNow:
+      networkCost.tone === "warning" && networkCost.explanation.length > 0
+        ? networkCost.explanation[0]
+        : null,
+    needsCash: networkCost.moveMoney
+      ? { text: networkCost.moveMoney.before.trim(), action: networkCost.moveMoney.link }
+      : null,
+    reason,
   };
+}
+
+export type SendStage = "checking" | "sending";
+
+/** The steps of a send under way, by how far it has got. */
+export function sendProgressView(stage: SendStage, amount: string) {
+  const [checking, sending, confirming] = copy.steps;
+  const sendingNow = stage === "sending";
+  return {
+    title: copy.sendingAmount(amount),
+    steps: [
+      {
+        key: "check",
+        title: checking,
+        status: sendingNow ? ("done" as const) : ("current" as const),
+      },
+      {
+        key: "send",
+        title: sending,
+        status: sendingNow ? ("current" as const) : ("waiting" as const),
+      },
+      { key: "confirm", title: confirming, status: "waiting" as const },
+    ],
+  };
+}
+
+/** How a send ended: it landed, or it was sent and not confirmed. */
+export function sendResultView(outcome: "landed" | "unknown", amount: string, portfolio: string) {
+  return outcome === "landed"
+    ? { title: copy.sent(amount), body: copy.sentBody(portfolio), close: commonCopy.done }
+    : { title: copy.unknownTitle, body: copy.unknownBody(portfolio), close: commonCopy.close };
 }

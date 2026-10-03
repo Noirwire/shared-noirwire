@@ -7,30 +7,33 @@ import type {
   Unsuccessful,
 } from "../application/result.js";
 import type { ChainErrorCode } from "../domain/chainError.js";
-import { errorsCopy as copy } from "../copy/errors.js";
+import type { AppPlatform } from "../domain/appPlatform.js";
+import { errorsCopy as copy, mobileErrorsCopy } from "../copy/errors.js";
 import { networkCostCopy } from "../copy/networkCost.js";
-import { pendingActionCopy } from "../copy/pendingAction.js";
+import { mobilePendingActionCopy, pendingActionCopy } from "../copy/pendingAction.js";
 import { walletCopy } from "../copy/wallet.js";
 
-const CHAIN: Record<ChainErrorCode, string> = {
-  ...copy.chain,
-  notRecorded: pendingActionCopy.notRecorded,
-};
-
-/** What a person is told when a step stopped for `code`. */
-export function chainErrorMessage(code: ChainErrorCode): string {
-  return CHAIN[code];
+/** The words that name where the wallet is kept, which differ by platform. */
+function placeWords(platform: AppPlatform) {
+  return platform === "mobile"
+    ? { notRecorded: mobilePendingActionCopy.notRecorded, ...mobileErrorsCopy }
+    : { notRecorded: pendingActionCopy.notRecorded, portfolioNotSaved: copy.portfolioNotSaved };
 }
 
-const REFUSALS: Record<RefusalReason, (symbol: string) => string> = {
+/** What a person is told when a step stopped for `code`. */
+export function chainErrorMessage(code: ChainErrorCode, platform: AppPlatform = "web"): string {
+  return code === "notRecorded" ? placeWords(platform).notRecorded : copy.chain[code];
+}
+
+const REFUSALS: Record<RefusalReason, (symbol: string, platform: AppPlatform) => string> = {
   actionPending: () => pendingActionCopy.stillPending,
   costUnavailable: () => networkCostCopy.notNow,
-  notRecorded: () => pendingActionCopy.notRecorded,
+  notRecorded: (_symbol, platform) => placeWords(platform).notRecorded,
   walletLocked: () => copy.chain.walletLocked,
   keyMismatch: () => walletCopy.keyMismatch,
   portfolioInactive: () => copy.portfolioInactive,
   portfolioGone: () => copy.portfolioGone,
-  portfolioNotSaved: () => copy.portfolioNotSaved,
+  portfolioNotSaved: (_symbol, platform) => placeWords(platform).portfolioNotSaved,
   activePortfolioAmount: () => copy.activePortfolioAmount,
   amountAboveZero: () => copy.amountAboveZero,
   unknownAsset: (symbol) => copy.unknownAsset(symbol),
@@ -44,8 +47,11 @@ const REFUSALS: Record<RefusalReason, (symbol: string) => string> = {
 };
 
 /** What a person is told when an action is refused before anything is signed. */
-export function refusalMessage(result: Pick<Refused, "reason" | "symbol">): string {
-  return REFUSALS[result.reason](result.symbol ?? "");
+export function refusalMessage(
+  result: Pick<Refused, "reason" | "symbol">,
+  platform: AppPlatform = "web",
+): string {
+  return REFUSALS[result.reason](result.symbol ?? "", platform);
 }
 
 const FAILURES: Record<FailureReason, string> = {
@@ -64,9 +70,9 @@ const FAILURES: Record<FailureReason, string> = {
  * refusal's own account, else what the action was doing. An order that
  * failed after its account was opened says the cost is already paid.
  */
-export function failureMessage(result: Failed): string {
+export function failureMessage(result: Failed, platform: AppPlatform = "web"): string {
   const said = result.cause
-    ? chainErrorMessage(result.cause)
+    ? chainErrorMessage(result.cause, platform)
     : result.detail || FAILURES[result.reason];
   return result.reason === "orderNotPlaced" ? `${said} ${networkCostCopy.alreadyCovered}` : said;
 }
@@ -94,17 +100,23 @@ export type ActionFailure<Review> = {
  * The words and the next step for every result that is not a success.
  * `confirmed` and `submitted` have no failure to describe and answer null.
  */
-export function actionFailure<Review>(result: ActionResult<Review>): ActionFailure<Review> | null {
+export function actionFailure<Review>(
+  result: ActionResult<Review>,
+  platform: AppPlatform = "web",
+): ActionFailure<Review> | null {
   return result.kind === "confirmed" || result.kind === "submitted"
     ? null
-    : describeFailure(result);
+    : describeFailure(result, platform);
 }
 
 /** The words and the next step for a result that did not go ahead. */
-export function describeFailure<Review>(result: Unsuccessful<Review>): ActionFailure<Review> {
+export function describeFailure<Review>(
+  result: Unsuccessful<Review>,
+  platform: AppPlatform = "web",
+): ActionFailure<Review> {
   switch (result.kind) {
     case "refused":
-      return { error: refusalMessage(result) };
+      return { error: refusalMessage(result, platform) };
     case "unknown":
       return { error: chainErrorMessage("outcomeUnknown") };
     case "notLanded":
@@ -114,7 +126,7 @@ export function describeFailure<Review>(result: Unsuccessful<Review>): ActionFai
       };
     case "failed":
       return {
-        error: failureMessage(result),
+        error: failureMessage(result, platform),
         ...(result.reason === "orderNotPlaced" ? { costCovered: true as const } : {}),
       };
     case "needsReview": {
@@ -144,6 +156,7 @@ export function describeFailure<Review>(result: Unsuccessful<Review>): ActionFai
 /** What a screen is handed back by a money action: done, or what went wrong and what to do next. */
 export function chainAnswer<Review>(
   result: ActionResult<Review>,
+  platform: AppPlatform = "web",
 ): { ok: true } | ActionFailure<Review> {
-  return actionFailure(result) ?? { ok: true };
+  return actionFailure(result, platform) ?? { ok: true };
 }

@@ -53,3 +53,18 @@ export function classifyRecipient(
   if (similar) return { kind: "lookalike", address: similar.address, label: similar.label };
   return { kind: "new" };
 }
+
+/**
+ * Why a recipient cannot receive a send: a program, a token's own mint, a
+ * token account, an address no key can sign for, or an account another
+ * program controls.
+ */
+export type Unsendable = "program" | "mint" | "tokenAccount" | "offCurve" | "programOwned";
+
+/** The characters a Solana address is written in. */
+const BASE58 = /^[1-9A-HJ-NP-Za-km-z]*$/;
+
+/** Whether pasted text holds characters that cannot be part of an address. */
+export function hasForeignCharacters(text: string): boolean {
+  return !BASE58.test(text.trim());
+}

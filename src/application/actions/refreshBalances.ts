@@ -32,7 +32,7 @@ export type BalanceDeps = {
  */
 export function createBalanceRefresh(deps: BalanceDeps) {
   const { store, chain, prices } = deps;
-  let refreshingAll: Promise<void> | null = null;
+  let refreshingAll: Promise<boolean> | null = null;
 
   /**
    * Re-reads the funding wallet's real balance of `symbol` and stores it, in
@@ -105,14 +105,18 @@ export function createBalanceRefresh(deps: BalanceDeps) {
    * after another and in no particular order, so no request names two
    * portfolios and the order they arrive in does not spell out the order they
    * were created in. A refresh asked for while one is running joins it.
+   * Resolves to whether every read came back: a read that fails keeps the
+   * stored values, and the screen still has to say they were not refreshed.
    */
-  function allPortfolios(): Promise<void> {
+  function allPortfolios(): Promise<boolean> {
     refreshingAll ??= (async () => {
       const wallet = store.snapshot();
+      let read = true;
       for (const portfolio of wallet ? deps.shuffle(activePortfolios(wallet)) : []) {
-        if (!store.isUnlocked()) return;
-        await portfolioCash(portfolio.id, portfolio.address);
+        if (!store.isUnlocked()) return false;
+        if (!(await portfolioCash(portfolio.id, portfolio.address))) read = false;
       }
+      return read;
     })().finally(() => {
       refreshingAll = null;
     });
@@ -122,14 +126,15 @@ export function createBalanceRefresh(deps: BalanceDeps) {
   /**
    * Re-reads the funding wallet's SOL and cash balances and stores them, in
    * case they drifted (an external deposit). Reading needs only the address,
-   * so nothing is derived from the phrase.
+   * so nothing is derived from the phrase. Resolves to whether the read came
+   * back.
    */
-  async function fundingBalances(): Promise<void> {
+  async function fundingBalances(): Promise<boolean> {
     const current = store.snapshot();
-    if (!current) return;
+    if (!current) return false;
     const { address } = current.funding;
     const balances = await chain.cashBalances(address).catch(() => null);
-    if (!balances) return;
+    if (!balances) return false;
     const { SOL: sol, ...tokens } = balances;
     if (!hasFunds(current.funding) && Object.values(balances).some((amount) => amount > 0)) {
       deps.track("deposit_detected");
@@ -142,6 +147,17 @@ export function createBalanceRefresh(deps: BalanceDeps) {
             funding: { ...wallet.funding, sol, tokens: { ...wallet.funding.tokens, ...tokens } },
           },
     );
+    return true;
+  }
+
+  /**
+   * The funding wallet, then every active portfolio, one address per request.
+   * Resolves to whether every read came back.
+   */
+  async function everything(): Promise<boolean> {
+    const funded = await fundingBalances();
+    const portfolios = await allPortfolios();
+    return funded && portfolios;
   }
 
   /**
@@ -157,7 +173,7 @@ export function createBalanceRefresh(deps: BalanceDeps) {
   }
 
   const refresh: Refresh = { funding, portfolioAsset, portfolioCash };
-  return { ...refresh, allPortfolios, fundingBalances, portfolioBalances };
+  return { ...refresh, allPortfolios, everything, fundingBalances, portfolioBalances };
 }
 
 export type BalanceRefresh = ReturnType<typeof createBalanceRefresh>;

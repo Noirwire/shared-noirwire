@@ -48,6 +48,28 @@ describe("lending and withdrawing", () => {
     expect(t.h.track).toHaveBeenCalledWith("earn_deposit");
   });
 
+  it("records each move into Earn and back as its own kind of activity", async () => {
+    const t = lending();
+    await t.run({ action: "deposit", amount: 10 });
+    await t.run({ action: "withdraw", amount: 4 });
+    expect(t.h.wallet().activity).toMatchObject([
+      { portfolioId: "p1", kind: "earnWithdraw", symbol: "USDC", amount: 4 },
+      { portfolioId: "p1", kind: "earnDeposit", symbol: "USDC", amount: 10 },
+    ]);
+  });
+
+  it("keeps the activity entry with the reservation, so a move that lands unseen is still recorded", async () => {
+    const t = lending(
+      chain({ move: vi.fn(async () => Promise.reject(new UnknownOutcomeError("sig", 9))) }),
+    );
+    await t.run({ action: "deposit", amount: 10 });
+    expect(t.h.pending.pendingFor("p1")?.activity).toMatchObject({
+      kind: "earnDeposit",
+      symbol: "USDC",
+      amount: 10,
+    });
+  });
+
   it("has the relayer pay when the review showed it, keeping out every other address", async () => {
     const earnChain = chain();
     const t = lending(earnChain);

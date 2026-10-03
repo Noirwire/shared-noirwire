@@ -28,7 +28,11 @@ export { type EarnChain, earn, reviewEarnCost } from "./actions/earn.js";
 export { fundDirectly } from "./actions/fundDirectly.js";
 export { type PrivateToken, awaitPrivateArrival, fundPrivately } from "./actions/fundPrivately.js";
 export { type HoldingsChain, type LegOutcome, openHoldings, runLegs } from "./actions/pieOrder.js";
-export { createBalanceRefresh } from "./actions/refreshBalances.js";
+export {
+  type BalanceChain,
+  type BalanceRefresh,
+  createBalanceRefresh,
+} from "./actions/refreshBalances.js";
 export {
   type SendChain,
   type SendInput,
@@ -52,6 +56,8 @@ export {
 export { sendDraft } from "./send.js";
 export { type Denomination, tradeDraft } from "./trade.js";
 export { mapPortfolio, walletUsage } from "./walletRecord.js";
+export { processLocks } from "./processLocks.js";
+export { type ScreenReads, createScreenReads } from "./screenReads.js";
 export {
   type OpenSession,
   type PendingWords,

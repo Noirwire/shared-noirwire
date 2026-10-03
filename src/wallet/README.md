@@ -7,7 +7,9 @@ Where the keys live, and where the catalog is bound to the price feeds.
 - `store.ts` holds the decrypted wallet in memory, synchronously, for a renderer, and persists it through the platform's vault, one atomic write at a time. It locks on idle, on reset and when another tab changes the wallet under it, and re-derives every address at unlock, whether the key came from the password or from a device keystore (`unlockWithKeyBits`).
 - `session.ts` hands out a signing key only for the address on screen, and only while the unlock it was taken under lasts.
 - `create.ts` makes a new or imported wallet; `passwordStrength.ts` holds a password to the bar.
-- `market.ts` and `amounts.ts` bind the catalog and its reads to the live prices and stock multipliers.
+- `market.ts` and `amounts.ts` bind the catalog and its reads to the live prices and stock multipliers; `screenReads` is the bundle the view models take.
+- `money.ts` wires every money action once per app (`installMoney`): the one pending-action store, the one signing guard (the network's genesis hash checked before each signature, each signed transaction written into its reservation before it may be sent), the use cases' dependencies, the balance refresh and the chain clients.
+- `store.ts`'s `changePassword` answers `changed`, `unchanged` or `indeterminate`. A write that reports failure is read back to learn which password opens the record; when it cannot be read, the answer is `indeterminate` and the next change waits until a read-back settles it.
 
 **May import:** `domain/`, `application/`, `infrastructure/`, `presentation/`, `copy/`, `platform.ts`.
 

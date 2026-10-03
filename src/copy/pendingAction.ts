@@ -1,3 +1,6 @@
+/** A signed transaction could not be written into the record, where the wallet is kept. */
+const notRecordedIn = (place: string) => `This could not be saved ${place}, so nothing was sent.`;
+
 /**
  * What a screen says while a portfolio's last action, or the funding
  * wallet's last move of money, is reserved or not yet settled, and how it
@@ -30,7 +33,7 @@ export const pendingActionCopy = {
   /** What an action is answered with while an earlier one from the same portfolio is reserved or unsettled. */
   stillPending:
     "Your last action from this portfolio is not confirmed yet. Nothing more can be confirmed here until that is known.",
-  notRecorded: "This could not be saved in this browser, so nothing was sent.",
+  notRecorded: notRecordedIn("in this browser"),
 
   /** What a reservation is called in the note, in the user's words. */
   what: {
@@ -44,4 +47,9 @@ export const pendingActionCopy = {
     earn: (action: "deposit" | "withdraw") =>
       action === "deposit" ? "an Earn deposit" : "an Earn withdrawal",
   },
+} as const;
+
+/** What the phone says differently about a pending action. Everything else is `pendingActionCopy`. */
+export const mobilePendingActionCopy = {
+  notRecorded: notRecordedIn("on this phone"),
 } as const;

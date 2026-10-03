@@ -46,3 +46,12 @@ export const appCopy = {
     nudgeRaven: "Nudge the raven",
   },
 } as const;
+
+/** The phone's network gate and offline banner. */
+export const mobileAppCopy = {
+  network: {
+    checking: "Checking the network...",
+    offline:
+      "You're offline. Balances and prices may be out of date, and nothing can be sent until you're back online.",
+  },
+} as const;

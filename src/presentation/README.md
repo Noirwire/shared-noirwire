@@ -29,6 +29,26 @@ const view = networkCostView({ cost, pending: { blocked }, submitting });
 
 Copy this shape for the next screen: strings in `copy/`, one pure function here, a test per branch.
 
+## One view model per screen
+
+The web and the phone draw the same screens from the same view models. Where the two truly differ, in wording ("this browser" and "this phone") or in a rule the phone adds (nothing is confirmed offline), the view model takes a `platform: "web" | "mobile"` input and chooses; it never returns layout. The view models the web already used before the phone joined take it as an optional field that defaults to the web's words, so the web's screens read exactly as they did.
+
+A view model that reads prices, the catalog or valuations takes `ScreenReads` as its first argument (`createScreenReads` in `application/`). An app passes the one bound to its price feeds, `screenReads` from `@noirwire/shared/wallet`; a test passes one over fixed prices (`tests/unit/support/screens.ts`).
+
+## Route parameters
+
+Both apps build and read links with the helpers in `routes.ts`, so a link means the same on either platform:
+
+| Parameter                | Where                                                                                     | Helpers                                                                  |
+| ------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `portfolio=<id>`         | every sheet that acts for a portfolio: fund, receive, send, trade, pie order, pie builder | `portfolioParams`, `tradeParams`, `pieOrderParams`, `readPortfolioParam` |
+| `portfolio=funding`      | a sheet acting for the funding wallet                                                     | `FUNDING_PARAM`, `fundingReceiveParams`, `readsFunding`                  |
+| `reveal=1`               | the funding wallet's receive sheet, opening with the address shown                        | `fundingReceiveParams`, `readReceiveTarget`                              |
+| `view=public`            | a portfolio's own screen, opened at its public view                                       | `publicViewParams`, `readPublicView`                                     |
+| `side`, `symbol`, `mode` | the trade sheet and the pie order sheet                                                   | `tradeParams`, `readSide`, `pieOrderParams`, `readPieMode`               |
+
+A route is logged, restored and shared in ways an app does not control, so a parameter is only ever an id, a tracker symbol or one of these words. Every reader refuses a value shaped like an address (`isAddressFreeParam`).
+
 **May import:** `domain/`, `application/`, `copy/`.
 
 **Must never import:** `infrastructure/`, `platform.ts`, `design/`, `testing/`. A view model names a tone; the app maps the tone to a token.

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { recordSigning } from "./support/signing.js";
 import { AccountLayout, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import {
   ComputeBudgetProgram,
@@ -39,6 +40,8 @@ import {
   relayedSendDraft,
 } from "../../src/infrastructure/solana/tokens.js";
 import { ALL_STOCKS } from "../../src/infrastructure/solana/tokenRegistry.js";
+
+recordSigning();
 
 /**
  * A relayer-paid action from the wallet's side: what gets built, what is

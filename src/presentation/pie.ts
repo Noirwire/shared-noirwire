@@ -1,5 +1,8 @@
 import { commonCopy } from "../copy/common.js";
 import type { PieProblem } from "../application/pie.js";
+import type { ScreenReads } from "../application/screenReads.js";
+import { MAX_SLICES, isEvenSplit, type Mix } from "../domain/pie.js";
+import type { ProgressStep, StepStatus } from "./progress.js";
 import type { LegOutcome } from "../application/actions/pieOrder.js";
 import { networkCostCopy } from "../copy/networkCost.js";
 import { pieCopy } from "../copy/pie.js";
@@ -281,4 +284,102 @@ export function pieApprovalView(state: {
     stop: copy.stopHere,
     accept: copy.acceptPrice,
   };
+}
+
+const STEP = 5;
+
+/**
+ * What the pie builder shows for a mix: the ring, the total and whether it
+ * reaches 100%, each slice's row, whether another tracker can be added, and
+ * why the mix cannot be saved yet.
+ */
+export function pieMixView(reads: Pick<ScreenReads, "asset" | "pieProblem">, mix: Mix) {
+  const total = mix.slices.reduce((sum, slice) => sum + slice.weight, 0);
+  const b = pieCopy.builder;
+  const caption =
+    total === 100
+      ? b.fullyAllocated
+      : total < 100
+        ? b.leftToPlace(100 - total)
+        : b.over(total - 100);
+  const problem = reads.pieProblem(mix.slices);
+  return {
+    count: mix.slices.length,
+    ring: {
+      target: mix.slices.map((slice) => slice.weight),
+      label: b.ringLabel(
+        mix.slices.length,
+        mix.slices.map((slice) => b.sliceSpoken(slice.symbol, slice.weight)).join(", "),
+      ),
+    },
+    total: {
+      text: b.total(total),
+      warning: total !== 100,
+      caption,
+      spoken: b.totalSpoken(total, caption),
+    },
+    splitEvenly: mix.slices.length >= 2 && !isEvenSplit(mix.slices) ? b.splitEvenly : null,
+    rows: mix.slices.map((slice) => ({
+      symbol: slice.symbol,
+      name: reads.asset(slice.symbol)?.name ?? slice.symbol,
+      weight: slice.weight,
+      stepLabel: b.shareLabel(slice.symbol),
+      removeLabel: b.remove(slice.symbol),
+    })),
+    step: STEP,
+    chooser:
+      mix.slices.length < MAX_SLICES
+        ? { label: mix.slices.length === 0 ? b.pickTrackers : b.addAnother }
+        : null,
+    problem: problem ? pieProblemMessage(problem) : null,
+  };
+}
+
+/** What the invest step says when the amount is too small for every order to be placed. */
+export function investFloorView(floor: number | null) {
+  if (floor === null) return null;
+  const amount = usd(floor);
+  return { text: copy.floor(amount), use: copy.useAmount(amount), amount: floor };
+}
+
+/** The line under a rebalance's sells when smaller differences were left as they are. */
+export function rebalanceNote(leftAlone: boolean): string | null {
+  return leftAlone ? copy.smallerLeftAlone : null;
+}
+
+const LEG_STATUS: Record<LegOutcome["status"], StepStatus> = {
+  waiting: "waiting",
+  placing: "current",
+  done: "done",
+  failed: "failed",
+  "not placed": "skipped",
+};
+
+/** One progress line per order, with its status word and, when it stopped, why. */
+export function pieLegSteps(
+  outcomes: readonly LegOutcome[],
+  nameOf: (symbol: string) => string,
+): ProgressStep[] {
+  return outcomes.map((outcome) => {
+    const said = legOutcomeView(outcome);
+    return {
+      key: outcome.symbol,
+      title: nameOf(outcome.symbol),
+      status: LEG_STATUS[outcome.status],
+      statusLabel: copy.status[outcome.status],
+      ...(said.note ? { caption: said.note } : {}),
+      ...(said.error ? { reason: said.error } : {}),
+    };
+  });
+}
+
+/** Whether the run stopped before every order was placed. */
+export function pieRunStopped(outcomes: readonly LegOutcome[]) {
+  return outcomes.some((outcome) => outcome.status !== "done");
+}
+
+/** The headline once a pie's orders have run: none placed reads as exactly that, never "0 of 4". */
+export function pieResultHeadline(outcomes: readonly LegOutcome[]): string {
+  const placed = outcomes.filter((outcome) => outcome.status === "done").length;
+  return placed === 0 ? copy.nonePlaced : pieProgressHeadline({ kind: "done" }, outcomes);
 }

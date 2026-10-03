@@ -159,6 +159,22 @@ describe("refreshing balances", () => {
     expect(t.h.holding("p1", "SPYx")).toMatchObject({ amount: 3 });
   });
 
+  it("reports a read that failed instead of hiding it, keeping what was stored", async () => {
+    const t = refreshing();
+    expect(await t.refresh.everything()).toBe(true);
+    expect(t.chain.cashBalances).toHaveBeenCalledBefore(t.chain.portfolioBalances);
+
+    t.chain.portfolioBalances.mockRejectedValueOnce(new Error("unreachable"));
+    expect(await t.refresh.allPortfolios()).toBe(false);
+    expect(t.h.holding("p1", "USDC")).toMatchObject({ amount: 12 });
+
+    t.chain.cashBalances.mockRejectedValueOnce(new Error("unreachable"));
+    expect(await t.refresh.fundingBalances()).toBe(false);
+    t.chain.cashBalances.mockRejectedValueOnce(new Error("unreachable"));
+    expect(await t.refresh.everything()).toBe(false);
+    expect(await t.refresh.everything()).toBe(true);
+  });
+
   it("says when a portfolio could not be read, so orders are not sized from a stale one", async () => {
     const t = refreshing();
     t.chain.portfolioBalances.mockRejectedValueOnce(new Error("rate limited"));

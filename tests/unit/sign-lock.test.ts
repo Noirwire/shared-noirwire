@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { recordSigning } from "./support/signing.js";
 import {
   ComputeBudgetProgram,
   Keypair,
@@ -13,6 +14,8 @@ import {
 } from "../../src/infrastructure/solana/signerAccounts.js";
 import { depositSol, signSendConfirm } from "../../src/infrastructure/solana/sol.js";
 import { signatureOf } from "../../src/infrastructure/solana/settlement.js";
+
+recordSigning();
 
 const payer = Keypair.generate();
 

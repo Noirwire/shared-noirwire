@@ -50,4 +50,64 @@ export const earnCopy = {
   confirm: (action: "deposit" | "withdraw") =>
     action === "deposit" ? "Confirm deposit" : "Confirm withdrawal",
   earning: (amount: string, venue: string) => `${amount} earning through ${venue}`,
+
+  rateAnnouncement: (rate: string) => `Current variable rate, ${rate} percent a year`,
+  noCash: "No portfolio has cash to deposit. Add money to a portfolio first.",
+  riskLine: "Lending carries risk and the rate changes.",
+  readRisks: "Read the risks",
+  noPortfolio: "Create a portfolio to use Earn.",
+  noPortfolioDetail: "Earn lends a portfolio's cash.",
+  continueWith: (portfolio: string) => `Continue with ${portfolio}`,
+  cash: (amount: string) => `${amount} cash`,
+  lent: (amount: string) => `${amount} in Earn`,
+  leadFor: {
+    deposit: (portfolio: string) => `Lend USDC from ${portfolio}.`,
+    withdraw: (portfolio: string) => `Return USDC to ${portfolio}.`,
+  },
+  available: "Available",
+  review: "Review",
+  moreThanAvailable: "More than is available.",
+  smallerThanCost: "This withdrawal is smaller than its own network cost.",
+
+  reviewTitle: "Review",
+  terms: {
+    leavesCash: (portfolio: string) => `Leaves ${portfolio}'s cash`,
+    intoEarn: "Goes into Earn",
+    totalLeaving: (portfolio: string) => `Total leaving ${portfolio}'s cash`,
+    leavesEarn: "Leaves Earn",
+    arrives: (portfolio: string) => `Arrives in ${portfolio}'s cash`,
+  },
+  openingReason: "The network cost includes opening this holding, a one-time cost.",
+  fromProceeds:
+    "The network cost is paid out of the USDC this returns, so no cash is needed first.",
+  depositRisk: (venue: string) =>
+    `USDC is lent through ${venue}. It is not a bank deposit, and withdrawals can be delayed.`,
+  confirmAmount: {
+    deposit: (amount: string) => `Deposit ${amount}`,
+    withdraw: (amount: string) => `Withdraw ${amount}`,
+  },
+
+  progress: {
+    deposit: (amount: string) => `Depositing ${amount}`,
+    withdraw: (amount: string) => `Withdrawing ${amount}`,
+  },
+  steps: ["Sending on chain", "Confirming", "Reading the new balance"],
+
+  landed: {
+    deposit: (amount: string) => `Deposited ${amount}`,
+    withdraw: (amount: string) => `Withdrew ${amount}`,
+  },
+  landedBody: {
+    deposit: (portfolio: string) => `From ${portfolio}, now in Earn.`,
+    withdraw: (portfolio: string) => `Back in ${portfolio}'s cash.`,
+  },
+  unknownTitle: "Sent, but not confirmed",
+  unknownBody: (portfolio: string) =>
+    `This was sent but could not be confirmed. It may still go through. Check ${portfolio}'s balance before trying again.`,
+} as const;
+
+/** What the phone says differently on Earn. Everything else is `earnCopy`. */
+export const mobileEarnCopy = {
+  rateLabel: "Current variable rate",
+  restore: "Restore this portfolio to move funds.",
 } as const;

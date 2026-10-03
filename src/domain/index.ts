@@ -1,11 +1,14 @@
 export { typedAmount } from "./amount.js";
+export { type AppPlatform } from "./appPlatform.js";
 export {
   type ChangeTone,
   changeTone,
+  dateAndTime,
   deltaText,
   shares,
   shortAddress,
   sinceDate,
+  spokenDay,
   symbolAmount,
   tokenAmount,
   usd,
@@ -20,12 +23,20 @@ export {
   type Leg,
   MAX_SLICES,
   MIN_LEG_USD,
+  type Mix,
+  type MixChange,
   REBALANCE_DRIFT,
   type SliceState,
+  changeMix,
   evenSplit,
+  investFloor,
+  isEvenSplit,
+  mixFrom,
   needsRebalance,
   planInvest,
   planRebalanceSells,
+  rebalanceSells,
+  wholePercent,
 } from "./pie.js";
 export {
   DEFAULT_PORTFOLIO_GLYPH,
@@ -38,7 +49,12 @@ export {
   resolvePortfolioIcon,
 } from "./portfolioIcon.js";
 export { PRICE_RANGES, type PriceRange, SERIES_TTL_SECONDS } from "./priceRanges.js";
-export { type RecipientClass, classifyRecipient } from "./recipients.js";
+export {
+  type RecipientClass,
+  type Unsendable,
+  classifyRecipient,
+  hasForeignCharacters,
+} from "./recipients.js";
 export { entryHref, safeDestination } from "./safeDestination.js";
 export {
   ACTIVITY_KINDS,

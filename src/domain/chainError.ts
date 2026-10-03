@@ -18,7 +18,9 @@ export type ChainErrorCode =
   /** A signed transaction could not be written into the wallet's record first. Nothing was sent. */
   | "notRecorded"
   /** The venue has no price for this order right now. */
-  | "noQuote";
+  | "noQuote"
+  /** The network the app is connected to is not the one it is built for. Nothing was signed. */
+  | "wrongNetwork";
 
 export class ChainError extends Error {
   constructor(

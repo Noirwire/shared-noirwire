@@ -142,8 +142,11 @@ describe("fundingReviewView", () => {
       { label: "Arrives in Investing", value: "10.00 USDC" },
       { label: "Privacy fee (0.1%)", value: "0.01 USDC" },
       { label: "Relay fee", value: "0.20 USDC" },
-      { label: "Total leaving your funding wallet", value: "10.21 USDC" },
     ]);
+    expect(view.total).toEqual({ label: "Total leaving your funding wallet", value: "10.21 USDC" });
+    expect(view.note).toBe(
+      "No SOL is needed. If the transfer would take more than this total, it is not signed.",
+    );
     expect(view.confirm).toEqual({ label: "Confirm", disabled: false });
     expect(
       fundingReviewView({
@@ -181,6 +184,7 @@ describe("fundingOutcomeView", () => {
       observerLink: "See what an outside observer can and cannot connect.",
       close: "Done",
       alert: false,
+      tone: "success",
     });
     expect(fundingOutcomeView({ ...base, outcome: "done", privateRoute: false })).toMatchObject({
       body: "10.00 USDC is now in Investing, read back from its real onchain balance.",

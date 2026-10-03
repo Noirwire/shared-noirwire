@@ -596,7 +596,7 @@ describe("the wallet store", () => {
       expect(await second.unlock(PASSWORD)).toBeNull();
 
       const next = "plum-anvil-harbour-quilt-saffron";
-      expect(await first.changePassword(PASSWORD, next)).toBeNull();
+      expect(await first.changePassword(PASSWORD, next)).toMatchObject({ outcome: "changed" });
       const stored = window.localStorage.getItem(STORAGE_KEY);
 
       expect(await second.updateWallet(rename("stale key"))).toBe(false);
@@ -726,8 +726,11 @@ describe("the wallet store", () => {
       await store.storeNewWallet(makeWallet(), FIXTURE_PHRASE, PASSWORD);
       const next = "plum-anvil-harbour-quilt-saffron";
 
-      expect(await store.changePassword("not-the-password", next)).toMatch(/not right/);
-      expect(await store.changePassword(PASSWORD, next)).toBeNull();
+      expect(await store.changePassword("not-the-password", next)).toMatchObject({
+        outcome: "unchanged",
+        reason: expect.stringMatching(/not right/),
+      });
+      expect(await store.changePassword(PASSWORD, next)).toMatchObject({ outcome: "changed" });
       expect(await decryptStored(window, PASSWORD)).toBeNull();
       expect((await decryptStored(window, next))?.phrase).toEqual(FIXTURE_PHRASE);
 
@@ -863,7 +866,11 @@ describe("the wallet store", () => {
       expect(await second.unlock(PASSWORD)).toBeNull();
       second.subscribe(() => undefined);
 
-      expect(await first.changePassword(PASSWORD, "plum-anvil-harbour-quilt-saffron")).toBeNull();
+      expect(
+        await first.changePassword(PASSWORD, "plum-anvil-harbour-quilt-saffron"),
+      ).toMatchObject({
+        outcome: "changed",
+      });
       await vi.waitFor(() => expect(second.isUnlocked()).toBe(false));
       expect(second.getSnapshot()).toBeNull();
       expect(second.getPhrase()).toBeNull();

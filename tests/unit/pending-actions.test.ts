@@ -45,6 +45,8 @@ function makeWallet(): Wallet {
 let status: "confirmed" | "failed" | "absent";
 let blockHeight: number;
 let blockhashValid: boolean;
+/** The chain the connection serves: the one the app is built for, or another one. */
+let genesisHash: string;
 
 /**
  * A freshly loaded tab: the store and everything built on it are imported
@@ -64,6 +66,10 @@ async function openTab() {
   const pending = wirePending(held);
   const signing = await import("../../src/infrastructure/solana/signerAccounts.js");
   const { connection } = await import("../../src/infrastructure/solana/client.js");
+  const { expectedGenesisHash } = await import("../../src/infrastructure/solana/config.js");
+  vi.spyOn(connection, "getGenesisHash").mockImplementation(async () =>
+    genesisHash === "expected" ? expectedGenesisHash() : genesisHash,
+  );
   const { UnknownOutcomeError } = await import("../../src/infrastructure/solana/swap/types.js");
   vi.spyOn(connection, "getBlockHeight").mockImplementation(async () => blockHeight);
   vi.spyOn(connection, "isBlockhashValid").mockImplementation(async () => ({
@@ -131,6 +137,7 @@ describe("reserving an action", () => {
     status = "absent";
     blockHeight = LAST_VALID - 10;
     blockhashValid = true;
+    genesisHash = "expected";
   });
 
   afterEach(() => {
@@ -217,10 +224,35 @@ describe("reserving an action", () => {
     ).rejects.toMatchObject({ code: "notRecorded" });
   });
 
-  it("ignores what a key with no reservation signs, such as the funding wallet's", async () => {
+  it("refuses to send what a key with no reservation signed, so no payment goes unrecorded", async () => {
     const { signing, pending } = await walletTab();
-    await signing.signForSending(ownTransaction(), keyAt(1), () => true, LAST_VALID);
+    await expect(
+      signing.signForSending(ownTransaction(), keyAt(1), () => true, LAST_VALID),
+    ).rejects.toMatchObject({ code: "notRecorded" });
     expect(pending.pendingFor("acc_1")).toBeUndefined();
+  });
+
+  it("signs nothing when the connection serves another chain", async () => {
+    const { signing, pending } = await walletTab();
+    const sending = await pending.reserve("acc_1", PORTFOLIO, "a send", SEND);
+    genesisHash = "another-chain";
+    const transaction = ownTransaction();
+    await expect(
+      signing.signForSending(transaction, keyAt(1), () => true, LAST_VALID),
+    ).rejects.toMatchObject({ code: "wrongNetwork" });
+    expect(transaction.signatures.every((signature) => signature.every((byte) => byte === 0))).toBe(
+      true,
+    );
+    expect(pending.pendingFor("acc_1")).toMatchObject({ status: "reserved" });
+    await sending!.finish(new Error("refused"));
+  });
+
+  it("refuses a second money wiring in the same app", async () => {
+    await walletTab();
+    const { installMoney } = await import("../../src/wallet/money.js");
+    expect(() =>
+      installMoney({ hold: async () => () => undefined, ownerGone: async () => null }),
+    ).toThrow(/already wired/);
   });
 
   it("survives the page being closed between reserving and signing, and is then released", async () => {
@@ -413,6 +445,7 @@ describe("a pending action stored by the previous build", () => {
     status = "absent";
     blockHeight = LAST_VALID - 10;
     blockhashValid = true;
+    genesisHash = "expected";
   });
 
   afterEach(() => {

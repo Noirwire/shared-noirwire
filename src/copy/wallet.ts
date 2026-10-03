@@ -69,6 +69,8 @@ export const walletCopy = {
     keyRefused: "The saved unlock key does not open this wallet. Enter your password.",
     rekeyRefused:
       "The new password could not be saved for quick unlock, so it was not changed. Your old password still works.",
+    passwordChangeUnknown:
+      "The password change may have been saved, but the stored wallet could not be read back to check. Unlock with the new password first; if it does not open, use the old one. Another change waits until the wallet can be read.",
     rekeyNotUndone:
       "The password was changed, but quick unlock could not be updated. Use the new password, and turn quick unlock on again.",
   },

@@ -43,23 +43,46 @@ export type SignedRecord = {
   lastValidBlockHeight?: number;
 };
 
-let recorder: ((record: SignedRecord) => Promise<void>) | null = null;
+/**
+ * What every signature for sending passes through: the network's identity
+ * checked first, and the signed transaction written into its reservation
+ * before it may leave the device. An app installs exactly one, through its
+ * money wiring (`installMoney` in `@noirwire/shared/wallet`).
+ */
+export type SigningGuard = {
+  /** Throws `ChainError("wrongNetwork")` unless the connection serves the chain the app is built for. */
+  confirmNetwork(): Promise<void>;
+  /** Writes the signed transaction into its reservation. Throws when there is none to write it to. */
+  record(record: SignedRecord): Promise<void>;
+};
 
-/** Sets what `signForSending` hands each signed transaction to before it may be sent. */
-export function recordSignedWith(record: ((record: SignedRecord) => Promise<void>) | null) {
-  recorder = record;
+let guard: SigningGuard | null = null;
+
+/**
+ * Installs the one signing guard, or removes it with null. A second guard is
+ * refused: two stores competing for the signatures is how a signature lands
+ * in a store with no reservation for it while its own reservation goes
+ * without.
+ */
+export function guardSigningWith(next: SigningGuard | null) {
+  if (next && guard && guard !== next) {
+    throw new Error("A signing guard is already installed. Wire money actions once per app.");
+  }
+  guard = next;
 }
 
 /**
  * Signs a transaction that is about to be sent, and has it recorded first.
  *
- * What a signed transaction can do once it has left this device cannot be
- * taken back, so where it came from is written down in the wallet's own
- * record before it may go: its blockhash, the block height it expires at,
- * and its id when that is known. If the app is closed a moment later, or the
- * answer to sending it never arrives, that record is what the chain is asked
- * about, and nothing is done again until the chain has answered. A record
- * that cannot be written stops it here, with nothing sent.
+ * The network is asked for its identity right before, so a connection that
+ * has come to serve another chain since the app started signs nothing. What
+ * a signed transaction can do once it has left this device cannot be taken
+ * back, so where it came from is written down in the wallet's own record
+ * before it may go: its blockhash, the block height it expires at, and its
+ * id when that is known. If the app is closed a moment later, or the answer
+ * to sending it never arrives, that record is what the chain is asked about,
+ * and nothing is done again until the chain has answered. With no guard
+ * installed, or no reservation to write it into, nothing is signed or sent.
  */
 export async function signForSending(
   transaction: VersionedTransaction,
@@ -67,11 +90,14 @@ export async function signForSending(
   stillUnlocked: StillUnlocked,
   lastValidBlockHeight?: number,
 ): Promise<void> {
+  const installed = guard;
+  if (!installed) throw new ChainError("notRecorded");
+  await installed.confirmNetwork();
   signWhileUnlocked(transaction, signer, stillUnlocked);
   // The id is the fee payer's signature: this signer's own when it pays, or
   // one a sponsor already put there. A fee payer still to sign leaves none.
   const signature = signatureOf(transaction);
-  await recorder?.({
+  await installed.record({
     signer: signer.publicKey,
     ...(signature ? { signature } : {}),
     blockhash: transaction.message.recentBlockhash,

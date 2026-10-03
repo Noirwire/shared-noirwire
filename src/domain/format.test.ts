@@ -4,7 +4,9 @@ import {
   deltaText,
   shares,
   shortAddress,
+  dateAndTime,
   sinceDate,
+  spokenDay,
   symbolAmount,
   tokenAmount,
   usd,
@@ -59,6 +61,17 @@ describe("sinceDate", () => {
     // Noon UTC stays "15 Jan 2026" in every timezone from UTC-12 to UTC+12,
     // so this doesn't depend on the machine running the test.
     expect(sinceDate(Date.UTC(2026, 0, 15, 12))).toBe("15 Jan 2026");
+  });
+
+  it("writes September as Sep on every runtime, never Sept", () => {
+    expect(sinceDate(new Date(2026, 8, 3).getTime())).toBe("3 Sep 2026");
+  });
+});
+
+describe("dateAndTime and spokenDay", () => {
+  it("write a time with two digits each, and a day as a screen reader says it", () => {
+    expect(dateAndTime(new Date(2026, 0, 9, 7, 5).getTime())).toBe("9 Jan 2026, 07:05");
+    expect(spokenDay(new Date(2026, 8, 3).getTime())).toBe("3 September");
   });
 });
 

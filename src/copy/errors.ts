@@ -1,3 +1,5 @@
+import { mobilePortfolioCopy, portfolioCopy } from "./portfolio.js";
+
 /** What a money action answers with when it did not go through. */
 export const errorsCopy = {
   activePortfolioAmount: "Enter an amount for an active portfolio.",
@@ -5,7 +7,7 @@ export const errorsCopy = {
   unknownAsset: (symbol: string) => `Unknown asset: ${symbol}.`,
   portfolioGone: "That portfolio no longer exists.",
   portfolioInactive: "This portfolio is not active.",
-  portfolioNotSaved: "The new portfolio could not be saved in this browser.",
+  portfolioNotSaved: portfolioCopy.create.notSaved,
 
   /** Why a step that reached the chain, the relayer or the wallet's record stopped, by code. */
   chain: {
@@ -17,6 +19,8 @@ export const errorsCopy = {
     outcomeUnknown:
       "This was sent but could not be confirmed. It may still land; check the portfolio's balance before retrying.",
     noQuote: "Jupiter has no price for this order right now.",
+    wrongNetwork:
+      "The network connection serves a different chain than this app is built for. Nothing was signed or sent.",
   },
 
   reviewNewCost: (reason: string) => `${reason} Review the new network cost.`,
@@ -51,4 +55,9 @@ export const errorsCopy = {
     mainnetOnly: "Earning is only available on Solana mainnet.",
     failed: "The transaction did not complete.",
   },
+} as const;
+
+/** What the phone says differently when an action does not go through. Everything else is `errorsCopy`. */
+export const mobileErrorsCopy = {
+  portfolioNotSaved: mobilePortfolioCopy.create.notSaved,
 } as const;

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { recordSigning } from "./support/signing.js";
 import {
   AccountLayout,
   MintLayout,
@@ -17,6 +18,8 @@ import { sendSolTo, toRawUnits } from "../../src/infrastructure/solana/sol.js";
 import { OWN_SEND_WAIT_MS } from "../../src/infrastructure/solana/settlement.js";
 import { UnknownOutcomeError } from "../../src/infrastructure/solana/swap/types.js";
 import { ataFor, withdrawToken } from "../../src/infrastructure/solana/tokens.js";
+
+recordSigning();
 
 const DECIMALS = 6;
 const TOKEN_ACCOUNT_RENT = 2_039_280;
