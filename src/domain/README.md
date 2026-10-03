@@ -1,6 +1,8 @@
 # domain
 
-Pure rules and types: what a portfolio, a holding or an amount is, and how the product formats money. Functions here take values and return values.
+Pure rules and types: what a wallet, a portfolio, a holding, an order or a pie is, what a private transfer costs, which destinations are safe, and how the product formats money. Functions here take values and return values.
+
+`usageEvents.ts` is the closed list of everything usage analytics may say, with the server's check of an event against it; the platform's `track` takes only what it allows.
 
 **Belongs here:** types, validation, arithmetic, formatting rules (`format.ts`).
 

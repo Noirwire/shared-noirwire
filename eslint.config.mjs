@@ -18,6 +18,19 @@ export default defineConfig([
       "no-restricted-globals": [
         "error",
         { name: "Buffer", message: 'Import it (`import { Buffer } from "buffer"`).' },
+        // The package is type-checked against the web-platform globals both
+        // runtimes provide (fetch, WebCrypto, timers, URL), declared by
+        // TypeScript's WebWorker library. These are the ones that library
+        // also declares and a phone does not have.
+        ...[
+          "navigator",
+          "self",
+          "location",
+          "indexedDB",
+          "caches",
+          "importScripts",
+          "postMessage",
+        ].map((name) => ({ name, message: "Not on every platform. Go through src/platform.ts." })),
       ],
     },
   },

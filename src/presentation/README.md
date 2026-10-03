@@ -7,23 +7,24 @@ View models. The web app and the mobile app are one product, so what a screen sa
 1. A view model is a pure function of state. Same input, same output, no clock, no storage, no network.
 2. It returns display-ready values: text already formatted, a tone, flags. Never JSX, never a class name, never a colour.
 3. A component renders the view model and forwards events. It does not branch on the state the view model was built from.
-4. A rule or a string that a screen needs is added here and in `copy/`, never in an app. Use cases return reason codes; the words for them are chosen here (`refusal.ts`).
+4. A rule or a string that a screen needs is added here and in `copy/`, never in an app. Use cases return reason codes; the words for them are chosen here (`actionResult.ts`).
 5. Every branch of a view model has a unit test.
 
 ## The worked example
 
-The network cost row of a money review:
+The network cost of a money review:
 
 - `copy/networkCost.ts` holds every string.
-- `presentation/networkCost.ts` exports `networkCostView(state)`. Its input is the cost (a discriminated union of the ways a cost can be met, or null while it is worked out), the intent's pending action and whether the action is being submitted. Its output is `{ label, value, tone, explanation, confirmDisabled }`. Whether Confirm can be pressed is decided here and nowhere else.
-- `presentation/networkCost.test.ts` covers each kind.
+- `presentation/networkCost.ts` exports `networkCostView(state)`. Its input is the cost (a discriminated union of the ways a cost can be met, or null while it is worked out), whether the portfolio's last action still holds confirming back, whether the action is being submitted and whether it is an Earn withdrawal. Its output is `{ label, value, tone, explanation, moveMoney, details, confirmDisabled }`. Whether Confirm can be pressed is decided here and nowhere else.
+- `tests/unit/presentation/networkCost.test.ts` covers each kind.
 
 A renderer on either platform is then a few lines:
 
 ```ts
-const view = networkCostView({ cost, pending, submitting });
-// draw view.label and view.value, colour by view.tone,
-// list view.explanation, disable Confirm when view.confirmDisabled
+const view = networkCostView({ cost, pending: { blocked }, submitting });
+// draw view.label and view.value, colour by view.tone, list view.explanation,
+// put the link to move money between view.moveMoney.before and .after,
+// show view.details behind a disclosure, disable Confirm when view.confirmDisabled
 ```
 
 Copy this shape for the next screen: strings in `copy/`, one pure function here, a test per branch.

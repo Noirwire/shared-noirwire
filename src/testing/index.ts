@@ -16,8 +16,14 @@ import {
 export type MemoryVault = VaultRepository & {
   /** While true, every read and write fails as a broken store would. */
   unavailable: boolean;
+  /** While true, reads work and every write fails, as a full or read-only store would. */
+  refuseWrites: boolean;
   /** A change made by another tab or process. */
   writeFromElsewhere(key: string, value: string | null): void;
+  /** The keys that hold a value, for a test to see what was stored. */
+  keys(): string[];
+  /** What is stored under `key`, read at once and outside the contract, for a test to inspect. */
+  peek(key: string): string | null;
 };
 
 export function memoryVault(
@@ -35,12 +41,15 @@ export function memoryVault(
 
   const vault: MemoryVault = {
     unavailable: false,
+    refuseWrites: false,
     async read(key) {
       return vault.unavailable ? { ok: false } : { ok: true, value: items.get(key) ?? null };
     },
     update(key, change) {
       return locks.withLock(`vault:${key}`, async () => {
-        if (vault.unavailable) return { persisted: false, reason: "failed" } as const;
+        if (vault.unavailable || vault.refuseWrites) {
+          return { persisted: false, reason: "failed" } as const;
+        }
         const current = items.get(key) ?? null;
         // A real store reads and writes asynchronously; this yield lets an
         // unserialised update interleave here, which the lock must prevent.
@@ -57,6 +66,8 @@ export function memoryVault(
       return () => void listeners.delete(onChange);
     },
     writeFromElsewhere: store,
+    keys: () => [...items.keys()],
+    peek: (key) => items.get(key) ?? null,
   };
   return vault;
 }

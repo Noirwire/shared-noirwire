@@ -1,10 +1,55 @@
+import type { ChainErrorCode } from "../domain/chainError.js";
 import type { Opens } from "../domain/networkCost.js";
 
-/** Why a money action was refused before anything was signed. */
-export type RefusalReason = "actionPending" | "costUnavailable" | "notRecorded";
+/**
+ * What became of one attempt at a money action, as codes and data. Words are
+ * chosen in presentation (src/presentation/actionResult.ts).
+ *
+ * This is the shared package's `ActionResult`, widened by what the web app's
+ * actions answer today: the refusals each one checks for, `failed` for an
+ * attempt stopped by a venue's or a guard's own refusal, a confirmed or
+ * submitted action whose signature the client did not hand back, and an
+ * opened account found already open on an earlier attempt.
+ */
 
-/** An earlier step of a multi-step action that landed and is paid for, whatever happens next. */
-export type CompletedStep = { step: "accountOpened"; opens: Opens; signature: string };
+/** Why a money action was refused before anything was signed. */
+export type RefusalReason =
+  | "actionPending"
+  | "costUnavailable"
+  | "notRecorded"
+  | "walletLocked"
+  | "keyMismatch"
+  | "portfolioInactive"
+  | "portfolioGone"
+  | "portfolioNotSaved"
+  | "activePortfolioAmount"
+  | "amountAboveZero"
+  | "unknownAsset"
+  | "notPrivate"
+  | "notTransferable"
+  | "sendNotCompleted"
+  | "moreThanOnchain"
+  | "tradingMainnetOnly"
+  | "notTradable"
+  | "earnMainnetOnly";
+
+/** What an action was doing when it stopped with a `failed` result. */
+export type FailureReason =
+  | "fundingFailed"
+  | "privateNotStarted"
+  | "sendFailed"
+  | "noPrice"
+  | "tradeFailed"
+  /** The order after an account opened for it, whose cost is already paid. */
+  | "orderNotPlaced"
+  | "holdingsNotOpened"
+  | "earnFailed";
+
+/**
+ * An earlier step of a multi-step action that landed and is paid for,
+ * whatever happens next. No `signature` when it was found already done.
+ */
+export type CompletedStep = { step: "accountOpened"; opens: Opens; signature?: string };
 
 /** Why the review has to be shown again before anything is sent. */
 export type ReviewChange<Review> =
@@ -28,24 +73,52 @@ type Completed = { completed: readonly CompletedStep[] };
  * moved price replaces, which each action defines.
  */
 export type ActionResult<Review = never> =
-  /** Nothing more was signed or sent. */
-  | ({ kind: "refused"; reason: RefusalReason } & Completed)
+  /** Nothing more was signed or sent. `symbol` names the asset a refusal is about. */
+  | ({ kind: "refused"; reason: RefusalReason; symbol?: string } & Completed)
   | ({ kind: "needsReview"; change: ReviewChange<Review> } & Completed)
   /** Sent, and not yet seen to land. */
-  | { kind: "submitted"; signature: string; lastValidBlockHeight: number }
+  | { kind: "submitted"; signature: string; lastValidBlockHeight?: number }
   /** Sent, and the chain shows it did not land. Nothing of this step moved. */
   | ({ kind: "notLanded" } & Completed)
-  | { kind: "confirmed"; signature: string; settlement: Settlement }
+  | { kind: "confirmed"; signature?: string; settlement: Settlement }
   /** Sent, with no word on whether it landed. It may still land. */
-  | ({ kind: "unknown"; signature?: string; lastValidBlockHeight?: number } & Completed);
+  | ({ kind: "unknown"; signature?: string; lastValidBlockHeight?: number } & Completed)
+  /**
+   * Stopped by a refusal that is not one of the above: a guard's, a
+   * venue's, or the chain's. `cause` when it was one the app has a code
+   * for, `detail` with the refusal's own account otherwise.
+   */
+  | ({
+      kind: "failed";
+      reason: FailureReason;
+      cause?: ChainErrorCode;
+      detail?: string;
+    } & Completed);
+
+/** Every result but the two that mean the action went ahead. */
+export type Unsuccessful<Review = never> = Exclude<
+  ActionResult<Review>,
+  { kind: "confirmed" | "submitted" }
+>;
+
+/** What an action answers that confirms itself and never hands back a transaction still to land. */
+export type Attempt<Review = never> = Exclude<ActionResult<Review>, { kind: "submitted" }>;
+
+export type Refused = Extract<ActionResult, { kind: "refused" }>;
+export type Failed = Extract<ActionResult, { kind: "failed" }>;
 
 const NOTHING_COMPLETED: readonly CompletedStep[] = [];
 
 export function refused(
   reason: RefusalReason,
   completed: readonly CompletedStep[] = NOTHING_COMPLETED,
-): ActionResult {
+): Refused {
   return { kind: "refused", reason, completed };
+}
+
+/** A refusal about one asset, named by `symbol`. */
+export function refusedFor(reason: RefusalReason, symbol: string): Refused {
+  return { kind: "refused", reason, symbol, completed: NOTHING_COMPLETED };
 }
 
 /** Whether the attempt left something that may still land, and so must be settled before the action is repeated. */
@@ -61,6 +134,9 @@ export function completedSteps(result: ActionResult<unknown>): readonly Complete
 /** Whether the attempt moved nothing at all and never can. */
 export function movedNothing(result: ActionResult<unknown>): boolean {
   const ended =
-    result.kind === "refused" || result.kind === "needsReview" || result.kind === "notLanded";
+    result.kind === "refused" ||
+    result.kind === "needsReview" ||
+    result.kind === "notLanded" ||
+    result.kind === "failed";
   return ended && completedSteps(result).length === 0;
 }

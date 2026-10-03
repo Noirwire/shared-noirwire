@@ -1,10 +1,12 @@
 {
   "name": "@noirwire/shared",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "The code that holds keys and checks transactions for NoirWire's apps.",
   "license": "UNLICENSED",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/infrastructure/solana/buffer-polyfill.js"
+  ],
   "files": [
     "dist"
   ],
@@ -41,6 +43,10 @@
       "types": "./dist/infrastructure/index.d.ts",
       "default": "./dist/infrastructure/index.js"
     },
+    "./wallet": {
+      "types": "./dist/wallet/index.d.ts",
+      "default": "./dist/wallet/index.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -50,12 +56,30 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:contract": "vitest run --config vitest.contract.config.ts",
     "prepare": "npm run build",
     "prepack": "npm run build"
   },
+  "peerDependencies": {
+    "@scure/bip39": "1.6.0",
+    "@solana/spl-token": "0.4.15",
+    "@solana/web3.js": "1.99.0",
+    "@zxcvbn-ts/core": "4.2.0",
+    "@zxcvbn-ts/language-common": "4.1.3",
+    "buffer": "6.0.3",
+    "ed25519-hd-key": "2.0.0"
+  },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@scure/bip39": "1.6.0",
+    "@solana/spl-token": "0.4.15",
+    "@solana/web3.js": "1.99.0",
     "@types/node": "^24",
+    "@zxcvbn-ts/core": "4.2.0",
+    "@zxcvbn-ts/language-common": "4.1.3",
+    "buffer": "6.0.3",
+    "ed25519-hd-key": "2.0.0",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.9.9",

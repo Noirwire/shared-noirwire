@@ -35,6 +35,9 @@ const LAYER_VIOLATIONS: Fixture[] = [
   ["src/presentation/send.ts", "../design/tokens.js", "design"],
   ["src/testing/index.ts", "../application/pending.js", "application"],
   ["src/platform.ts", "./application/pending.js", "application"],
+  ["src/infrastructure/rpc.ts", "../wallet/store.js", "wallet"],
+  ["src/application/send.ts", "../wallet/store.js", "wallet"],
+  ["src/presentation/send.ts", "../wallet/market.js", "wallet"],
   // The same targets, spelled so that a pattern on the text would miss them.
   ["src/domain/rule.ts", "./../application/result.js", "application"],
   ["src/domain/rule.ts", "../domain/../application/result.js", "application"],
@@ -57,6 +60,10 @@ const ALLOWED: [file: string, specifier: string][] = [
   ["src/presentation/send.ts", "../domain/format.js"],
   ["src/testing/index.ts", "../platform.js"],
   ["src/application/send.ts", "@solana/web3.js"],
+  ["src/infrastructure/rpc.ts", "buffer"],
+  ["src/wallet/store.ts", "../infrastructure/solana/keys.js"],
+  ["src/wallet/store.ts", "../platform.js"],
+  ["src/wallet/amounts.ts", "../presentation/amount.js"],
 ];
 
 const ESCAPES: [file: string, specifier: string][] = [
@@ -124,4 +131,16 @@ describe("the Buffer ban", () => {
     });
     expect(result?.messages.map((message) => message.ruleId)).toEqual(["no-restricted-globals"]);
   });
+});
+
+describe("the platform globals", () => {
+  it.each(["navigator", "self", "location"])(
+    "refuses %s, which a phone does not have",
+    async (name) => {
+      const [result] = await eslint.lintText(`export const here = ${name};\n`, {
+        filePath: join(ROOT, "src/infrastructure/rpc.ts"),
+      });
+      expect(result?.messages.map((message) => message.ruleId)).toEqual(["no-restricted-globals"]);
+    },
+  );
 });

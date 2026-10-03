@@ -23,6 +23,7 @@ const RESULTS: Record<ActionResult<TradeReview>["kind"], ActionResult<TradeRevie
   notLanded: { kind: "notLanded", completed: [] },
   confirmed: { kind: "confirmed", signature: "sig", settlement: "balancesRead" },
   unknown: { kind: "unknown", completed: [] },
+  failed: { kind: "failed", reason: "tradeFailed", completed: [] },
 };
 
 describe("refused", () => {
@@ -50,7 +51,12 @@ describe("leavesPending", () => {
 describe("movedNothing", () => {
   it("is true only when nothing was sent or nothing landed", () => {
     const harmless = Object.values(RESULTS).filter(movedNothing);
-    expect(harmless.map((result) => result.kind)).toEqual(["refused", "needsReview", "notLanded"]);
+    expect(harmless.map((result) => result.kind)).toEqual([
+      "refused",
+      "needsReview",
+      "notLanded",
+      "failed",
+    ]);
   });
 
   it("is false once an earlier step landed and was paid for", () => {

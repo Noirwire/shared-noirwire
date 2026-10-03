@@ -12,7 +12,7 @@ npm test
 npm run build
 ```
 
-`npm run format` fixes formatting.
+`npm run format` fixes formatting. A change to the chain clients or the guards also runs `npm run test:integration` (a local `solana-test-validator`) and, where it touches a live service's shape, `npm run test:contract`.
 
 ## Commits
 
@@ -38,6 +38,7 @@ Each folder under `src/` may import only what its `README.md` allows:
 | `application/`    | `domain/`, `platform.ts`                 |
 | `infrastructure/` | `domain/`, `application/`, `platform.ts` |
 | `presentation/`   | `domain/`, `application/`, `copy/`       |
+| `wallet/`         | every layer above but `design/`          |
 | `testing/`        | `platform.ts`                            |
 
 Nothing imports from an app, from React, React Native, Next or Expo, or from Node. `npm run lint` enforces this through `eslint-rules/dependency-rule.mjs`, which checks where each import resolves to, and `tests/dependencyRule.test.ts` proves it. If you change the table, change that rule and that test with it.

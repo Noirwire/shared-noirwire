@@ -1,41 +1,30 @@
-import { canReserve, type PendingAction } from "../application/pending.js";
 import { networkCostCopy as copy } from "../copy/networkCost.js";
-import { refusalCopy } from "../copy/refusal.js";
 import { symbolAmount } from "../domain/format.js";
-import type { Opens } from "../domain/networkCost.js";
+import type { NetworkCost, Opens } from "../domain/networkCost.js";
 
-/** How the network cost of one action is met, as its review states it. */
-export type NetworkCostInput =
-  /** The venue pays it, or there is nothing to pay. */
-  | { kind: "covered" }
-  /** The portfolio pays it from its own SOL, worth about `usd` dollars. */
-  | { kind: "ownSol"; usd: number }
-  /** The relayer pays the network and is paid `fee` of the portfolio's cash, for `count` transactions. */
-  | { kind: "relayer"; fee: number; opens: Opens | null; count: number }
-  /** The fee has to come out of the portfolio's cash and it would not have enough. */
-  | { kind: "needsCash"; cash: number; free: number }
-  /** An order too small for the venue to pay for. `smallest` is about what it does pay for, in dollars. */
-  | { kind: "tooSmall"; smallest: number }
-  /** No venue is quoting an order it would pay for. */
-  | { kind: "noPrice" }
-  /** It cannot be met at this moment. */
-  | { kind: "unavailable" };
-
-/** Everything that decides the network cost row of a review and whether it can be confirmed. */
+/** Everything that decides the network cost of a review and whether it can be confirmed. */
 export type NetworkCostState = {
   /** Null while the cost is still being worked out. */
-  cost: NetworkCostInput | null;
-  /** The pending action of the intent this review would confirm. */
-  pending: PendingAction;
+  cost: NetworkCost | null;
+  /** Whether the portfolio's last action still holds confirming back. */
+  pending: { blocked: boolean };
   /** True from the press of Confirm until the action answers. */
   submitting: boolean;
+  /** An Earn withdrawal, which pays out of the USDC it returns. */
+  withdrawing?: boolean;
 };
 
 export type NetworkCostView = {
   label: string;
+  /** The one figure a review's list of terms shows. */
   value: string;
   tone: "neutral" | "warning";
+  /** Said under the terms: why the cost is as large as it is, or why it cannot be met. */
   explanation: readonly string[];
+  /** A cost the portfolio's cash cannot cover: the sentence around the way to move money in. */
+  moveMoney: { before: string; link: string; after: string } | null;
+  /** A cost the relayer pays: what it is, behind a disclosure. */
+  details: { summary: string; body: string } | null;
   confirmDisabled: boolean;
 };
 
@@ -50,18 +39,18 @@ function feeFigure(fee: number): string {
   return fee < ONE_CENT ? copy.underOneCent : symbolAmount("USDC", fee);
 }
 
-function payable(value: string, explanation: readonly string[] = []): NetworkCostView {
-  return { label: copy.label, value, tone: "neutral", explanation, confirmDisabled: false };
+function payable(cost: NetworkCost): boolean {
+  return cost.kind === "covered" || cost.kind === "relayer" || cost.kind === "ownSol";
 }
 
-function notPayable(reason: string): NetworkCostView {
-  return {
-    label: copy.label,
-    value: copy.notAvailable,
-    tone: "warning",
-    explanation: [reason],
-    confirmDisabled: true,
-  };
+function figure(cost: NetworkCost | null): string {
+  if (cost === null) return copy.checking;
+  if (cost.kind === "covered") return copy.covered;
+  if (cost.kind === "relayer") return feeFigure(cost.fee);
+  if (cost.kind === "ownSol") {
+    return copy.fromOwnSol(cost.usd < ONE_CENT ? null : cost.usd.toFixed(2));
+  }
+  return copy.notAvailable;
 }
 
 function openingReason(opens: Opens | null, count: number): readonly string[] {
@@ -69,50 +58,75 @@ function openingReason(opens: Opens | null, count: number): readonly string[] {
   return [count > 1 ? copy.openingSeveral(count) : copy.opening[opens]];
 }
 
-function costRow(cost: NetworkCostInput | null): NetworkCostView {
-  if (cost === null) {
-    return {
-      label: copy.label,
-      value: copy.checking,
-      tone: "neutral",
-      explanation: [],
-      confirmDisabled: true,
-    };
-  }
+function relayerDetails(
+  cost: Extract<NetworkCost, { kind: "relayer" }>,
+  withdrawing: boolean,
+): NetworkCostView["details"] {
+  const several = cost.count > 1;
+  const after =
+    cost.opens === "holding"
+      ? several
+        ? copy.relayer.openedFirstSeveral
+        : copy.relayer.openedFirst
+      : copy.relayer.sameTransaction;
+  return {
+    summary: copy.relayer.summary(feeFigure(cost.fee)),
+    body: `${copy.relayer.paysBack(cost.fee.toFixed(6))}${withdrawing ? copy.relayer.fromWithdrawal : copy.relayer.fromCash}${after}${copy.relayer.movesWithMarket}`,
+  };
+}
+
+function notes(
+  cost: NetworkCost | null,
+  withdrawing: boolean,
+): Pick<NetworkCostView, "explanation" | "moveMoney" | "details"> {
+  const none = { explanation: [], moveMoney: null, details: null };
+  if (cost === null || cost.kind === "covered" || cost.kind === "ownSol") return none;
   switch (cost.kind) {
-    case "covered":
-      return payable(copy.covered);
-    case "ownSol":
-      return payable(copy.fromOwnSol(cost.usd < ONE_CENT ? null : cost.usd.toFixed(2)));
     case "relayer":
-      return payable(feeFigure(cost.fee), openingReason(cost.opens, cost.count));
+      return {
+        explanation: openingReason(cost.opens, cost.count),
+        moveMoney: null,
+        details: relayerDetails(cost, withdrawing),
+      };
     case "needsCash":
-      return notPayable(
-        copy.needsCash(feeFigure(cost.cash), cost.cash < ONE_CENT, symbolAmount("USDC", cost.free)),
-      );
+      return {
+        ...none,
+        moveMoney: {
+          before: copy.needsCash(
+            feeFigure(cost.cash),
+            cost.cash < ONE_CENT,
+            symbolAmount("USDC", cost.free),
+          ),
+          link: copy.moveMoneyHere,
+          after: copy.orSmaller,
+        },
+      };
     case "tooSmall":
-      return notPayable(copy.tooSmall(symbolAmount("USDC", cost.smallest)));
+      return { ...none, explanation: [copy.tooSmall(symbolAmount("USDC", cost.smallest))] };
     case "noPrice":
-      return notPayable(copy.noPrice);
+      return { ...none, explanation: [copy.noPrice] };
     case "unavailable":
-      return notPayable(copy.notNow);
+      return { ...none, explanation: [copy.notNow] };
   }
 }
 
 /**
- * The network cost row of a money review, and whether its Confirm is
- * enabled. A component renders this and forwards the press; it decides
- * nothing about whether the action can go ahead.
+ * The network cost of a money review, and whether its Confirm is enabled. A
+ * component renders this and forwards the press; it decides nothing about
+ * whether the action can go ahead.
  */
-export function networkCostView({ cost, pending, submitting }: NetworkCostState): NetworkCostView {
-  const row = costRow(cost);
-  if (!canReserve(pending)) {
-    return {
-      ...row,
-      tone: "warning",
-      explanation: [...row.explanation, refusalCopy.actionPending],
-      confirmDisabled: true,
-    };
-  }
-  return submitting ? { ...row, confirmDisabled: true } : row;
+export function networkCostView({
+  cost,
+  pending,
+  submitting,
+  withdrawing = false,
+}: NetworkCostState): NetworkCostView {
+  const canPay = cost !== null && payable(cost);
+  return {
+    label: copy.label,
+    value: figure(cost),
+    tone: cost === null || canPay ? "neutral" : "warning",
+    ...notes(cost, withdrawing),
+    confirmDisabled: !canPay || pending.blocked || submitting,
+  };
 }

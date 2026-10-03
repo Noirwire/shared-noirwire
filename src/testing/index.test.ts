@@ -35,6 +35,15 @@ describe("memoryVault", () => {
     expect(await vault.read("wallet")).toEqual({ ok: true, value: "sealed" });
   });
 
+  it("can refuse writes while reads still work, and lists what it holds", async () => {
+    const vault = memoryVault({ wallet: "sealed" });
+    vault.refuseWrites = true;
+    expect(await vault.update("wallet", increment)).toEqual({ persisted: false, reason: "failed" });
+    expect(await vault.read("wallet")).toEqual({ ok: true, value: "sealed" });
+    expect(vault.keys()).toEqual(["wallet"]);
+    expect(vault.peek("wallet")).toBe("sealed");
+  });
+
   it("loses no update when many run at once", async () => {
     const vault = memoryVault();
     await Promise.all(Array.from({ length: 25 }, () => vault.update("count", increment)));

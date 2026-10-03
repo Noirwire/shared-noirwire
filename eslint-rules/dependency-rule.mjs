@@ -5,6 +5,10 @@ import path from "node:path";
  * The dependency rule, checked on where an import resolves to rather than on
  * how it is spelled. Each layer lists the layers it may import. `platform` is
  * src/platform.ts; every other layer is a folder under src/.
+ *
+ * `wallet` is where the keys live (sealing, derivation, the stored record and
+ * its session) and where the catalog is bound to the price feeds. It is the
+ * one layer that composes the others, and nothing imports it.
  */
 export const MAY_IMPORT = {
   domain: [],
@@ -14,12 +18,18 @@ export const MAY_IMPORT = {
   application: ["domain", "platform"],
   infrastructure: ["domain", "application", "platform"],
   presentation: ["domain", "application", "copy"],
+  wallet: ["domain", "application", "infrastructure", "presentation", "copy", "platform"],
   testing: ["platform"],
 };
 
 const FRAMEWORK =
   /^(react|react-dom|react-native|next|expo|@expo|@react-native|@noirwire\/shared)($|[-/])|^@\//;
-const NODE = new Set(builtinModules);
+/**
+ * `buffer` is the npm package of that name, which every Solana library
+ * already imports, not Node's module: a bundler must see one implementation,
+ * so it is imported by name.
+ */
+const NODE = new Set(builtinModules.filter((name) => name !== "buffer"));
 
 function isNodeBuiltin(specifier) {
   return specifier.startsWith("node:") || NODE.has(specifier.split("/")[0]);
