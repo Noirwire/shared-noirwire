@@ -50,9 +50,6 @@ const NETWORKS: Record<SolanaNetwork, NetworkProfile> = {
   },
 };
 
-/** The public devnet RPC, for a server or a script on devnet with no provider of its own. Mainnet has none, on purpose. */
-export const DEVNET_RPC_URL = "https://api.devnet.solana.com";
-
 function network(): SolanaNetwork {
   return getPlatform().env.network === "mainnet-beta" ? "mainnet" : "devnet";
 }

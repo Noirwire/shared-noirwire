@@ -8,7 +8,7 @@ const nameStays = (place: string) => `Give it a name only you see. The name neve
 
 /** What is not written on chain, and where it stays: "in this browser" or "on this phone". */
 const staysLocal = (place: string) =>
-  `These stay ${place}. Balance reads and trades are relayed by NoirWire's server, so the network provider, Jupiter and MagicBlock see this address but never your IP address. The relay stores and logs nothing; you have to trust it not to.`;
+  `These stay ${place}. Balance reads and trades go through NoirWire's own server, so the network provider, Jupiter and MagicBlock see this address but never your IP address. The server keeps only a basic record that a request was made, not your address or what's in it, but you have to trust it keeps nothing more.`;
 
 /** Home's combined total is added up only where the wallet is kept. */
 const addedUpHere = (place: string) =>

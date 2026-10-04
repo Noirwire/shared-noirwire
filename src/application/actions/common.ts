@@ -60,6 +60,22 @@ export function openSession<K extends Signer>(open: OpenSession<K>): Session<K> 
   return "refused" in opened ? refused(opened.refused) : opened;
 }
 
+/**
+ * A session's portfolio by id and the signer for it, or why the action
+ * cannot proceed. Any portfolio, archived included: unlike `activePortfolio`,
+ * this does not refuse one that has been archived.
+ */
+export function sessionPortfolioSigner<K extends Signer>(
+  session: Session<K>,
+  id: string,
+): Refused | { portfolio: Portfolio; owner: K } {
+  const portfolio = session.wallet.portfolios.find((entry) => entry.id === id);
+  if (!portfolio) return refused("portfolioGone");
+  const owner = session.portfolioSigner(portfolio);
+  if (!owner) return refused(session.refusal());
+  return { portfolio, owner };
+}
+
 const NOTHING: readonly CompletedStep[] = [];
 
 /** A transaction that was sent with no word on whether it landed, or null for any other error. */

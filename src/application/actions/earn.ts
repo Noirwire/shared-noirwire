@@ -11,6 +11,7 @@ import {
   ended,
   failedOf,
   openSession,
+  sessionPortfolioSigner,
   unknownOf,
   withCashMoved,
   type ActionDeps,
@@ -108,10 +109,9 @@ export async function earn<K extends Signer>(
   if (!positive(amount)) return refused("amountAboveZero");
   const session = openSession(deps.session);
   if ("kind" in session) return session;
-  const portfolio = session.wallet.portfolios.find((entry) => entry.id === id);
-  if (!portfolio) return refused("portfolioGone");
-  const owner = session.portfolioSigner(portfolio);
-  if (!owner) return refused(session.refusal());
+  const found = sessionPortfolioSigner(session, id);
+  if ("kind" in found) return found;
+  const { portfolio, owner } = found;
 
   const cost = costInCash(network?.relayerFeeRaw);
   const entry = {

@@ -7,6 +7,7 @@ import {
   ended,
   failedOf,
   openSession,
+  sessionPortfolioSigner,
   unknownOf,
   type ActionDeps,
   type Refresh,
@@ -181,10 +182,9 @@ export async function openHoldings<K extends Signer, S>(
   const { portfolioId: id, symbols, reviewedFeeRaw } = input;
   const session = openSession(deps.session);
   if ("kind" in session) return session;
-  const portfolio = session.wallet.portfolios.find((entry) => entry.id === id);
-  if (!portfolio) return refused("portfolioGone");
-  const owner = session.portfolioSigner(portfolio);
-  if (!owner) return refused(session.refusal());
+  const found = sessionPortfolioSigner(session, id);
+  if ("kind" in found) return found;
+  const { portfolio, owner } = found;
   const reservation = await deps.pending.reserve(
     id,
     portfolio.address,

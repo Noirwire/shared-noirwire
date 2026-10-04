@@ -3,7 +3,7 @@ import { notSaved } from "./wallet.js";
 
 /** `where` is the platform's place for the keys: "in this browser" or "on this phone". */
 const keysStay = (where: string) =>
-  `Your keys and recovery phrase stay ${where}. Network requests are relayed by NoirWire's server, which stores and logs nothing.`;
+  `Your keys and recovery phrase stay ${where}. Network requests go through NoirWire's own server, which keeps only a basic record that a request was made, not your address or what's in it.`;
 
 /** `platformNoun` names the device: "device" on the web, "phone" on mobile. */
 const onlyWayBack = (platformNoun: string) =>

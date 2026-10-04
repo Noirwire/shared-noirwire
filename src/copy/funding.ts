@@ -1,6 +1,10 @@
 import { plural } from "./plural.js";
 import { stillWorkingOnAction } from "./waiting.js";
 
+/** Said on both platforms under the private transfer amount field. */
+const privateTransferFooter =
+  "A private transfer breaks the onchain link between your funding wallet and this portfolio. It does not hide the amount, and the settlement service sees both addresses. It does not see your IP address: the request goes through NoirWire's own server first, which keeps only a basic record that a request was made, not your address or what's in it. Privacy from the chain, not from the service.";
+
 /** Moving money from the funding wallet into a portfolio, privately or in public. */
 export const fundingCopy = {
   titlePrivate: "Fund portfolio privately",
@@ -69,8 +73,7 @@ export const fundingCopy = {
   settling:
     "The transfer was accepted but has not landed yet. Queued transfers settle on their own schedule, so this is normal rather than a failure. This portfolio’s balance will show it once it arrives.",
 
-  footerPrivate:
-    "A private transfer breaks the onchain link between your funding wallet and this portfolio. It does not hide the amount, and the settlement service sees both addresses. It does not see your IP address: the request is relayed by NoirWire's server, which stores and logs nothing. Privacy from the chain, not from the service.",
+  footerPrivate: privateTransferFooter,
   footerPublic: "This is an ordinary, fully public onchain transfer.",
 } as const;
 
@@ -97,8 +100,7 @@ export const mobileFundingCopy = {
   costs: (minimum: string) =>
     `Both fees are charged in USDC by the settlement service, on top of the amount. The relay fee pays the network cost. The smallest transfer is ${minimum}, and it usually arrives within seconds.`,
   review: "Review",
-  footer:
-    "A private transfer breaks the on-chain link between your funding wallet and this portfolio. It does not hide the amount, and the settlement service sees both addresses. It does not see your IP address: the request is relayed by NoirWire's server, which stores and logs nothing. Privacy from the chain, not from the service.",
+  footer: privateTransferFooter,
 
   empty: "Your funding wallet is empty.",
   emptyDetail: "Send USDC on Solana to your funding address first.",

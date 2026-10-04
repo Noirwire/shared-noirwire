@@ -83,10 +83,10 @@ function strings(value: unknown): string[] {
 describe("per-platform copy", () => {
   it("keeps the web's wording exactly", () => {
     expect(onboardingCopy.welcome.trustMainnet).toBe(
-      "Your keys and recovery phrase stay in this browser. Network requests are relayed by NoirWire's server, which stores and logs nothing. Tracker issuers keep control over their own tokens. The risks are set out in Settings.",
+      "Your keys and recovery phrase stay in this browser. Network requests go through NoirWire's own server, which keeps only a basic record that a request was made, not your address or what's in it. Tracker issuers keep control over their own tokens. The risks are set out in Settings.",
     );
     expect(onboardingCopy.welcome.trustTestNetwork).toBe(
-      "Your keys and recovery phrase stay in this browser. Network requests are relayed by NoirWire's server, which stores and logs nothing. Keys are real; funds are Solana devnet SOL and a test USDC-alike token.",
+      "Your keys and recovery phrase stay in this browser. Network requests go through NoirWire's own server, which keeps only a basic record that a request was made, not your address or what's in it. Keys are real; funds are Solana devnet SOL and a test USDC-alike token.",
     );
     expect(onboardingCopy.phrase.intro).toBe(
       "These words are the only way back into your money if this device is lost. Write them on paper. Anyone who sees them can take everything.",
@@ -98,7 +98,7 @@ describe("per-platform copy", () => {
 
   it("says the same on the phone with the phone's words", () => {
     expect(mobileOnboardingCopy.welcome.trust).toBe(
-      "Your keys and recovery phrase stay on this phone. Network requests are relayed by NoirWire's server, which stores and logs nothing. Tracker issuers keep control over their own tokens.",
+      "Your keys and recovery phrase stay on this phone. Network requests go through NoirWire's own server, which keeps only a basic record that a request was made, not your address or what's in it. Tracker issuers keep control over their own tokens.",
     );
     expect(mobileOnboardingCopy.phrase.intro).toBe(
       "These words are the only way back into your money if this phone is lost. Write them on paper. Anyone who sees them can take everything.",
@@ -119,7 +119,7 @@ describe("per-platform copy", () => {
       "Give it a name only you see. The name never leaves this browser.",
     );
     expect(portfolioCopy.observer.relayed).toBe(
-      "These stay in this browser. Balance reads and trades are relayed by NoirWire's server, so the network provider, Jupiter and MagicBlock see this address but never your IP address. The relay stores and logs nothing; you have to trust it not to.",
+      "These stay in this browser. Balance reads and trades go through NoirWire's own server, so the network provider, Jupiter and MagicBlock see this address but never your IP address. The server keeps only a basic record that a request was made, not your address or what's in it, but you have to trust it keeps nothing more.",
     );
     expect(pendingActionCopy.notRecorded).toBe(
       "This could not be saved in this browser, so nothing was sent.",

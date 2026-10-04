@@ -93,7 +93,7 @@ export const settingsCopy = {
     tradesPublic:
       "Trades are public on chain. Private funding makes them harder to link back to your known wallet. It does not make them invisible: amounts and timing may still be inferable.",
     relay:
-      "Your keys and recovery phrase never leave this browser. Network requests are relayed by NoirWire's server, so the network provider, Jupiter and MagicBlock never see your IP address. The relay stores and logs nothing, but it is a relay you have to trust not to log. Those providers still see the addresses themselves, and requests made moments apart can let them guess that two addresses belong together.",
+      "Your keys and recovery phrase never leave this browser. Network requests go through NoirWire's own server, so the network provider, Jupiter and MagicBlock never see your IP address. The server keeps only a basic record that a request happened and whether it worked, a short-lived count to stop overuse, and an anonymous pass that isn't tied to your name or wallet and changes every day. You have to trust it keeps nothing more. Those providers still see the addresses themselves, and requests made moments apart can let them guess that two addresses belong together.",
     relayer:
       "Actions paid through NoirWire's relayer show the same relayer address and payment account for every NoirWire portfolio. An observer can tell that a portfolio uses NoirWire and can group NoirWire portfolios as a set. That does not link them to a person, to your funding wallet or to each other directly.",
     phraseMainnet:
@@ -195,8 +195,8 @@ export const mobileSettingsCopy = {
         name: "NoirWire's server",
         lines: [
           "Sees your IP address and, in transit, every address the app asks about.",
-          "It stores and logs nothing. You have to trust that; you cannot check it.",
-          "It could link your funding wallet to a portfolio if it logged. It does not.",
+          "Keeps only a basic record that a request happened and whether it worked, a short-lived count to stop overuse, and an anonymous pass that isn't tied to your name or wallet and changes every day. You have to trust it keeps nothing more.",
+          "It could link your funding wallet to a portfolio if it kept more than that. It does not.",
         ],
       },
       {

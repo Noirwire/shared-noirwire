@@ -33,7 +33,6 @@ export { assetHandle } from "./solana/assets.js";
 export { getCashBalances, getPortfolioBalances } from "./solana/balances.js";
 export { connection } from "./solana/client.js";
 export {
-  DEVNET_RPC_URL,
   type EnvSettings,
   PRICE_HISTORY_API_URL,
   envFrom,

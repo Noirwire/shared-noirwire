@@ -25,6 +25,7 @@ import {
 } from "./relayed.js";
 import { recordForSending, signForSending, type StillUnlocked } from "./signerAccounts.js";
 import { sendAndSettle, signatureOf } from "./settlement.js";
+import type { RelayerQuote } from "../../application/ports.js";
 import { ChainError, isChainError } from "../../domain/chainError.js";
 import { UnknownOutcomeError } from "./swap/types.js";
 import { ataFor } from "./tokens.js";
@@ -447,13 +448,6 @@ async function estimate(transaction: VersionedTransaction, feePayer: PublicKey):
   }
   return BigInt(answer.fee_in_token);
 }
-
-export type RelayerQuote = {
-  /** What the relayer charges for this action, in raw USDC units. */
-  feeRaw: bigint;
-  /** Whether that includes opening a token account, which is most of the cost when it does. */
-  opensAccount: boolean;
-};
 
 /**
  * Prices an action with the relayer, signing nothing. Throws when there is
