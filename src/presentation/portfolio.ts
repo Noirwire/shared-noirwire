@@ -301,14 +301,14 @@ function actions(reads: ScreenReads, portfolio: Portfolio, updatedAt: number | n
   const holdsAnything = portfolio.holdings.some((holding) => holding.amount > 0);
   const primary: ActionButton =
     cash <= 0
-      ? { label: detail.moveMoneyHere, action: { to: "fund" } }
+      ? { label: detail.moveToPortfolio, action: { to: "fund" } }
       : portfolio.pie
         ? { label: detail.invest, action: { to: "invest" } }
         : { label: detail.buyTracker, action: { to: "buy" } };
   const quiet: ActionButton[] = [
     { label: detail.receive, action: { to: "receive" } },
     { label: detail.send, action: { to: "send" }, disabled: !holdsAnything },
-    ...(cash > 0 ? [{ label: detail.addMoney, action: { to: "fund" } } as const] : []),
+    ...(cash > 0 ? [{ label: detail.moveToPortfolio, action: { to: "fund" } } as const] : []),
   ];
   const rebalance =
     portfolio.pie &&
@@ -367,7 +367,7 @@ export function portfolioView(
             value: inEarn === null ? commonCopy.unavailable : usd(inEarn),
           },
     valueUnavailable: !valued,
-    cashLine: detail.cashToInvest(tokenAmount(cash)),
+    cashLine: detail.readyToInvest(tokenAmount(cash)),
     archived: archived
       ? {
           title: detail.archivedTitle,
@@ -398,8 +398,8 @@ export function portfolioView(
             button:
               cash > 0
                 ? { label: detail.addFirstTracker, action: { to: "buy" } }
-                : { label: detail.moveMoneyHere, action: { to: "fund" } },
-            caption: cash > 0 ? null : detail.addMoneyFirst,
+                : { label: detail.moveToPortfolio, action: { to: "fund" } },
+            caption: cash > 0 ? null : detail.moveMoneyFirst,
           }
         : null,
     activity: {

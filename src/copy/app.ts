@@ -1,8 +1,8 @@
 /** What frames every screen: navigation, the network banner and gate, and the status pages. */
 export const appCopy = {
   name: "NoirWire",
-  description: "Purpose-based private portfolios for crypto and tokenized stocks.",
-  installDescription: "Invest in tokenized US stocks from a wallet only you hold.",
+  description: "Private portfolios for US stock trackers.",
+  installDescription: "Invest in US stock trackers from a wallet only you hold.",
 
   nav: {
     home: "Home",
@@ -28,6 +28,8 @@ export const appCopy = {
     wrongNetwork: (network: string) =>
       `NoirWire is not connected to ${network} as it should be. Your money has not moved, and nothing can be sent until this is fixed. Try again later.`,
     unreachable: "We can't show your balances right now. Your money has not moved. Try again.",
+    /** Said to someone with no wallet yet, or with one still locked: there are no balances to speak of. */
+    cannotReach: "Can't reach NoirWire. Check your connection and try again.",
     retry: "Try again",
   },
 

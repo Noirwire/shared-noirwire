@@ -51,7 +51,7 @@ describe("what a refused action says", () => {
   it("names the asset a refusal is about", () => {
     expect(refusalMessage(refusedFor("unknownAsset", "DOGE"))).toBe("Unknown asset: DOGE.");
     expect(refusalMessage(refusedFor("notPrivate", "SOL"))).toBe(
-      "SOL cannot be funded privately. Use a supported token.",
+      "SOL cannot be moved privately. Use a supported token.",
     );
     expect(refusalMessage(refusedFor("notTransferable", "DOGE"))).toBe(
       "DOGE cannot be transferred.",

@@ -5,8 +5,8 @@ import { marketsCopy, mobileMarketsCopy } from "../copy/markets.js";
 import { portfolioCopy } from "../copy/portfolio.js";
 import { tradeCopy } from "../copy/trade.js";
 import type { AppPlatform } from "../domain/appPlatform.js";
-import { shares, usd } from "../domain/format.js";
-import type { PriceRange } from "../domain/priceRanges.js";
+import { dateAndTime, shares, sinceDate, usd } from "../domain/format.js";
+import { RANGE_SPAN_MS, type PriceRange } from "../domain/priceRanges.js";
 import type { Wallet } from "../domain/wallet.js";
 
 type Listed = { symbol: string; name: string; issuer?: string };
@@ -78,11 +78,23 @@ export type MarketsState = {
   /** The wallet's watchlist, or null for a visitor. */
   watchlist: readonly string[] | null;
   updatedAt: number | null;
+  /** Prices are being read for the first time, so having none yet is not a failure. */
+  loading?: boolean;
   platform: AppPlatform;
 };
 
+/**
+ * The quiet notice that prices could not be read or have aged out, from the
+ * same reading Home goes by: `updatedAt` is null when there is no live price.
+ */
+function staleNotice(state: { updatedAt: number | null; loading?: boolean }): string | null {
+  return state.updatedAt === null && !state.loading ? marketsCopy.stale : null;
+}
+
 export type MarketsView = {
   title: string;
+  /** Prices may be out of date. Null while they are live or still loading. */
+  stale: string | null;
   search: { label: string; placeholder: string; clear: string };
   searching: { count: string; rows: TrackerRowView[]; empty: string | null } | null;
   shelves: Shelf[];
@@ -154,6 +166,7 @@ export function marketsView(reads: ScreenReads, state: MarketsState): MarketsVie
 
   return {
     title: marketsCopy.desktopTitle,
+    stale: staleNotice(state),
     search: {
       label: mobile ? mobileMarketsCopy.searchLabel : marketsCopy.searchLabel,
       placeholder: marketsCopy.searchPlaceholder,
@@ -204,17 +217,33 @@ export type TrackerView =
   | {
       kind: "tracker";
       symbol: string;
+      /** The company or fund's name, the first line. */
       name: string;
+      /** The second line: "NVIDIA tracker · NVDAx". */
       caption: string;
+      /** The third line: what it follows, and that no share is owned. */
+      follows: string;
       star: { watched: boolean; label: string } | null;
       price:
         { live: true; figure: string; tag: string } | { live: false; figure: string; note: string };
       change: (ChangeView & { caption: string }) | null;
+      /** That the price above is not the order's: the final one is shown before buying. */
       orderNote: string;
+      /** About the smallest order that is placed. Null for a tracker no longer offered to buy. */
+      minimum: string | null;
+      /** Prices may be out of date. Null while they are live or still loading. */
+      stale: string | null;
       chart:
         | { kind: "loading"; text: string }
         | { kind: "none"; text: string }
-        | { kind: "ready"; points: number[]; label: string; source: string };
+        | {
+            kind: "ready";
+            points: number[];
+            label: string;
+            source: string;
+            high: { label: string; value: string };
+            low: { label: string; value: string };
+          };
       ranges: { value: PriceRange; label: string };
       holding: {
         title: string;
@@ -228,9 +257,10 @@ export type TrackerView =
         lines: string[];
         notOffered: string;
         retired: string | null;
-        readRisks: string;
         issuerDetails: string;
       };
+      /** Behind "Read the risks": what the issuer can do to the tracker. */
+      risks: { title: string; lines: string[] };
       actions: TrackerAction[];
       bottomNote: string | null;
       offline: string | null;
@@ -244,8 +274,44 @@ export type TrackerState = {
   online: boolean;
   range: PriceRange;
   history: PriceHistory;
+  /** About the smallest order that is placed, in dollars: the figure the trade sheet holds an order to. */
+  smallestOrderUsd: number;
+  /** Prices are being read for the first time, so having none yet is not a failure. */
+  loading?: boolean;
   platform: AppPlatform;
 };
+
+/** The highest and the lowest price of a series. */
+export function chartHighLow(points: readonly number[]): { high: number; low: number } {
+  return { high: Math.max(...points), low: Math.min(...points) };
+}
+
+/**
+ * The point under a finger held on the chart: `x` is how far across the
+ * chart it is, from 0 at the left edge to 1 at the right. Answers with the
+ * point's place in the series, its price and its date.
+ *
+ * A series carries prices and no times. Its points are evenly spaced over
+ * the range and the last is from when the series was read (`readAt`), so the
+ * date is worked out from those two. A month's points are a day apart and
+ * show a date; the shorter ranges show the time too. Null for a series too
+ * short to draw.
+ */
+export function chartReadout(
+  points: readonly number[],
+  x: number,
+  series: { range: PriceRange; readAt: number },
+): { index: number; price: string; date: string } | null {
+  if (points.length < 2) return null;
+  const last = points.length - 1;
+  const index = Math.round(Math.min(Math.max(x, 0), 1) * last);
+  const at = series.readAt - ((last - index) * RANGE_SPAN_MS[series.range]) / last;
+  return {
+    index,
+    price: usd(points[index]),
+    date: series.range === "1M" ? sinceDate(at) : dateAndTime(at),
+  };
+}
 
 function spokenDollars(amount: number) {
   const [whole, cents] = amount.toFixed(2).split(".");
@@ -256,13 +322,16 @@ function chartOf(state: TrackerState): Extract<TrackerView, { kind: "tracker" }>
   const { history, range } = state;
   const detail = marketsCopy.detail;
   if (history.status === "loading") return { kind: "loading", text: detail.loadingHistory };
-  if (history.status === "none") return { kind: "none", text: detail.noChart(range) };
+  if (history.status === "none") return { kind: "none", text: detail.noChart };
   const first = history.points[0];
   const last = history.points[history.points.length - 1];
   const percent = ((last - first) / first) * 100;
   const rangeName = detail.rangeName[range];
+  const { high, low } = chartHighLow(history.points);
   return {
     kind: "ready",
+    high: { label: detail.high, value: usd(high) },
+    low: { label: detail.low, value: usd(low) },
     points: history.points,
     label: detail.chartLabel(
       rangeName.charAt(0).toUpperCase() + rangeName.slice(1),
@@ -318,7 +387,8 @@ export function trackerView(reads: ScreenReads, state: TrackerState): TrackerVie
     kind: "tracker",
     symbol,
     name: entry.name,
-    caption: marketsCopy.issuerLine(symbol, entry.issuer),
+    caption: detail.trackerLine(entry.name, symbol),
+    follows: detail.follows(entry.name),
     star: wallet
       ? {
           watched: wallet.watchlist.includes(symbol),
@@ -326,10 +396,14 @@ export function trackerView(reads: ScreenReads, state: TrackerState): TrackerVie
         }
       : null,
     price: live
-      ? { live: true, figure: usd(entry.price), tag: detail.indicative }
+      ? { live: true, figure: usd(entry.price), tag: detail.approximate }
       : { live: false, figure: marketsCopy.atReview, note: detail.priceUnavailable },
     change: live ? { ...changeView(entry.change24h), caption: detail.past24h } : null,
-    orderNote: live ? detail.liveNote : detail.quoteNote,
+    orderNote: detail.finalPrice,
+    minimum: entry.retired
+      ? null
+      : detail.smallestOrder(usd(state.smallestOrderUsd).replace(/\.00$/, "")),
+    stale: staleNotice(state),
     chart: chartOf(state),
     ranges: { value: state.range, label: detail.rangeLabel },
     holding: visitor
@@ -355,12 +429,12 @@ export function trackerView(reads: ScreenReads, state: TrackerState): TrackerVie
         },
     about: {
       title: detail.aboutAndRisk,
-      lines: [detail.aboutTracker(symbol, entry.name), detail.issuerControl, detail.dividends],
+      lines: [detail.aboutTracker(symbol, entry.name), detail.publicTrades, detail.dividends],
       notOffered: tradeCopy.tracker.notOffered,
       retired: entry.retired ? detail.retired(symbol) : null,
-      readRisks: detail.readRisks,
       issuerDetails: detail.issuerDetails,
     },
+    risks: { title: detail.readRisks, lines: [detail.issuerPowers] },
     actions,
     bottomNote:
       !visitor && portfolios.length > 0 && entry.retired && holders.length === 0

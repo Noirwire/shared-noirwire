@@ -97,7 +97,7 @@ function notes(
             cost.cash < ONE_CENT,
             symbolAmount("USDC", cost.free),
           ),
-          link: copy.moveMoneyHere,
+          link: copy.moveToPortfolio,
           after: copy.orSmaller,
         },
       };

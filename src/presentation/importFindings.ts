@@ -46,17 +46,30 @@ export type ImportSourceOption = {
   captions: { text: string; tone: "dim" | "faint" | "safe" }[];
 };
 
+/** The set of addresses a phrase with nothing found opens: NoirWire's own. */
+const NEW_WALLET_SCHEME: DerivationScheme = "app";
+
 export type ImportSourceView = {
   options: ImportSourceOption[];
   /** Preselected when exactly one set shows anything on chain. */
   preselected: ImportSourceChoice | null;
+  /**
+   * Set when neither set of addresses shows anything: there is nothing to
+   * choose between, so the screen is not shown. The import goes on with
+   * `scheme`, and `line` is said in its place.
+   */
+  skipped: { scheme: DerivationScheme; line: string } | null;
 };
 
 export function importSourceView(resolution: ImportResolution): ImportSourceView {
   const usedMark = (scheme: DerivationScheme) =>
     resolution.scheme === scheme ? [{ text: copy.used, tone: "safe" as const }] : [];
+  const nothingFound = !resolution.app.active && !resolution.walletDefault.active;
   return {
     preselected: resolution.scheme,
+    skipped: nothingFound
+      ? { scheme: NEW_WALLET_SCHEME, line: onboardingCopy.import.newEmptyWallet }
+      : null,
     options: [
       {
         choice: "app",
@@ -107,6 +120,8 @@ export type LookFurtherView = {
   action: string | null;
   /** What to show while it runs. */
   waiting: string | null;
+  /** Why Continue cannot be pressed, while the scan runs. Null when it can. */
+  continuePaused: string | null;
   /** How the last one ended. */
   note: { text: string; tone: "safe" | "dim" | "danger" } | null;
 };
@@ -127,13 +142,19 @@ export function lookFurtherView(
   const words = onboardingCopy.import.lookFurther;
   switch (state.status) {
     case "idle":
-      return { action: words.action, waiting: null, note: null };
+      return { action: words.action, waiting: null, continuePaused: null, note: null };
     case "looking":
-      return { action: null, waiting: words.looking, note: null };
+      return {
+        action: null,
+        waiting: words.looking,
+        continuePaused: words.continuePaused,
+        note: null,
+      };
     case "failed":
       return {
         action: words.action,
         waiting: null,
+        continuePaused: null,
         note: { text: words.failed, tone: "danger" },
       };
     case "done": {
@@ -141,6 +162,7 @@ export function lookFurtherView(
       return {
         action: words.action,
         waiting: null,
+        continuePaused: null,
         note:
           more > 0
             ? { text: words.found(more), tone: "safe" }

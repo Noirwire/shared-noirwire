@@ -1,4 +1,5 @@
 import { wordlist } from "@scure/bip39/wordlists/english";
+import { MIN_PASSWORD_LENGTH } from "../domain/wallet.js";
 
 /**
  * How hard a wallet password is to guess, which is the whole of the
@@ -19,7 +20,6 @@ import { wordlist } from "@scure/bip39/wordlists/english";
  * checker itself and runs the same rule with `assessPasswordWith`.
  */
 
-const MIN_PASSWORD_LENGTH = 12;
 const MIN_GUESSES_LOG10 = 12;
 /** Stands in for the checker while a password is too short to need one, so nothing is loaded for it. */
 const NO_CHECKER: PasswordChecker = { check: () => ({ guessesLog10: 0 }) };

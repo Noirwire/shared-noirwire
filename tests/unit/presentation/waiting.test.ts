@@ -123,6 +123,12 @@ describe("importWaitingView", () => {
     expect(statuses(IMPORT_LAST_STEP_AFTER_MS)).toEqual(["done", "done", "current"]);
   });
 
+  it("says what is happening and about how long it takes, under the button, from the start", () => {
+    const note = "Checking what this phrase holds. This can take up to a minute.";
+    expect(importWaitingView(0).note).toBe(note);
+    expect(importWaitingView(15_000, "mobile").note).toBe(note);
+  });
+
   it("says why a long import is long, once it is", () => {
     expect(importWaitingView(7_999).stillWorking).toBeNull();
     expect(importWaitingView(8_000).stillWorking).toBe(
@@ -133,11 +139,11 @@ describe("importWaitingView", () => {
   it("speaks of a tab on the web and of the app on the phone", () => {
     expect(importWaitingView(0)).toMatchObject({
       title: "Importing your wallet",
-      lead: "Keep this tab open. This usually takes a few seconds.",
+      lead: "Keep this tab open. This can take up to a minute.",
     });
     expect(importWaitingView(0, "mobile")).toMatchObject({
       title: "Importing your wallet",
-      lead: "Keep the app open. This usually takes a few seconds.",
+      lead: "Keep the app open. This can take up to a minute.",
     });
   });
 

@@ -72,6 +72,24 @@ The web and the phone draw the same screens from the same view models. Where the
 
 A view model that reads prices, the catalog or valuations takes `ScreenReads` as its first argument (`createScreenReads` in `application/`). An app passes the one bound to its price feeds, `screenReads` from `@noirwire/shared/wallet`; a test passes one over fixed prices (`tests/unit/support/screens.ts`).
 
+## The first screens
+
+What a first-time user meets is decided here too, so both apps open the same way:
+
+| View model                                   | Screen                                                                                                                                                                      |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `welcomeView(platform)`                      | Welcome: the headline, two lines, three actions (only "Create a wallet" is filled) and the trust line. The web's example beside the column is `example`; the phone has none |
+| `homeView(...)`                              | Home. While the wallet is empty: one button, "Add money", `explanation` under it, no `secondary`, and `showArc` false                                                       |
+| `addMoneyView(wallet)`                       | The add-money sheet: three steps, the person's own funding wallet address inside the second (already shown, and `captureAllowed`), "Network: Solana" and the link to Costs  |
+| `costsView({ tradeFeeBps })`                 | Costs, in Settings and behind "What does it cost?". Its numbers are read from the fee constants and the app's own trading fee                                               |
+| `unreachableView({ hasWallet, locked })`     | NoirWire could not be reached as the app opened. With a stored, locked wallet `unlockOffered` is true: unlocking reads only the device, so the unlock screen is still shown |
+| `unlockProblemView(problem, platform)`       | A failed unlock. The typed password is never cleared; after a wrong one it is kept and selected                                                                             |
+| `newPasswordView(platform)`                  | Choosing a password: the rule, with its minimum length, before anything is typed                                                                                            |
+| `noMoneyView(reads, wallet, portfolioId)`    | Buying with nothing to invest, said at the first tap, with the way on: "Add money", or "Move to portfolio" when USDC is waiting                                             |
+| `chartReadout(points, x, { range, readAt })` | The price and date under a finger held on a chart. `chartHighLow(points)` is the range's high and low                                                                       |
+
+`marketsView` and `trackerView` answer `stale` when there is no live price, from the same `updatedAt` Home goes by; pass `loading` while prices are read for the first time. An import says what it is doing under its button (`importWaitingView(...).note`), says why Continue is held while it looks further (`lookFurtherView(...).continuePaused`), and skips the choice of addresses when nothing was found (`importSourceView(...).skipped`).
+
 ## Route parameters
 
 Both apps build and read links with the helpers in `routes.ts`, so a link means the same on either platform:

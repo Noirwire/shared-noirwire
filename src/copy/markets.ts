@@ -5,7 +5,7 @@ export const marketsCopy = {
   title: "Search",
   desktopTitle: "Markets",
   eyebrow: "Explore",
-  lead: "Tokenized stock trackers. Live display prices are indicative; the trade price appears at review.",
+  lead: "Stock trackers. Prices shown are approximate. The final price is shown before you buy.",
   searchPlaceholder: "Company or ticker",
   searchLabel: "Search investments",
   tickerLabel: "Live market ticker",
@@ -13,6 +13,8 @@ export const marketsCopy = {
   noMatch: "No matching investment.",
   noMatches: "No matching investments.",
   pricesUnavailable: "Prices can't be shown right now. They are checked again every 30 seconds.",
+  /** The quiet notice on Markets and a tracker's page when prices could not be read or have aged out. */
+  stale: "We couldn't update prices. What you see may be out of date.",
   groups: {
     movers: "Top movers",
     index: "Funds and ETFs",
@@ -33,7 +35,7 @@ export const marketsCopy = {
   nothingHere: "Nothing here yet.",
   atReview: "At review",
   noLivePrice: "No live price",
-  liveIndicative: "Live indicative",
+  approximatePrice: "Approximate price",
   issuerLine: (symbol: string, issuer: string | undefined) => `${symbol} · ${issuer ?? ""}`,
   assets: (count: number) => plural(count, "asset"),
   columns: {
@@ -75,23 +77,30 @@ export const marketsCopy = {
     watch: (watched: boolean) => (watched ? "Remove from watchlist" : "Add to watchlist"),
     priceUnavailable: "Current price unavailable",
     past24h: "past 24h",
-    liveNote: "Live indicative price. Your order quote is confirmed at review.",
-    quoteNote: "Your order price comes from a live quote at review.",
+    finalPrice: "The final price is shown before you buy.",
     historyLabel: "Price history",
     loadingHistory: "Loading price history...",
-    noChart: (range: string) => `No verified ${range} chart available.`,
-    historySource: "Historical prices · Jupiter",
+    noChart: "Chart unavailable right now.",
+    historySource: "Historical prices",
     yourHolding: "Your holding",
-    holdingValue: (value: string) => `${value} indicative value`,
+    holdingValue: (value: string) => `${value} approximate value`,
     valueWaiting: "Value available when a current price loads",
     notOwned: "You do not own this tracker yet.",
     about: "About",
     aboutTracker: (symbol: string, name: string) =>
       `${symbol} is an xStocks tracker certificate that follows ${name}. It is not a direct company or ETF share and gives no voting rights.`,
-    issuerControl:
-      "The issuer can freeze, move or burn these tokens without your signature. Trades, amounts and timing are visible on chain.",
+    /** The line under a tracker's name: "NVIDIA tracker · NVDAx". */
+    trackerLine: (name: string, symbol: string) => `${name} tracker · ${symbol}`,
+    follows: (name: string) => `Follows ${name}'s share price. You do not own a share.`,
+    /** `dollars` is about the smallest order that is placed, already formatted. */
+    smallestOrder: (dollars: string) => `The smallest order is about ${dollars}.`,
+    publicTrades: "Trades, amounts and timing are visible on chain.",
+    /** Under "Read the risks". */
+    issuerPowers: "The company that issues this tracker can freeze or remove it.",
     dividends:
-      "Dividends are not paid out in cash. The issuer reinvests them by raising a multiplier on the token, so the balance shown here grows instead. Stock splits change the balance the same way.",
+      "Dividends are not paid out. The issuer reinvests them, so the balance shown here grows instead. Stock splits change the balance the same way.",
+    high: "High",
+    low: "Low",
     retired: (symbol: string) =>
       `${symbol} is no longer offered to buy here. What you hold can still be sold or sent.`,
     retiredShort: (symbol: string) => `${symbol} is no longer offered to buy here.`,
@@ -108,7 +117,7 @@ export const marketsCopy = {
     sell: "Sell",
     tradeTitle: (side: "buy" | "sell", name: string) =>
       `${side === "buy" ? "Buy" : "Sell"} ${name} tracker`,
-    indicative: "Indicative",
+    approximate: "Approximate price",
     rangeLabel: "Chart range",
     rangeName: { "1D": "1 day", "1W": "1 week", "1M": "1 month" },
     chartLabel: (range: string, from: string, to: string, change: string) =>
@@ -127,9 +136,6 @@ export const mobileMarketsCopy = {
     remaining > page ? `Show ${page} more` : `Show ${remaining} more`,
   watchlistEmptyDetail: "Tap the star on a tracker to save it here.",
   detail: {
-    liveNote: "Your order price is confirmed at review.",
-    dividends:
-      "Dividends are not paid out in cash. The issuer reinvests them by raising a multiplier on the token, so the balance shown here grows instead. Splits change the balance the same way.",
     createPortfolio: "Create a portfolio",
     offline: "You're offline. Nothing can be bought or sold until you're back online.",
   },

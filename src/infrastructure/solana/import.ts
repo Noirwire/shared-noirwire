@@ -9,7 +9,8 @@ import {
   type SchemeActivity,
 } from "../../domain/importResolution.js";
 import { createPacer, type Pacer } from "../../application/pacer.js";
-import { isTransient, withRetries } from "../../application/retries.js";
+import { isRateLimited, isTransient, withRetries } from "../../application/retries.js";
+import { ApiError } from "../../domain/apiError.js";
 import type { DerivationScheme } from "../../domain/wallet.js";
 import { connection } from "./client.js";
 import { deriveKeypair, FUNDING_DERIVATION_INDEX } from "./keys.js";
@@ -26,18 +27,57 @@ const MAX_ADDRESSES_PER_REQUEST = 100;
 const MAX_REQUESTS_IN_FLIGHT = 3;
 
 /**
- * The most lookups an import starts in a second, across both derivation
- * schemes together. Providers commonly allow about ten; three in flight with
- * fast answers would pass that at once.
+ * The most lookups an import or a further look starts in a second, across
+ * both derivation schemes together.
+ *
+ * NoirWire's server gives one session 240 chain reads a minute in
+ * production, four a second, and sends the provider eight a second for
+ * every session together. Three a second is 180 a minute: a scan of any
+ * length stays inside its own session's allowance and leaves 60 a minute for
+ * the balance and price reads the app makes meanwhile, and it takes no more
+ * than three eighths of what everyone shares.
+ *
+ * An import that finds nothing asks about 42 addresses (2 sets of addresses
+ * x (1 funding wallet + 20 candidates), one lookup each): 42 / 3 = 14
+ * seconds. Every portfolio found adds up to 20 more. A further look asks
+ * about at least 100 more: 100 / 3 = 34 seconds. Hence "up to a minute" in
+ * what a person is told.
+ *
+ * A server set up with half the allowance (120 a minute on a developer's
+ * machine) refuses once that is spent. The scan then waits and goes on: see
+ * `RATE_LIMIT_PATIENCE_MS`.
  */
-export const IMPORT_REQUESTS_PER_SECOND = 8;
+export const IMPORT_REQUESTS_PER_SECOND = 3;
+
+/**
+ * How long nothing is asked after a lookup was refused for coming too fast,
+ * when the server did not say how long (`Retry-After`): one second, twice as
+ * long after each further refusal of the same lookup, fifteen at most.
+ */
+const RATE_LIMIT_HOLD_MS = { first: 1_000, longest: 15_000 };
+
+/**
+ * How long one lookup goes on waiting out refusals before the scan says it
+ * could not finish. The server counts a session's reads by the minute, so a
+ * spent allowance is whole again within sixty seconds; a lookup still
+ * refused after ninety is being refused for some other reason. Waiting here,
+ * and not failing, is what lets a long scan carry on across the minute
+ * boundary from where it stopped.
+ */
+export const RATE_LIMIT_PATIENCE_MS = 90_000;
 
 /**
  * Each lookup is tried four times, about 1, 2 and 4 seconds apart, before the
  * import says it could not finish. Each pause is stretched by up to half at
  * random, so lookups refused together do not all come back together.
  */
-const LOOKUP_RETRY = { tries: 4, pauseMs: 1_000, jitter: 0.5, retryable: isTransient };
+const LOOKUP_RETRY = {
+  tries: 4,
+  pauseMs: 1_000,
+  jitter: 0.5,
+  // A refusal for coming too fast is not a failure to try again a few times: it is waited out.
+  retryable: (error: unknown) => isTransient(error) && !isRateLimited(error),
+};
 
 /** How many candidate addresses are looked up before their answers are counted and kept. */
 const OWNERS_PER_STEP = 10;
@@ -68,18 +108,45 @@ async function inTurn<T>(request: () => Promise<T>): Promise<T> {
   }
 }
 
-function accountInfoBatch(addresses: PublicKey[]) {
-  // The turn is taken once the request holds its slot, right before it is
-  // sent. Taken earlier, requests that waited for a slot behind slow answers
-  // would all start together the moment those came back.
-  return withRetries(
-    () =>
-      inTurn(async () => {
-        await pacer?.turn();
-        return connection.getMultipleAccountsInfo(addresses);
-      }),
-    LOOKUP_RETRY,
-  );
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * One lookup, asked again until it is answered. A refusal for coming too
+ * fast slows every lookup down and is waited out: for as long as the server
+ * asked (`Retry-After`), or a growing pause when it did not say. Only a
+ * lookup refused for longer than `RATE_LIMIT_PATIENCE_MS` fails.
+ */
+async function accountInfoBatch(addresses: PublicKey[]) {
+  let waited = 0;
+  let hold = RATE_LIMIT_HOLD_MS.first;
+  for (;;) {
+    try {
+      // The turn is taken once the request holds its slot, right before it is
+      // sent. Taken earlier, requests that waited for a slot behind slow answers
+      // would all start together the moment those came back.
+      return await withRetries(
+        () =>
+          inTurn(async () => {
+            await pacer?.turn();
+            return connection.getMultipleAccountsInfo(addresses);
+          }),
+        LOOKUP_RETRY,
+      );
+    } catch (error) {
+      if (!isRateLimited(error) || waited >= RATE_LIMIT_PATIENCE_MS) throw error;
+      const asked = error instanceof ApiError ? error.retryAfterMs : undefined;
+      const wait = asked ?? hold;
+      if (asked === undefined) hold = Math.min(hold * 2, RATE_LIMIT_HOLD_MS.longest);
+      // With a pacer the wait is its hold, which every lookup keeps to. The pace
+      // is halved once, on a lookup's first refusal; a lookup still refused
+      // after that is waiting for a spent allowance, which a slower pace
+      // would not bring back sooner. With no pacer, this lookup waits alone.
+      if (!pacer) await pause(wait);
+      else if (waited === 0) pacer.slowDown(wait);
+      else pacer.hold(wait);
+      waited += wait;
+    }
+  }
 }
 
 /** Whether each address exists and what it holds, in as few requests as the batch limit allows. */

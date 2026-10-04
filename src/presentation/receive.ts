@@ -1,6 +1,5 @@
 import { commonCopy } from "../copy/common.js";
-import { mobilePortfolioCopy, portfolioCopy } from "../copy/portfolio.js";
-import type { AppPlatform } from "../domain/appPlatform.js";
+import { portfolioCopy } from "../copy/portfolio.js";
 import type { Wallet } from "../domain/wallet.js";
 import { groupsOfFour } from "./importFindings.js";
 
@@ -33,7 +32,6 @@ export function receiveView(state: {
   wallet: Wallet;
   target: ReceiveTarget;
   network: "mainnet-beta" | "devnet";
-  platform: AppPlatform;
 }): ReceiveView {
   const { wallet, target } = state;
   const words = portfolioCopy.receive;
@@ -41,7 +39,7 @@ export function receiveView(state: {
     return {
       kind: "address",
       title: words.fundingTitle,
-      notice: portfolioCopy.addMoney.stepSendDetail,
+      notice: words.fundingNotice,
       masked: target.reveal ? null : { text: words.hiddenFunding, show: words.showAddress },
       address: wallet.funding.address,
       qrLabel: words.qrFunding,
@@ -63,8 +61,7 @@ export function receiveView(state: {
   return {
     kind: "address",
     title,
-    notice:
-      state.platform === "mobile" ? mobilePortfolioCopy.receive.portfolioNotice : words.publicNote,
+    notice: words.publicNote,
     masked: null,
     address: portfolio.address,
     qrLabel: words.qrPortfolio(portfolio.label),

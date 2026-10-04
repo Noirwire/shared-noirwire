@@ -80,6 +80,7 @@ export {
   READ_RETRY,
   type RetryOptions,
   isBusyStatus,
+  isRateLimited,
   isTransient,
   readWithRetries,
   saysTransportFailure,

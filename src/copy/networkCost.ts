@@ -3,7 +3,7 @@ import type { Opens } from "../domain/networkCost.js";
 
 /**
  * The network cost of a money review. The network charges in its own
- * currency; the portfolio's cash pays it, so nobody has to hold or name that
+ * currency; the portfolio's USDC pays it, so nobody has to hold or name that
  * currency, and none of the wording here does.
  */
 export const networkCostCopy = {
@@ -33,9 +33,9 @@ export const networkCostCopy = {
     `The network cost includes opening this portfolio's accounts for ${plural(count, "tracker")}, a one-time cost.`,
 
   /** The sentence before and after the link that takes the user to move money in. */
-  needsCash: (cash: string, underOneCent: boolean, free: string) =>
-    `This portfolio needs ${underOneCent ? "" : "at least "}${cash} of cash to pay the network cost, and would have ${free} to spare. `,
-  moveMoneyHere: "Move money here",
+  needsCash: (needed: string, underOneCent: boolean, free: string) =>
+    `This portfolio needs ${underOneCent ? "" : "at least "}${needed} to pay the network cost, and would have ${free} to spare. `,
+  moveToPortfolio: "Move to portfolio",
   orSmaller: " or use a smaller amount.",
 
   tooSmall: (smallest: string) => `The smallest order right now is about ${smallest}.`,
@@ -45,7 +45,7 @@ export const networkCostCopy = {
     summary: (fee: string) => `Network cost: ${fee}. What is this?`,
     paysBack: (exactFee: string) =>
       `Every action has a small network cost. NoirWire's relayer pays it, and this portfolio pays the relayer back exactly ${exactFee} USDC, `,
-    fromCash: "from its cash",
+    fromCash: "from its USDC",
     fromWithdrawal: "out of the USDC this withdrawal returns",
     sameTransaction: ", in the same transaction.",
     openedFirst:

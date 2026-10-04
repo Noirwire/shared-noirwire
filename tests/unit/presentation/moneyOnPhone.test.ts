@@ -74,8 +74,8 @@ describe("moving money in, on the phone", () => {
     expect(amount("10", 100, false).next.disabled).toBe(true);
     expect(amount("", 0).emptyNotice).toEqual({
       title: "Your funding wallet is empty.",
-      detail: "Send USDC on Solana to your funding address first.",
-      action: "Show my funding address",
+      detail: "Add money to your funding wallet first.",
+      action: "Add money",
     });
   });
 
@@ -107,7 +107,7 @@ describe("moving money in, on the phone", () => {
       slow: true,
     });
     expect(view.stages.map((stage) => [stage.title, stage.status])).toEqual([
-      ["Sent to the private route", "done"],
+      ["Private move sent", "done"],
       ["Waiting in the queue", "done"],
       ["Arrived in Investing", "running"],
     ]);
@@ -146,7 +146,7 @@ describe("moving money in, on the phone", () => {
       disabled: true,
     });
     expect(choosePortfolioView({ portfolios, chosen: "b" })).toMatchObject({
-      rows: [{ cash: "5.00 USDC cash" }, { cash: "0.00 USDC cash" }],
+      rows: [{ cash: "5.00 USDC ready to invest" }, { cash: "0.00 USDC ready to invest" }],
       next: { label: "Continue with Trips", disabled: false },
     });
   });
@@ -156,7 +156,7 @@ describe("moving money in, on the phone", () => {
     expect(fundingWalletRow(3).value).toBe("3.00 USDC");
     expect(fundingWalletView({ balance: null, readFailed: false }).move.disabled).toBe(true);
     expect(fundingWalletView({ balance: 0, readFailed: true })).toMatchObject({
-      lead: "Nothing is waiting. Send USDC on Solana to your funding address to add money.",
+      lead: "Nothing is waiting. Add money to your funding wallet first.",
       readFailed:
         "We couldn't update your balance. What you see may be out of date. Pull down to try again.",
       move: { quiet: true, disabled: true },
@@ -333,7 +333,7 @@ describe("Earn", () => {
     });
     expect(screen({ portfolios: [] }).empty).toEqual({
       title: "Create a portfolio to use Earn.",
-      detail: "Earn lends a portfolio's cash.",
+      detail: "Earn lends a portfolio's USDC.",
       action: "New portfolio",
     });
   });
@@ -388,7 +388,7 @@ describe("Earn", () => {
     });
     expect(deposit).toMatchObject({
       title: "Review",
-      total: { label: "Total leaving Investing's cash", value: "10.05 USDC" },
+      total: { label: "Total leaving Investing", value: "10.05 USDC" },
       reasons: ["The network cost includes opening this holding, a one-time cost."],
       risk: { link: "Read the risks" },
       confirm: { label: "Deposit 10.00 USDC", disabled: false },
@@ -413,7 +413,7 @@ describe("Earn", () => {
       online: true,
     });
     expect(withdrawal).toMatchObject({
-      total: { label: "Arrives in Investing's cash", value: "9.95 USDC" },
+      total: { label: "Arrives in Investing", value: "9.95 USDC" },
       reasons: [expect.stringMatching(/paid out of the USDC this returns/)],
       risk: null,
       confirm: { label: "Withdraw 10.00 USDC", disabled: true },
@@ -430,7 +430,11 @@ describe("Earn", () => {
         fee: 0.05,
         portfolioLabel: "Investing",
       }),
-    ).toEqual({ title: "Withdrew 9.95 USDC", body: "Back in Investing's cash.", close: "Done" });
+    ).toEqual({
+      title: "Withdrew 9.95 USDC",
+      body: "Back in Investing, ready to invest.",
+      close: "Done",
+    });
     expect(
       earnResultView({
         action: "deposit",

@@ -61,9 +61,9 @@ describe("fundingDraft", () => {
 
 describe("fundingTitle and fundingFooter", () => {
   it("calls only the private route private", () => {
-    expect(fundingTitle("USDC", true)).toBe("Fund portfolio privately");
-    expect(fundingTitle("SOL", false)).toBe("Add SOL publicly");
-    expect(fundingFooter(true)).toMatch(/^A private transfer breaks the onchain link/);
+    expect(fundingTitle("USDC", true)).toBe("Move to portfolio");
+    expect(fundingTitle("SOL", false)).toBe("Move SOL publicly");
+    expect(fundingFooter(true)).toMatch(/^A private move breaks the onchain link/);
     expect(fundingFooter(false)).toBe("This is an ordinary, fully public onchain transfer.");
   });
 });
@@ -82,7 +82,7 @@ describe("fundingAmountView", () => {
     expect(view.otherAmount).toBe("Other amount in USDC");
     expect(view.next).toEqual({ label: "Continue", disabled: true });
     expect(view.costs).toBe(
-      "Costs a 0.1% privacy fee plus a flat 0.20 USDC relay fee, both charged in USDC by the settlement service on top of the amount. The relay fee pays the network costs, so your funding wallet needs no SOL. The smallest transfer is 0.50 USDC, and it usually arrives within seconds.",
+      "Costs a 0.1% privacy fee plus a flat 0.20 USDC relay fee, both charged in USDC by the settlement service on top of the amount. The relay fee pays the network costs, so your funding wallet needs no SOL. The smallest private move is 0.50 USDC. It usually arrives within a minute and can take a few.",
     );
     expect(view.empty).toBeNull();
   });
@@ -93,7 +93,7 @@ describe("fundingAmountView", () => {
       { privateRoute: false, decimals: 0, fundingBalance: 1 },
     );
     expect(view.lead).toBe("Move SOL into this portfolio. Available 1.0000 SOL.");
-    expect(view.noPrivateRoute).toMatch(/^SOL has no private route\./);
+    expect(view.noPrivateRoute).toMatch(/^SOL cannot be moved privately\./);
     expect(view.presets).toEqual([{ value: 0.05, label: "0.0500 SOL", disabled: false }]);
     expect(view.costs).toBeNull();
   });
@@ -103,7 +103,7 @@ describe("fundingAmountView", () => {
       "Enter an amount greater than zero and within your available balance.",
     );
     expect(amountView({}, { amountText: "0.3" }).unaffordable).toBe(
-      "A private transfer has to be at least 0.50 USDC.",
+      "A private move has to be at least 0.50 USDC.",
     );
     expect(amountView({}, { amountText: "19.9" }).unaffordable).toBe(
       "With fees this takes 20.1199 USDC from your funding wallet, more than it holds. Enter a smaller amount.",
@@ -135,7 +135,7 @@ describe("fundingAmountView", () => {
   it("points an empty funding wallet to its deposit address", () => {
     expect(amountView({ fundingBalance: 0 }, { fundingBalance: 0 }).empty).toEqual({
       before: "Your USDC funding balance is empty. ",
-      link: "Get your deposit address",
+      link: "Show your funding wallet address",
       after: " to add money first.",
     });
   });
@@ -162,7 +162,7 @@ describe("fundingReviewView", () => {
     expect(view.note).toBe(
       "No SOL is needed. If the transfer would take more than this total, it is not signed.",
     );
-    expect(view.confirm).toEqual({ label: "Confirm", disabled: false });
+    expect(view.confirm).toEqual({ label: "Move privately", disabled: false });
     expect(
       fundingReviewView({
         draft: draft(),

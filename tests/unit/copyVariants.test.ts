@@ -77,16 +77,58 @@ function strings(value: unknown): string[] {
 }
 
 /**
+ * The names the product stopped using, each with the name that took its
+ * place. One term per thing, on both platforms.
+ */
+const REPLACED_NAMES: [RegExp, string][] = [
+  [/add usdc/i, 'bringing money in is "Add money"'],
+  [/\bfund\w* (\w+ )?privately/i, 'moving money into a portfolio is "Move to portfolio"'],
+  [/private route/i, 'the noun is "private move"'],
+  [/private transfer/i, 'the noun is "private move"'],
+  [/move money here/i, 'the button is "Move to portfolio"'],
+  [/add money privately/i, 'the confirm is "Move privately"'],
+  [/funding address/i, 'the thing is the "funding wallet"; an address is what is copied'],
+  [/deposit address/i, 'the thing is the "funding wallet"'],
+  [/\bcash\b/, '"Cash" is only a row label; the money is USDC'],
+  [/\bstocks\b/i, 'what a person holds is a "tracker"'],
+  [/indicative/i, 'a shown price is "Approximate"'],
+  [/\bexchanges?\b/i, "no service for buying USDC is named or pointed to"],
+];
+
+/** Every use of a replaced name in `copy`, as "why: the string". */
+function replacedNamesIn(copy: unknown): string[] {
+  return strings(copy).flatMap((text) =>
+    REPLACED_NAMES.filter(([term]) => term.test(text)).map(([, why]) => `${why}: ${text}`),
+  );
+}
+
+/** A copy object without the named sections. */
+function without<T extends object>(copy: T, ...sections: (keyof T)[]): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(copy).filter(([key]) => !sections.includes(key as keyof T)),
+  ) as Partial<T>;
+}
+
+/**
+ * Everything both platforms say, but for the Privacy and Risks pages. Those
+ * state what is public and what can go wrong in their own, longer words, and
+ * are kept as they were.
+ */
+const EVERYDAY = [
+  WEB.filter((copy) => copy !== settingsCopy),
+  PHONE.filter((copy) => copy !== mobileSettingsCopy),
+  without(settingsCopy, "protection", "risks"),
+  without(mobileSettingsCopy, "privacy", "risks"),
+];
+
+/**
  * The web's strings are built from the same templates as the phone's. These
  * pin the web's wording byte for byte, so a template change cannot move it.
  */
 describe("per-platform copy", () => {
   it("keeps the web's wording exactly", () => {
-    expect(onboardingCopy.welcome.trustMainnet).toBe(
-      "Your keys and recovery phrase stay in this browser. Network requests go through NoirWire's own server, which keeps only a basic record that a request was made, not your address or what's in it. Tracker issuers keep control over their own tokens. The risks are set out in Settings.",
-    );
-    expect(onboardingCopy.welcome.trustTestNetwork).toBe(
-      "Your keys and recovery phrase stay in this browser. Network requests go through NoirWire's own server, which keeps only a basic record that a request was made, not your address or what's in it. Keys are real; funds are Solana devnet SOL and a test USDC-alike token.",
+    expect(onboardingCopy.password.intro(12)).toBe(
+      "Choose a password of at least 12 characters. It locks the wallet in this browser. We never see it.",
     );
     expect(onboardingCopy.phrase.intro).toBe(
       "These words are the only way back into your money if this device is lost. Write them on paper. Anyone who sees them can take everything.",
@@ -97,8 +139,8 @@ describe("per-platform copy", () => {
   });
 
   it("says the same on the phone with the phone's words", () => {
-    expect(mobileOnboardingCopy.welcome.trust).toBe(
-      "Your keys and recovery phrase stay on this phone. Network requests go through NoirWire's own server, which keeps only a basic record that a request was made, not your address or what's in it. Tracker issuers keep control over their own tokens.",
+    expect(mobileOnboardingCopy.password.intro(12)).toBe(
+      "Choose a password of at least 12 characters. It locks the wallet on this phone. We never see it.",
     );
     expect(mobileOnboardingCopy.phrase.intro).toBe(
       "These words are the only way back into your money if this phone is lost. Write them on paper. Anyone who sees them can take everything.",
@@ -226,7 +268,7 @@ describe("per-platform copy", () => {
       [errorsCopy.funding.failed, "We couldn't move this money. Nothing was moved. Try again."],
       [
         errorsCopy.funding.privateNotStarted,
-        "The private transfer could not be started. Nothing left your funding wallet. Try again.",
+        "The private move could not be started. Nothing left your funding wallet. Try again.",
       ],
       [
         errorsCopy.send.notCompleted,
@@ -453,5 +495,117 @@ describe("per-platform copy", () => {
       ]),
     );
     expect(text).not.toContain(String.fromCharCode(0x2014));
+  });
+
+  it("uses one name for each thing on both platforms, and none of the names it replaced", () => {
+    expect(replacedNamesIn(EVERYDAY)).toEqual([]);
+  });
+
+  it("keeps Cash as a row label only", () => {
+    const labels = ["Cash", "Cash available", "Cash and other holdings"];
+    for (const text of strings(EVERYDAY)) {
+      if (/cash/i.test(text)) expect(labels).toContain(text);
+    }
+  });
+
+  it("refuses a replaced name wherever it is put back", () => {
+    expect(replacedNamesIn({ home: { addUsdc: "Add USDC" } })).toHaveLength(1);
+    expect(replacedNamesIn({ line: (amount: string) => `${amount} cash` })).toHaveLength(1);
+    expect(replacedNamesIn({ lead: "Fund it through the private route." })).toHaveLength(1);
+    expect(replacedNamesIn({ tag: "Indicative", shelf: "Stocks" })).toHaveLength(2);
+    expect(replacedNamesIn({ step: "Buy it on an exchange you already use." })).toHaveLength(1);
+    expect(replacedNamesIn({ label: "Cash", button: "Move to portfolio" })).toEqual([]);
+  });
+
+  it("says each first-time-user decision in its exact words", () => {
+    expect(onboardingCopy.welcome.title).toBe("Invest in US stock trackers. Privately.");
+    expect(onboardingCopy.welcome.lines).toEqual([
+      "Trackers follow share prices like Apple, Tesla or the S&P 500. You do not own the shares.",
+      "Each portfolio is separate from your funding wallet. Trades themselves are public.",
+    ]);
+    expect([
+      onboardingCopy.welcome.create,
+      onboardingCopy.welcome.restore,
+      onboardingCopy.welcome.explore,
+    ]).toEqual(["Create a wallet", "Restore a wallet", "Explore trackers"]);
+    expect(onboardingCopy.welcome.trust).toBe(
+      "No account and no ID check. Only your recovery words can restore your wallet.",
+    );
+    expect(portfolioCopy.home.onlyYouSee).toBe("Only you see this total");
+    expect(portfolioCopy.home.readyToInvest).toBe("Ready to invest");
+    expect(portfolioCopy.home.addMoney).toBe("Add money");
+    expect(portfolioCopy.home.moneyArrives).toBe(
+      "Your money arrives in your funding wallet. Then you move it into a portfolio.",
+    );
+    expect(portfolioCopy.addMoney.title).toBe("Add digital dollars");
+    expect(portfolioCopy.addMoney.steps.get.detail("Solana")).toBe(
+      "USDC is a digital dollar: 1 USDC = $1. NoirWire cannot take card payments yet. Buy USDC in any app or service that can send it on the Solana network. No account with us is needed.",
+    );
+    expect(portfolioCopy.addMoney.steps.send.detail("Solana")).toBe(
+      "Copy the address below. In the other app choose USDC and the Solana network, and check the address before sending. This transfer is public.",
+    );
+    expect(portfolioCopy.addMoney.steps.move.detail("0.1% + $0.20")).toBe(
+      "When it arrives, choose a portfolio and tap Move to portfolio. A private move is not linked to your funding wallet in the public record. It costs 0.1% + $0.20. It usually arrives within a minute and can take a few.",
+    );
+    expect(portfolioCopy.addMoney.network("Solana")).toBe("Network: Solana");
+    expect(portfolioCopy.addMoney.costsLink).toBe("What does it cost?");
+    expect(portfolioCopy.detail.moveToPortfolio).toBe("Move to portfolio");
+    expect(fundingCopy.titlePrivate).toBe("Move to portfolio");
+    expect(fundingCopy.confirmPrivate).toBe("Move privately");
+    expect(mobileFundingCopy.page.move).toBe("Move to portfolio");
+    expect(networkCostCopy.moveToPortfolio).toBe("Move to portfolio");
+    expect(settingsCopy.costs.title).toBe("Costs");
+    expect(settingsCopy.costs.trade("0.5")).toBe("Buying or selling a tracker: 0.5% of the trade.");
+    expect(settingsCopy.costs.move("0.1% + $0.20")).toBe(
+      "Moving money into a portfolio privately: 0.1% + $0.20. It usually arrives within a minute and can take a few.",
+    );
+    expect(settingsCopy.costs.network).toBe(
+      "Network cost: a few cents, paid automatically from your USDC.",
+    );
+    expect(settingsCopy.costs.gettingUsdc).toBe(
+      "Getting USDC from another service: that service may charge its own fee.",
+    );
+    expect(settingsCopy.costs.exact).toBe("The exact amount is always shown before you confirm.");
+    expect(marketsCopy.detail.trackerLine("NVIDIA", "NVDAx")).toBe("NVIDIA tracker · NVDAx");
+    expect(marketsCopy.detail.follows("NVIDIA")).toBe(
+      "Follows NVIDIA's share price. You do not own a share.",
+    );
+    expect(marketsCopy.detail.approximate).toBe("Approximate price");
+    expect(marketsCopy.detail.finalPrice).toBe("The final price is shown before you buy.");
+    expect(marketsCopy.detail.issuerPowers).toBe(
+      "The company that issues this tracker can freeze or remove it.",
+    );
+    expect(marketsCopy.detail.noChart).toBe("Chart unavailable right now.");
+    expect(appCopy.networkGate.cannotReach).toBe(
+      "Can't reach NoirWire. Check your connection and try again.",
+    );
+    expect(onboardingCopy.import.waitingNote).toBe(
+      "Checking what this phrase holds. This can take up to a minute.",
+    );
+    expect(onboardingCopy.import.lookFurther.continuePaused).toBe(
+      "Continue is paused while we look.",
+    );
+    expect(onboardingCopy.import.newEmptyWallet).toBe(
+      "Nothing found yet. This phrase will open a new, empty wallet.",
+    );
+    expect(tradeCopy.noMoney).toBe("No money in this portfolio yet");
+    expect(mobileSettingsCopy.about).toMatchObject({
+      helpContact: "ph1l1ph@proton.me",
+      websiteValue: "noirwire.com",
+    });
+  });
+
+  it("leaves what was already good as it was", () => {
+    expect(mobileOnboardingCopy.confirm.checkWord(5)).toBe("Check word 5 on your paper.");
+    expect(onboardingCopy.phrase.neverAsked).toBe(
+      "NoirWire never asks for these words. Nobody from NoirWire will ever ask you for them.",
+    );
+    expect(activityCopy.empty).toBe("Your buys, sells and money moves will appear here.");
+    expect(portfolioCopy.balances.stale).toBe(
+      "We couldn't update your balances. What you see may be out of date.",
+    );
+    expect(appCopy.networkGate.unreachable).toBe(
+      "We can't show your balances right now. Your money has not moved. Try again.",
+    );
   });
 });

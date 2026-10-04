@@ -47,6 +47,12 @@ export function isBusyStatus(status: number): boolean {
   return status === 429 || (status >= 500 && status < 600);
 }
 
+/** Whether a thrown failure is the service saying requests came too fast: its 429, however it was worded. */
+export function isRateLimited(error: unknown): boolean {
+  if (error instanceof ApiError) return error.status === 429;
+  return error instanceof Error && /^429\b|\breturned 429\b/.test(error.message);
+}
+
 /**
  * Whether a thrown failure is of the asking, not an answer: the request never
  * got through, ran out of time, or came back 429 or 5xx. A `ChainError` is a

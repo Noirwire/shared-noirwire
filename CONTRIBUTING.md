@@ -54,7 +54,7 @@ Nothing imports from an app, from React, React Native, Next or Expo, or from Nod
 
 ## Text people read
 
-- Say "portfolio", "funding wallet" and "trackers".
+- Say "portfolio", "funding wallet" and "trackers". One name for each thing, on both platforms: the table is in [src/copy/README.md](src/copy/README.md), and a test refuses the names it replaced.
 - No em dashes. Three periods for an ellipsis.
 - Say plainly what happened and what to do next.
 

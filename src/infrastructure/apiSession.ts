@@ -16,12 +16,14 @@ export const SESSION_REQUEST_TIMEOUT_MS = 10_000;
 /** The server's own error in a failed answer, or null when it succeeded or the body is a provider's. */
 export async function apiErrorOf(response: Response): Promise<ApiError | null> {
   if (response.ok) return null;
+  const seconds = Number(response.headers.get("retry-after"));
   return apiErrorIn(
     response.status,
     await response
       .clone()
       .json()
       .catch(() => null),
+    Number.isFinite(seconds) && seconds > 0 ? seconds * 1_000 : undefined,
   );
 }
 

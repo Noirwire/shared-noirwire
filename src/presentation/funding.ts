@@ -150,7 +150,7 @@ export function fundingAmountView(state: FundingAmountState): FundingAmountView 
       : privateRoute
         ? copy.leadPrivate(asset, available)
         : copy.leadPublic(asset, available),
-    noPrivateRoute: privateRoute ? null : copy.noPrivateRoute(asset),
+    noPrivateRoute: privateRoute ? null : copy.noPrivateMove(asset),
     presets: state.presets.map((value) => ({
       value,
       label: mobile ? String(value) : symbolAmount(asset, value),
@@ -164,7 +164,7 @@ export function fundingAmountView(state: FundingAmountState): FundingAmountView 
     invalid,
     unaffordable,
     empty: empty
-      ? { before: copy.emptyBefore(asset), link: copy.depositLink, after: copy.emptyAfter }
+      ? { before: copy.emptyBefore(asset), link: copy.addressLink, after: copy.emptyAfter }
       : null,
     costs: !privateRoute
       ? null
@@ -191,7 +191,7 @@ export function fundingAmountView(state: FundingAmountState): FundingAmountView 
         ? {
             title: mobileCopy.empty,
             detail: mobileCopy.emptyDetail,
-            action: mobileCopy.showAddress,
+            action: mobileCopy.addMoney,
           }
         : null,
   };
@@ -243,7 +243,7 @@ export function fundingReviewView(state: {
     note: mobile ? mobileCopy.notSignedAbove : copy.noSolNeeded,
     back: commonCopy.back,
     confirm: {
-      label: commonCopy.confirm,
+      label: copy.confirmPrivate,
       disabled: state.pending.blocked || !(state.online ?? true),
     },
   };
@@ -386,7 +386,7 @@ export function choosePortfolioView(state: {
     rows: state.portfolios.map((portfolio) => ({
       id: portfolio.id,
       label: portfolio.label,
-      cash: mobileCopy.cash(symbolAmount("USDC", portfolio.cash)),
+      cash: commonCopy.readyToInvest(symbolAmount("USDC", portfolio.cash)),
     })),
     next: {
       label: chosen ? mobileCopy.continueWith(chosen.label) : commonCopy.continue,
@@ -422,6 +422,6 @@ export function fundingWalletView(state: {
     lead: empty ? page.empty : page.lead,
     readFailed: state.readFailed ? page.readFailed : null,
     move: { label: page.move, quiet: empty, disabled: empty || balance === null },
-    showAddress: page.showAddress,
+    addMoney: page.addMoney,
   };
 }

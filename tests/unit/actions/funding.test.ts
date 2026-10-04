@@ -190,7 +190,7 @@ describe("funding a portfolio privately", () => {
     );
     expect(h.pending.pendingFor(h.FUNDING)).toMatchObject({
       signature: "enqueue",
-      what: "a private transfer of 20.00 USDC into Main",
+      what: "a private move of 20.00 USDC into Main",
     });
     expect(await run()).toMatchObject({ kind: "refused", reason: "actionPending" });
     expect(h.track).toHaveBeenCalledWith("private_funding_started");

@@ -1,16 +1,27 @@
 import { plural } from "./plural.js";
 import { notSaved } from "./wallet.js";
 
-/** `where` is the platform's place for the keys: "in this browser" or "on this phone". */
-const keysStay = (where: string) =>
-  `Your keys and recovery phrase stay ${where}. Network requests go through NoirWire's own server, which keeps only a basic record that a request was made, not your address or what's in it.`;
+/** `where` is where the password locks the wallet: "in this browser" or "on this phone". */
+const passwordRule = (where: string) => (minLength: number) =>
+  `Choose a password of at least ${minLength} characters. It locks the wallet ${where}. We never see it.`;
+
+/** Said wherever an import found nothing: on the result, and in place of the choice of addresses. */
+const newEmptyWallet = "Nothing found yet. This phrase will open a new, empty wallet.";
 
 /** `platformNoun` names the device: "device" on the web, "phone" on mobile. */
 const onlyWayBack = (platformNoun: string) =>
   `These words are the only way back into your money if this ${platformNoun} is lost. Write them on paper. Anyone who sees them can take everything.`;
 
+/**
+ * How long an import takes, said the same wherever it is said. A phrase with
+ * nothing on it is 42 lookups at 3 a second, 14 seconds; every portfolio
+ * found adds up to 20 more, and a slow phone its own time to work the
+ * addresses out. The arithmetic is beside `IMPORT_REQUESTS_PER_SECOND`.
+ */
+const importTiming = "This can take up to a minute.";
+
 /** `keepOpen` is what must stay open while an import runs: "Keep this tab open." or "Keep the app open." */
-const importLead = (keepOpen: string) => `${keepOpen} This usually takes a few seconds.`;
+const importLead = (keepOpen: string) => `${keepOpen} ${importTiming}`;
 
 /** `where` is where nothing was saved: "in this browser" or "on this phone". */
 const importFailed = (where: string) =>
@@ -26,13 +37,15 @@ export const onboardingCopy = {
 
   welcome: {
     brand: "NoirWire",
-    title: "Keep your investing separate from your everyday wallet.",
-    lead: "Each portfolio is its own address. Fund it through the private route and nothing on chain ties it to your funding wallet. The trades themselves still happen in public.",
-    create: "Create my wallet",
-    import: "Import an existing wallet",
-    lookAround: "Look around first",
-    trustMainnet: `${keysStay("in this browser")} Tracker issuers keep control over their own tokens. The risks are set out in Settings.`,
-    trustTestNetwork: `${keysStay("in this browser")} Keys are real; funds are Solana devnet SOL and a test USDC-alike token.`,
+    title: "Invest in US stock trackers. Privately.",
+    lines: [
+      "Trackers follow share prices like Apple, Tesla or the S&P 500. You do not own the shares.",
+      "Each portfolio is separate from your funding wallet. Trades themselves are public.",
+    ],
+    create: "Create a wallet",
+    restore: "Restore a wallet",
+    explore: "Explore trackers",
+    trust: "No account and no ID check. Only your recovery words can restore your wallet.",
     examplePortfolios: "Your portfolios",
     exampleBadge: "Example",
     exampleTotal: "$2,584.78",
@@ -44,7 +57,7 @@ export const onboardingCopy = {
     steps: [
       "One recovery phrase for the whole wallet",
       "A separate address for each portfolio",
-      "Add USDC, then invest in stock trackers",
+      "Add money, then invest in trackers",
     ],
     footnote:
       "Labels stay local. Public activity stays visible. Ownership links are not published by NoirWire.",
@@ -90,6 +103,10 @@ export const onboardingCopy = {
     notNow:
       "We can't look for your wallet right now, so nothing was imported. Nothing was saved in this browser.",
     checking: "Finding your portfolios...",
+    /** The one quiet line under the button while an import runs. */
+    waitingNote: `Checking what this phrase holds. ${importTiming}`,
+    /** Nothing was found for either set of addresses, so there is nothing to choose between. */
+    newEmptyWallet,
     /** The import while it works: a title, a lead, the three steps, the slow line and the failure. */
     progress: {
       title: "Importing your wallet",
@@ -126,7 +143,7 @@ export const onboardingCopy = {
     reunitedIntro: (address: string, found: string) =>
       `Opened the funding wallet at ${address}. Found: ${found}.`,
     importedIntro: (address: string) =>
-      `Nothing was found onchain for these addresses yet. The funding wallet is at ${address}. Fund it whenever you're ready.`,
+      `Nothing was found onchain for these addresses yet. The funding wallet is at ${address}. Add money whenever you're ready.`,
     discovered: (count: number) =>
       `Found ${plural(count, "portfolio")} this phrase already had onchain.`,
     otherSet: "Open the other set instead",
@@ -134,6 +151,8 @@ export const onboardingCopy = {
     lookFurther: {
       action: "Missing a portfolio? Look further",
       looking: "Looking further for your portfolios...",
+      /** Why Continue cannot be pressed while the further scan runs. */
+      continuePaused: "Continue is paused while we look.",
       found: (count: number) => `Found ${plural(count, "more portfolio")}.`,
       nothing: "No more portfolios were found for this phrase.",
       failed: "We couldn't finish looking. Nothing was changed. Try again.",
@@ -142,8 +161,8 @@ export const onboardingCopy = {
 
   password: {
     title: "Set a password",
-    intro:
-      "Your recovery phrase is encrypted with this password before it is stored. We never see it and it is never sent anywhere. Anyone who copies this browser's data can try to guess it, so it has to be hard to guess.",
+    /** The rule, said before anything is typed. `minLength` is the store's own minimum. */
+    intro: passwordRule("in this browser"),
     forgotten:
       "If you forget this password, your recovery phrase still opens your wallet. Without the phrase, nobody can.",
     encryptFailed: "We couldn't encrypt your wallet, so nothing was saved. Try again.",
@@ -159,9 +178,6 @@ export const onboardingCopy = {
  * `onboardingCopy`. See README.md for how the two are kept apart.
  */
 export const mobileOnboardingCopy = {
-  welcome: {
-    trust: `${keysStay("on this phone")} Tracker issuers keep control over their own tokens.`,
-  },
   phrase: {
     intro: onlyWayBack("phone"),
     continueReason: "Reveal the words and confirm you have saved them.",
@@ -208,14 +224,13 @@ export const mobileOnboardingCopy = {
     found: (count: number) =>
       `Found ${plural(count, "portfolio")} this phrase already had on chain.`,
     foundBalances: "Found token balances this phrase already had on chain.",
-    nothing: "Nothing was found on chain for these addresses yet. Add money whenever you're ready.",
-    showAddress: "Show funding address",
+    nothing: newEmptyWallet,
+    showAddress: "Show my funding wallet address",
     hideAddress: "Hide",
-    addressLabel: "Funding address",
+    addressLabel: "Funding wallet address",
   },
   password: {
-    intro:
-      "Your wallet is encrypted with this password before it is stored on this phone. We never see it and it is never sent anywhere. Anyone who gets a copy of this phone's data can try to guess it, so it has to be hard to guess.",
+    intro: passwordRule("on this phone"),
     notSaved: notSaved("phone"),
     alreadyStored: "A wallet is already stored on this phone. Nothing was saved.",
     hide: "Hide password",

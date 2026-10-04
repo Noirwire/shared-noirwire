@@ -57,6 +57,7 @@ export { NETWORK_FEE_LAMPORTS, shortfallFor } from "./solana/fees.js";
 export {
   type ImportResolution,
   IMPORT_REQUESTS_PER_SECOND,
+  RATE_LIMIT_PATIENCE_MS,
   type SchemeActivity,
   lookFurtherForPortfolios,
   paceImportWith,

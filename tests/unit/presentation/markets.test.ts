@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
+import { createCatalog } from "../../../src/application/catalog.js";
+import { createScreenReads } from "../../../src/application/screenReads.js";
+import { ALL_STOCKS } from "../../../src/infrastructure/solana/tokenRegistry.js";
 import {
   changeView,
+  chartHighLow,
+  chartReadout,
   marketsView,
   trackerRowView,
   trackerView,
   type TrackerState,
 } from "../../../src/presentation/markets.js";
 import {
+  TEST_PRICES,
   UPDATED_AT,
   holding,
   testReads,
@@ -58,6 +64,14 @@ describe("marketsView", () => {
       ...over,
     });
 
+  it("says prices may be out of date once the first read has ended without one", () => {
+    expect(view().stale).toBeNull();
+    expect(view({ updatedAt: null, loading: true }).stale).toBeNull();
+    expect(view({ updatedAt: null }).stale).toBe(
+      "We couldn't update prices. What you see may be out of date.",
+    );
+  });
+
   it("leads with the movers, then the shelves, and pages the full list", () => {
     const markets = view();
     expect(markets.shelves[0]).toMatchObject({ key: "movers", trailing: "24h change" });
@@ -105,6 +119,7 @@ describe("trackerView", () => {
     online: true,
     range: "1W",
     history: { status: "ready", points: [90, 100] },
+    smallestOrderUsd: 12,
     platform: "mobile",
     ...over,
   });
@@ -120,13 +135,25 @@ describe("trackerView", () => {
     const view = trackerView(reads, state());
     expect(view).toMatchObject({
       kind: "tracker",
-      price: { live: true, figure: "$100.00", tag: "Indicative" },
+      name: "NVIDIA",
+      caption: "NVIDIA tracker · NVDAx",
+      follows: "Follows NVIDIA's share price. You do not own a share.",
+      price: { live: true, figure: "$100.00", tag: "Approximate price" },
       change: { text: "+2.00%", caption: "past 24h" },
-      orderNote: "Your order price is confirmed at review.",
+      orderNote: "The final price is shown before you buy.",
+      minimum: "The smallest order is about $12.",
+      stale: null,
       chart: {
         kind: "ready",
         label:
           "1 week price chart. Started at 90 dollars 0 cents, now 100 dollars 0 cents, up 11.11 percent.",
+        source: "Historical prices",
+        high: { label: "High", value: "$100.00" },
+        low: { label: "Low", value: "$90.00" },
+      },
+      risks: {
+        title: "Read the risks",
+        lines: ["The company that issues this tracker can freeze or remove it."],
       },
       holding: { quantity: null, none: "You do not own this tracker yet." },
       actions: [{ kind: "buy", label: "Buy", disabled: false }],
@@ -140,7 +167,7 @@ describe("trackerView", () => {
     expect(view).toMatchObject({
       holding: {
         quantity: "2.0000 NVDAx",
-        value: "$200.00 indicative value",
+        value: "$200.00 approximate value",
         rows: [{ id: "acc_1", label: "Investing · 2.0000 NVDAx" }],
       },
       actions: [
@@ -169,9 +196,91 @@ describe("trackerView", () => {
     expect(
       trackerView(reads, state({ history: { status: "none" }, updatedAt: null })),
     ).toMatchObject({
-      chart: { kind: "none", text: "No verified 1W chart available." },
+      chart: { kind: "none", text: "Chart unavailable right now." },
       price: { live: false, figure: "At review" },
       change: null,
+      orderNote: "The final price is shown before you buy.",
+      stale: "We couldn't update prices. What you see may be out of date.",
     });
+  });
+
+  it("keeps the issuer's powers, the multiplier and the venue out of the main column", () => {
+    const view = trackerView(reads, state());
+    if (view.kind !== "tracker") throw new Error("expected a tracker");
+    const { risks, ...main } = view;
+    expect(risks.lines.join(" ")).toMatch(/freeze or remove/);
+    expect(JSON.stringify(main)).not.toMatch(/multiplier|\bburn|Jupiter|freeze/i);
+  });
+
+  it("states the smallest order from the figure it is given, and not for a tracker no longer sold", () => {
+    expect(trackerView(reads, state({ smallestOrderUsd: 10 }))).toMatchObject({
+      minimum: "The smallest order is about $10.",
+    });
+    expect(trackerView(reads, state({ smallestOrderUsd: 2.5 }))).toMatchObject({
+      minimum: "The smallest order is about $2.50.",
+    });
+    const retired = createScreenReads(
+      createCatalog({
+        stocks: ALL_STOCKS.map((stock) =>
+          stock.symbol === "NVDAx" ? { ...stock, retired: true } : stock,
+        ),
+        livePrice: (symbol) => TEST_PRICES[symbol],
+        stockMultiplier: () => 1,
+      }),
+    );
+    expect(trackerView(retired, state())).toMatchObject({ minimum: null });
+  });
+
+  it("says prices may be out of date once the first read has ended without one", () => {
+    const stale = "We couldn't update prices. What you see may be out of date.";
+    expect(trackerView(reads, state({ updatedAt: null, loading: true }))).toMatchObject({
+      stale: null,
+    });
+    expect(trackerView(reads, state({ updatedAt: null }))).toMatchObject({ stale });
+  });
+});
+
+describe("reading a chart", () => {
+  const points = [100, 104, 98, 110, 107];
+  const readAt = new Date(2026, 6, 15, 12, 0).getTime();
+
+  it("finds the range's high and low", () => {
+    expect(chartHighLow(points)).toEqual({ high: 110, low: 98 });
+  });
+
+  it("answers the price and the date under a finger, from the left edge to the right", () => {
+    const series = { range: "1D" as const, readAt };
+    expect(chartReadout(points, 0, series)).toEqual({
+      index: 0,
+      price: "$100.00",
+      date: "14 Jul 2026, 12:00",
+    });
+    expect(chartReadout(points, 0.5, series)).toEqual({
+      index: 2,
+      price: "$98.00",
+      date: "15 Jul 2026, 00:00",
+    });
+    expect(chartReadout(points, 1, series)).toEqual({
+      index: 4,
+      price: "$107.00",
+      date: "15 Jul 2026, 12:00",
+    });
+  });
+
+  it("takes the nearest point, and holds a finger past either edge to the edge", () => {
+    const series = { range: "1D" as const, readAt };
+    expect(chartReadout(points, 0.3, series)?.index).toBe(1);
+    expect(chartReadout(points, 0.4, series)?.index).toBe(2);
+    expect(chartReadout(points, -2, series)?.index).toBe(0);
+    expect(chartReadout(points, 7, series)?.index).toBe(4);
+  });
+
+  it("shows a month's points by their day", () => {
+    expect(chartReadout(points, 0, { range: "1M", readAt })?.date).toBe("15 Jun 2026");
+    expect(chartReadout(points, 1, { range: "1M", readAt })?.date).toBe("15 Jul 2026");
+  });
+
+  it("has nothing to read on a series too short to draw", () => {
+    expect(chartReadout([100], 0.5, { range: "1W", readAt })).toBeNull();
   });
 });

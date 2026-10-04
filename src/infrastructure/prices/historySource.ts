@@ -1,6 +1,6 @@
 import { PRICE_HISTORY_API_URL } from "../solana/config.js";
 import { stockBySymbol } from "../solana/tokenRegistry.js";
-import type { PriceRange } from "../../domain/priceRanges.js";
+import { RANGE_SPAN_MS, type PriceRange } from "../../domain/priceRanges.js";
 
 /**
  * Real price history for charts and sparklines: candle closes for the token
@@ -13,12 +13,10 @@ import type { PriceRange } from "../../domain/priceRanges.js";
  * is affected.
  */
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 const RANGES: Record<PriceRange, { interval: string; candles: number; spanMs: number }> = {
-  "1D": { interval: "1_HOUR", candles: 24, spanMs: DAY_MS },
-  "1W": { interval: "4_HOUR", candles: 42, spanMs: 7 * DAY_MS },
-  "1M": { interval: "1_DAY", candles: 30, spanMs: 30 * DAY_MS },
+  "1D": { interval: "1_HOUR", candles: 24, spanMs: RANGE_SPAN_MS["1D"] },
+  "1W": { interval: "4_HOUR", candles: 42, spanMs: RANGE_SPAN_MS["1W"] },
+  "1M": { interval: "1_DAY", candles: 30, spanMs: RANGE_SPAN_MS["1M"] },
 };
 
 const TIMEOUT_MS = 8_000;

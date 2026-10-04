@@ -51,7 +51,7 @@ export {
   type PortfolioIconTint,
   resolvePortfolioIcon,
 } from "./portfolioIcon.js";
-export { PRICE_RANGES, type PriceRange, SERIES_TTL_SECONDS } from "./priceRanges.js";
+export { PRICE_RANGES, type PriceRange, RANGE_SPAN_MS, SERIES_TTL_SECONDS } from "./priceRanges.js";
 export {
   type RecipientClass,
   type Unsendable,
@@ -62,6 +62,7 @@ export { entryHref, safeDestination } from "./safeDestination.js";
 export {
   ACTIVITY_KINDS,
   MAX_ACTIVITY_ENTRIES,
+  MIN_PASSWORD_LENGTH,
   type Activity,
   type ActivityKind,
   type AssetKind,

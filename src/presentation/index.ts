@@ -68,6 +68,8 @@ export {
   fundingWalletRow,
   fundingWalletView,
 } from "./funding.js";
+export { type AddMoneyAddress, type AddMoneyView, addMoneyView } from "./addMoney.js";
+export { type CostsView, costsView, privateMoveCostText } from "./costs.js";
 export {
   type EarnTotal,
   type HomeAction,
@@ -100,6 +102,8 @@ export {
   type TrackerState,
   type TrackerView,
   changeView,
+  chartHighLow,
+  chartReadout,
   marketsView,
   trackerRowView,
   trackerView,
@@ -152,9 +156,17 @@ export {
   toneOf,
 } from "./portfolio.js";
 export { type ProgressStep, type StepStatus } from "./progress.js";
+export { type NewPasswordView, newPasswordView } from "./password.js";
 export { privacySectionHelp } from "./settings.js";
 export { saysRawChainError } from "./actionResult.js";
-export { isWrongPassword, unlockProblemText } from "./unlock.js";
+export {
+  type UnlockProblemView,
+  isWrongPassword,
+  unlockProblemText,
+  unlockProblemView,
+} from "./unlock.js";
+export { type UnreachableView, unreachableView } from "./unreachable.js";
+export { type WelcomeAction, type WelcomeView, welcomeView } from "./welcome.js";
 export {
   IMPORT_LAST_STEP_AFTER_MS,
   type ImportWaitingView,
@@ -205,6 +217,7 @@ export {
   sendReviewView,
 } from "./send.js";
 export {
+  type NoMoneyView,
   type PortfolioChoice,
   type TradeFormState,
   type TradeOutcome,
@@ -212,6 +225,7 @@ export {
   type TradeResultView,
   type TradeReviewState,
   amountFloor,
+  noMoneyView,
   portfolioChoices,
   tradeFormView,
   tradeOutcome,

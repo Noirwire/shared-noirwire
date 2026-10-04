@@ -39,7 +39,7 @@ export const pendingActionCopy = {
   what: {
     moving: (amount: string, portfolio: string) => `moving ${amount} into ${portfolio}`,
     privateTransfer: (amount: string, portfolio: string) =>
-      `a private transfer of ${amount} into ${portfolio}`,
+      `a private move of ${amount} into ${portfolio}`,
     send: (amount: string) => `a send of ${amount}`,
     trade: (side: "buy" | "sell", symbol: string) =>
       `${side === "buy" ? "a buy" : "a sale"} of ${symbol}`,

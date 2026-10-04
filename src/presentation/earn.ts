@@ -111,7 +111,7 @@ export function earnPortfolioView(state: {
   const hasEarned = earned !== null && earned !== undefined;
   return {
     cash: usd(cash),
-    cashAvailable: commonCopy.cashAvailable(usd(cash)),
+    cashAvailable: commonCopy.readyToInvest(usd(cash)),
     inEarn: position ? usd(position.deposited) : commonCopy.unavailable,
     earned: hasEarned ? usd(earned) : commonCopy.unavailable,
     earnedLine: hasEarned ? copy.earnedSinceDeposit(usd(earned)) : null,
@@ -247,7 +247,7 @@ export function earnScreenView(state: {
     deposit: {
       label: copy.deposit,
       disabled: inert || !anyCash,
-      reason: anyCash || !available ? null : copy.noCash,
+      reason: anyCash || !available ? null : copy.noMoney,
     },
     withdraw: anyLent ? { label: copy.withdraw, disabled: inert } : null,
     portfoliosTitle: copy.portfolios,
@@ -306,7 +306,7 @@ export function earnChoiceView(
       label: portfolio.label,
       detail:
         action === "deposit"
-          ? copy.cash(usd(portfolio.cash))
+          ? copy.ready(usd(portfolio.cash))
           : copy.lent(usd(portfolio.position?.deposited ?? 0)),
     })),
     next: {
@@ -401,7 +401,7 @@ export function earnReviewView(state: {
     title: copy.reviewTitle,
     terms: depositing
       ? [
-          { label: copy.terms.leavesCash(portfolioLabel), value: figure(amount) },
+          { label: copy.terms.leaves(portfolioLabel), value: figure(amount) },
           { label: copy.terms.intoEarn, value: figure(amount) },
           { label: network.label, value: network.value },
         ]

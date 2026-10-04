@@ -1,3 +1,4 @@
+import { privateMoveTiming } from "./funding.js";
 import { walletCopy } from "./wallet.js";
 
 /** `where` is where the wallet is kept, `lost` is when unsaved changes go: "after a reload" or "when the app closes". */
@@ -80,8 +81,24 @@ export const settingsCopy = {
     description: "Balance and address for adding funds",
     lead: "Money sent here must be moved into a portfolio before you can invest.",
     assets: "USDC and network fees",
-    advanced: "Advanced: funding address",
-    copyDescribe: "Copy funding address",
+    advanced: "Advanced: funding wallet address",
+    copyDescribe: "Copy funding wallet address",
+  },
+
+  /** What things cost, as a row in Settings and wherever "What does it cost?" leads. */
+  costs: {
+    title: "Costs",
+    description: "What buying, moving and sending cost",
+    /** `percent` is the trading fee, from the app's own setting: "0.5". */
+    trade: (percent: string) => `Buying or selling a tracker: ${percent}% of the trade.`,
+    /** Said where no trading fee is set, so there is no number to state. */
+    tradeAtReview: "Buying or selling a tracker: the fee is shown in the review.",
+    /** `cost` is what a private move costs, from the fee constants: "0.1% + $0.20". */
+    move: (cost: string) =>
+      `Moving money into a portfolio privately: ${cost}. ${privateMoveTiming}`,
+    network: "Network cost: a few cents, paid automatically from your USDC.",
+    gettingUsdc: "Getting USDC from another service: that service may charge its own fee.",
+    exact: "The exact amount is always shown before you confirm.",
   },
 
   protection: {
@@ -274,5 +291,9 @@ export const mobileSettingsCopy = {
     risks: "Risks",
     copied: "Copied",
     developmentBuild: "Development",
+    help: "Help",
+    helpContact: "ph1l1ph@proton.me",
+    website: "Website",
+    websiteValue: "noirwire.com",
   },
 } as const;

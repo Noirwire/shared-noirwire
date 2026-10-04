@@ -26,12 +26,13 @@ export const tradeCopy = {
   available: (figure: string) => `Available ${figure}`,
   estimateBasis: (live: boolean) =>
     `${live ? "Estimate uses a live display price." : "No live price to estimate with."} Your order price is shown at review.`,
-  moreThanCash: "More than your available cash.",
+  moreThanReady: "More than this portfolio has to invest.",
   moreThanHeld: "More than this portfolio holds.",
   addMoney: "Add money",
   gettingPrice: "Getting a live price...",
   review: (side: "buy" | "sell") => `Review ${side}`,
-  priceAboveCash: "The live price exceeds your available cash. Enter a smaller amount.",
+  priceAboveReady:
+    "The live price is more than this portfolio has to invest. Enter a smaller amount.",
   costCheckFailed:
     "We couldn't work out the network cost of this order. Nothing was charged. Get a new price.",
 
@@ -65,7 +66,7 @@ export const tradeCopy = {
   feeNetworkSeparate:
     "The fee above is already inside the quoted amounts. The network cost of this order is separate, shown above.",
   noFundingFee:
-    "No private funding fee is part of this trade. Moving money into a portfolio is a separate action.",
+    "No private move fee is part of this trade. Moving money into a portfolio is a separate action.",
   notFirm:
     "This is a live price, not yet a firm order. The order is priced once the account for it is open, and placed only if it is no worse than shown here. If the price has moved against you by then, you are shown the new one and asked again.",
   expired: "This price expired. Get a new price to continue.",
@@ -85,7 +86,7 @@ export const tradeCopy = {
       "xStocks are not offered in the United States, to US persons or in the issuer's prohibited countries.",
   },
   publicTrade:
-    "Your trade, amount and timing are public. Private funding can reduce the link to your funding address; it does not hide this trade.",
+    "Your trade, amount and timing are public. A private move can reduce the link to your funding wallet; it does not hide this trade.",
 
   chooseTracker: (side: "buy" | "sell") => `${side === "buy" ? "Buy" : "Sell"} a tracker`,
   trackerLabel: "Tracker",
@@ -98,8 +99,10 @@ export const tradeCopy = {
     `The smallest order is about ${smallest} USDC. Your order price is shown at review.`,
   belowSmallest: (smallest: string) => `The smallest order is about ${smallest} USDC.`,
   noLiveToConvert: "No live price to convert with.",
-  noCash: "This portfolio has no cash to invest.",
-  noCashDetail: "Move money into this portfolio first.",
+  /** Buying from a portfolio with nothing to invest, said on the first tap. */
+  noMoney: "No money in this portfolio yet",
+  noMoneyAnywhere: "No money in your portfolios yet",
+  noMoneyDetail: "Move money into this portfolio first.",
 
   headline: {
     spend: (dollars: string, portfolio: string) => `Spend ${dollars} from ${portfolio}`,
@@ -137,7 +140,8 @@ export const tradeCopy = {
     bought: (amount: string) => `Bought ${amount}`,
     sold: (amount: string) => `Sold ${amount}`,
     boughtFor: (dollars: string, portfolio: string) => `For ${dollars}, in ${portfolio}.`,
-    soldFor: (dollars: string, portfolio: string) => `For ${dollars}, now in ${portfolio}'s cash.`,
+    soldFor: (dollars: string, portfolio: string) =>
+      `For ${dollars}, now in ${portfolio}, ready to invest.`,
     placed: "Order placed",
     placedUnread: "The new balance could not be read yet and will appear shortly.",
     unknown: "Sent, but not confirmed",

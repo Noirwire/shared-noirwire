@@ -8,7 +8,7 @@ import { portfolioRowView, toneOf, type ChangeTone, type PortfolioRowView } from
 
 /** Where a Home control leads. The app maps each to a screen or sheet. */
 export type HomeTarget =
-  { to: "markets" } | { to: "fund"; portfolioId?: string } | { to: "receive"; reveal: boolean };
+  { to: "markets" } | { to: "fund"; portfolioId?: string } | { to: "addMoney" };
 
 export type HomeAction = { label: string; target: HomeTarget };
 
@@ -27,7 +27,12 @@ export type HomeView = {
     unavailable: boolean;
     change?: string;
     changeTone: ChangeTone | "faint";
+    /** The tappable line under the total: who sees it. */
+    explainer: string;
   };
+  /** The header arc is a share of something. With a total of zero there is nothing to draw. */
+  showArc: boolean;
+  /** The "Ready to invest" row: what the portfolios hold uninvested. */
   cash: { label: string; value: string };
   /** What every portfolio has in Earn together; null where Earn is not offered. */
   earning: { label: string; value: string } | null;
@@ -36,10 +41,12 @@ export type HomeView = {
   /** USDC sitting in the funding wallet, waiting to be moved into a portfolio. */
   waiting: { text: string; action: HomeAction | null } | null;
   primary: HomeAction;
-  secondary: HomeAction;
+  /** Null while the wallet is empty: the one button there is "Add money". */
+  secondary: HomeAction | null;
   /** The funding notice holds the one primary button, so both actions render quiet. */
   actionsQuiet: boolean;
-  howTo: { steps: { title: string; detail: string }[]; footnote: string };
+  /** The one line under the button while the wallet is empty: where money arrives and what happens next. */
+  explanation: string | null;
   portfolios: PortfolioRowView[];
   archived: { heading: string; rows: PortfolioRowView[] };
   investments: InvestmentRowView[];
@@ -90,9 +97,11 @@ function totalOf(
 ): HomeView["total"] {
   const home = portfolioCopy.home;
   const label = home.totalValue;
+  const explainer = home.onlyYouSee;
   if (!overview.valued) {
     return {
       label,
+      explainer,
       value: home.valueUnavailable,
       unavailable: true,
       change: home.waitingForValues,
@@ -103,13 +112,21 @@ function totalOf(
   // it cannot be read, the total is of everything else, and the Earn line says so.
   const value = usd(overview.total + (earn ?? 0));
   if (empty || !overview.hasInvestments) {
-    return { label, value, unavailable: false, changeTone: "dim" };
+    return { label, explainer, value, unavailable: false, changeTone: "dim" };
   }
   if (!overview.day) {
-    return { label, value, unavailable: false, change: home.noDayChange, changeTone: "faint" };
+    return {
+      label,
+      explainer,
+      value,
+      unavailable: false,
+      change: home.noDayChange,
+      changeTone: "faint",
+    };
   }
   return {
     label,
+    explainer,
     value,
     unavailable: false,
     change: home.heldTrackersDay(deltaText(overview.day.percent, overview.day.usd)),
@@ -155,13 +172,14 @@ export function homeView(
 
   const addMoney: HomeAction = {
     label: home.addMoney,
-    target: usdc > 0 ? { to: "fund" } : { to: "receive", reveal: false },
+    target: usdc > 0 ? { to: "fund" } : { to: "addMoney" },
   };
   const archived = reads.archivedPortfolios(wallet);
 
   return {
     total: totalOf(overview, empty, earn),
-    cash: { label: home.cashAvailable, value: usd(overview.cash) },
+    showArc: overview.valued && overview.total + (earn ?? 0) > 0,
+    cash: { label: home.readyToInvest, value: usd(overview.cash) },
     earning:
       earn === undefined
         ? null
@@ -169,23 +187,11 @@ export function homeView(
     empty,
     waiting,
     primary: empty
-      ? { label: home.addUsdc, target: { to: "receive", reveal: false } }
+      ? { label: home.addMoney, target: { to: "addMoney" } }
       : { label: home.findTrackers, target: { to: "markets" } },
-    secondary: empty
-      ? { label: home.showFundingAddress, target: { to: "receive", reveal: true } }
-      : addMoney,
+    secondary: empty ? null : addMoney,
     actionsQuiet: waiting?.action != null,
-    howTo: {
-      steps: [
-        {
-          title: addMoneyCopy.stepGet(commonCopy.solana),
-          detail: addMoneyCopy.stepGetDetail(commonCopy.solana),
-        },
-        { title: addMoneyCopy.stepSend, detail: addMoneyCopy.stepSendDetail },
-        { title: addMoneyCopy.stepMove, detail: addMoneyCopy.stepMoveDetail },
-      ],
-      footnote: addMoneyCopy.footnote,
-    },
+    explanation: empty ? home.moneyArrives : null,
     portfolios: overview.portfolios.map((portfolio) =>
       portfolioRowView(reads, portfolio, updatedAt),
     ),

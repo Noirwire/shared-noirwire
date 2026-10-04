@@ -1,18 +1,26 @@
 import { plural } from "./plural.js";
 import { stillWorkingOnAction } from "./waiting.js";
 
-/** Said on both platforms under the private transfer amount field. */
-const privateTransferFooter =
-  "A private transfer breaks the onchain link between your funding wallet and this portfolio. It does not hide the amount, and the settlement service sees both addresses. It does not see your IP address: the request goes through NoirWire's own server first, which keeps only a basic record that a request was made, not your address or what's in it. Privacy from the chain, not from the service.";
+/**
+ * How long a private move takes, said the same wherever it is said. The
+ * settlement service is asked to deliver within 2 to 15 seconds, and the app
+ * watches for the arrival for a minute before it reports the move as still
+ * settling; one that is still queued then arrives later on its own.
+ */
+export const privateMoveTiming = "It usually arrives within a minute and can take a few.";
+
+/** Said on both platforms under the amount of a private move. */
+const privateMoveFooter =
+  "A private move breaks the onchain link between your funding wallet and this portfolio. It does not hide the amount, and the settlement service sees both addresses. It does not see your IP address: the request goes through NoirWire's own server first, which keeps only a basic record that a request was made, not your address or what's in it. Privacy from the chain, not from the service.";
 
 /** Moving money from the funding wallet into a portfolio, privately or in public. */
 export const fundingCopy = {
-  titlePrivate: "Fund portfolio privately",
-  titlePublic: (asset: string) => `Add ${asset} publicly`,
+  titlePrivate: "Move to portfolio",
+  titlePublic: (asset: string) => `Move ${asset} publicly`,
 
   stages: {
     enqueue: {
-      title: "Enqueue the private transfer",
+      title: "Enqueue the private move",
       detail: "Signed by your funding wallet and handed to the settlement queue.",
     },
     settle: {
@@ -30,18 +38,18 @@ export const fundingCopy = {
     `Move ${asset} into this portfolio without publishing a transfer between your funding wallet and it. Available ${available}.`,
   leadPublic: (asset: string, available: string) =>
     `Move ${asset} into this portfolio. Available ${available}.`,
-  noPrivateRoute: (asset: string) =>
-    `${asset} has no private route. This is a direct, public transfer from your funding wallet to this portfolio, and it links the two addresses onchain. Keep it small - enough to cover fees is usually plenty.`,
+  noPrivateMove: (asset: string) =>
+    `${asset} cannot be moved privately. This is a direct, public transfer from your funding wallet to this portfolio, and it links the two addresses onchain. Keep it small - enough to cover fees is usually plenty.`,
   otherAmount: (asset: string) => `Other amount in ${asset}`,
   invalidAmount: "Enter an amount greater than zero and within your available balance.",
-  belowMinimum: (minimum: string) => `A private transfer has to be at least ${minimum}.`,
+  belowMinimum: (minimum: string) => `A private move has to be at least ${minimum}.`,
   overBalance: (leaving: string) =>
     `With fees this takes ${leaving} from your funding wallet, more than it holds. Enter a smaller amount.`,
   emptyBefore: (asset: string) => `Your ${asset} funding balance is empty. `,
-  depositLink: "Get your deposit address",
+  addressLink: "Show your funding wallet address",
   emptyAfter: " to add money first.",
   privateCosts: (feePercent: number, relayFee: string, asset: string, minimum: string) =>
-    `Costs a ${feePercent}% privacy fee plus a flat ${relayFee} relay fee, both charged in ${asset} by the settlement service on top of the amount. The relay fee pays the network costs, so your funding wallet needs no SOL. The smallest transfer is ${minimum}, and it usually arrives within seconds.`,
+    `Costs a ${feePercent}% privacy fee plus a flat ${relayFee} relay fee, both charged in ${asset} by the settlement service on top of the amount. The relay fee pays the network costs, so your funding wallet needs no SOL. The smallest private move is ${minimum}. ${privateMoveTiming}`,
 
   reviewLead: (portfolio: string) =>
     `Review what leaves your funding wallet before moving money into ${portfolio}.`,
@@ -53,6 +61,8 @@ export const fundingCopy = {
   },
   noSolNeeded:
     "No SOL is needed. If the transfer would take more than this total, it is not signed.",
+  /** The button that confirms a private move. */
+  confirmPrivate: "Move privately",
 
   moving: (amount: string, portfolio: string) => `Moving ${amount} into ${portfolio}`,
 
@@ -73,7 +83,7 @@ export const fundingCopy = {
   settling:
     "The transfer was accepted but has not landed yet. Queued transfers settle on their own schedule, so this is normal rather than a failure. This portfolio’s balance will show it once it arrives.",
 
-  footerPrivate: privateTransferFooter,
+  footerPrivate: privateMoveFooter,
   footerPublic: "This is an ordinary, fully public onchain transfer.",
 } as const;
 
@@ -83,10 +93,8 @@ export const fundingCopy = {
  * nothing about SOL; the web keeps its wording for its public SOL route.
  */
 export const mobileFundingCopy = {
-  title: "Add money privately",
-  chooseTitle: "Add money to",
+  chooseTitle: "Choose a portfolio",
   continueWith: (portfolio: string) => `Continue with ${portfolio}`,
-  cash: (amount: string) => `${amount} cash`,
 
   lead: (portfolio: string) =>
     `Move USDC into ${portfolio} without publishing a transfer between your funding wallet and it.`,
@@ -98,13 +106,13 @@ export const mobileFundingCopy = {
     leaves: "Leaves your funding wallet",
   },
   costs: (minimum: string) =>
-    `Both fees are charged in USDC by the settlement service, on top of the amount. The relay fee pays the network cost. The smallest transfer is ${minimum}, and it usually arrives within seconds.`,
+    `Both fees are charged in USDC by the settlement service, on top of the amount. The relay fee pays the network cost. The smallest private move is ${minimum}. ${privateMoveTiming}`,
   review: "Review",
-  footer: privateTransferFooter,
+  footer: privateMoveFooter,
 
   empty: "Your funding wallet is empty.",
-  emptyDetail: "Send USDC on Solana to your funding address first.",
-  showAddress: "Show my funding address",
+  emptyDetail: "Add money to your funding wallet first.",
+  addMoney: "Add money",
 
   reviewTitle: "Review",
   notSignedAbove: "If the transfer would take more than this total, it is not signed.",
@@ -112,7 +120,7 @@ export const mobileFundingCopy = {
 
   stages: [
     {
-      title: "Sent to the private route",
+      title: "Private move sent",
       caption: "Signed by your funding wallet and handed to the settlement queue.",
     },
     {
@@ -137,9 +145,9 @@ export const mobileFundingCopy = {
     title: "Funding wallet",
     waiting: "Waiting to be moved",
     lead: "Money sent here must be moved into a portfolio before you can invest.",
-    empty: "Nothing is waiting. Send USDC on Solana to your funding address to add money.",
-    move: "Move to a portfolio",
-    showAddress: "Show my funding address",
+    empty: "Nothing is waiting. Add money to your funding wallet first.",
+    move: "Move to portfolio",
+    addMoney: "Add money",
     readFailed:
       "We couldn't update your balance. What you see may be out of date. Pull down to try again.",
     balanceLabel: (amount: string) => `${amount} waiting to be moved`,

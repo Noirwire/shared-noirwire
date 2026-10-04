@@ -43,6 +43,8 @@ export class ApiError extends Error {
     /** The server's code. One this version does not know is kept as it came. */
     readonly code: ApiErrorCode | (string & {}),
     readonly status: number,
+    /** How long the server asked to be left alone, from its `Retry-After`. Undefined when it did not say. */
+    readonly retryAfterMs?: number,
   ) {
     super(`${status} ${code}`);
     this.name = "ApiError";
@@ -61,8 +63,10 @@ export class ApiError extends Error {
  * provider wrote it, and has no `code` that is a string beside an `error`
  * that is one.
  */
-export function apiErrorIn(status: number, body: unknown): ApiError | null {
+export function apiErrorIn(status: number, body: unknown, retryAfterMs?: number): ApiError | null {
   if (status < 400 || typeof body !== "object" || body === null) return null;
   const { code, error } = body as { code?: unknown; error?: unknown };
-  return typeof code === "string" && typeof error === "string" ? new ApiError(code, status) : null;
+  return typeof code === "string" && typeof error === "string"
+    ? new ApiError(code, status, retryAfterMs)
+    : null;
 }

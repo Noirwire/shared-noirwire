@@ -6,6 +6,7 @@ import {
   unusedPortfoliosInARow,
 } from "../../src/application/actions/createPortfolio.js";
 import { createPacer } from "../../src/application/pacer.js";
+import { ApiError } from "../../src/domain/apiError.js";
 import { isTransient, withRetries } from "../../src/application/retries.js";
 import { logged } from "../../src/application/walletRecord.js";
 import { onboardingCopy } from "../../src/copy/onboarding.js";
@@ -18,6 +19,7 @@ import type { DerivationScheme, Portfolio } from "../../src/domain/wallet.js";
 import { connection } from "../../src/infrastructure/solana/client.js";
 import {
   IMPORT_REQUESTS_PER_SECOND,
+  RATE_LIMIT_PATIENCE_MS,
   lookFurtherForPortfolios,
   paceImportWith,
   resolveImportedWallet,
@@ -220,11 +222,13 @@ describe("looking further after an import", () => {
     expect(lookFurtherView({ status: "idle" })).toEqual({
       action: "Missing a portfolio? Look further",
       waiting: null,
+      continuePaused: null,
       note: null,
     });
     expect(lookFurtherView({ status: "looking" })).toEqual({
       action: null,
       waiting: "Looking further for your portfolios...",
+      continuePaused: "Continue is paused while we look.",
       note: null,
     });
     expect(lookFurtherView({ status: "failed" }).note).toEqual({
@@ -271,6 +275,80 @@ describe("the pacer", () => {
     clock = 5_000;
     await pacer.turn();
     expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it("halves its rate and holds everything back when the service says requests came too fast", async () => {
+    let clock = 0;
+    const started: number[] = [];
+    const pacer = createPacer({
+      perSecond: 8,
+      now: () => clock,
+      sleep: async (ms) => {
+        clock += ms;
+      },
+    });
+    await pacer.turn();
+    pacer.slowDown(1_000);
+    for (let request = 0; request < 4; request++) {
+      await pacer.turn();
+      started.push(clock);
+    }
+    expect(started).toEqual([1_000, 1_250, 1_500, 1_750]);
+  });
+
+  it("takes refusals that arrive during the hold as one, and slows no further for them", async () => {
+    let clock = 0;
+    const pacer = createPacer({
+      perSecond: 8,
+      now: () => clock,
+      sleep: async (ms) => {
+        clock += ms;
+      },
+    });
+    pacer.slowDown(1_000);
+    clock = 400;
+    pacer.slowDown(1_000);
+    pacer.slowDown(1_000);
+    await pacer.turn();
+    const first = clock;
+    await pacer.turn();
+    expect([first, clock]).toEqual([1_000, 1_250]);
+  });
+
+  it("holds without slowing further, and never shortens a hold already set", async () => {
+    let clock = 0;
+    const pacer = createPacer({
+      perSecond: 4,
+      now: () => clock,
+      sleep: async (ms) => {
+        clock += ms;
+      },
+    });
+    pacer.hold(5_000);
+    pacer.hold(2_000);
+    await pacer.turn();
+    const first = clock;
+    await pacer.turn();
+    expect([first, clock]).toEqual([5_000, 5_250]);
+  });
+
+  it("is never slowed below a quarter of the rate it began with", async () => {
+    let clock = 0;
+    const pacer = createPacer({
+      perSecond: 8,
+      now: () => clock,
+      sleep: async (ms) => {
+        clock += ms;
+      },
+    });
+    for (let refusal = 0; refusal < 6; refusal++) {
+      pacer.slowDown(1_000);
+      clock += 1_000;
+    }
+    await pacer.turn();
+    const first = clock;
+    await pacer.turn();
+    expect(clock - first).toBe(500);
   });
 
   it("is set safely under ten a second for an import", () => {
@@ -366,7 +444,10 @@ describe("an import against a provider that allows ten requests a second", () =>
       expect(within).toBeLessThanOrEqual(IMPORT_REQUESTS_PER_SECOND);
     }
     const gaps = starts.slice(1).map((at, index) => at - starts[index]);
-    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(1_000 / IMPORT_REQUESTS_PER_SECOND);
+    // A timer fires on a whole millisecond.
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(
+      Math.floor(1_000 / IMPORT_REQUESTS_PER_SECOND),
+    );
   });
 
   it("would be refused without pacing, which is what the pace is for", async () => {
@@ -401,5 +482,131 @@ describe("an import against a provider that allows ten requests a second", () =>
     expect(asked.some((owner) => completed.includes(owner))).toBe(false);
     expect(asked.some((owner) => owner === addressAt(mnemonic, 0, "walletDefault"))).toBe(false);
     expect(asked).toContain(stuck);
+  });
+});
+
+describe("an import and a further look against a server with a session's allowance", () => {
+  const MINUTE_MS = 60_000;
+
+  /**
+   * NoirWire's server as a developer runs it: `perSecond` lookups a second,
+   * and `perMinute` to one session in each minute counted from its first.
+   * A refused lookup is not counted. A refusal for the second says when to
+   * come back; one for the minute does not.
+   */
+  function serverAllowing(funded: string[], perSecond: number, perMinute: number) {
+    const starts: number[] = [];
+    let minute = { startedAt: Number.NEGATIVE_INFINITY, count: 0 };
+    let refusals = 0;
+    const chain = chainWith(funded, () => {
+      const now = Date.now();
+      if (now - minute.startedAt >= MINUTE_MS) minute = { startedAt: now, count: 0 };
+      if (minute.count >= perMinute) {
+        refusals += 1;
+        throw new ApiError("rate_limited", 429);
+      }
+      if (starts.filter((at) => at > now - 1_000).length >= perSecond) {
+        refusals += 1;
+        throw new ApiError("rate_limited", 429, 1_000);
+      }
+      minute.count += 1;
+      starts.push(now);
+    });
+    return { ...chain, starts, refusals: () => refusals };
+  }
+
+  async function finished<T>(work: Promise<T>): Promise<T> {
+    const outcome = work.then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    );
+    await vi.runAllTimersAsync();
+    const result = await outcome;
+    if ("error" in result) throw result.error;
+    return result.value;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    paceImportWith(createPacer({ perSecond: IMPORT_REQUESTS_PER_SECOND }));
+  });
+
+  /** A wallet with a portfolio past the first scan's reach, found only by looking further. */
+  async function importThenLookFurther(perSecond: number, perMinute: number) {
+    const mnemonic = generateWalletMnemonic();
+    const far = 1 + DISCOVERY_GAP + 5;
+    const server = serverAllowing(
+      [addressAt(mnemonic, 0), addressAt(mnemonic, far)],
+      perSecond,
+      perMinute,
+    );
+    const first = await finished(resolveImportedWallet(mnemonic));
+    const further = await finished(lookFurtherForPortfolios(mnemonic, "app", first.app));
+    return { server, first, further, far };
+  }
+
+  it("paces a scan inside one session's allowance in production, with room left for the app's other reads", () => {
+    const perMinuteInProduction = 240;
+    expect(IMPORT_REQUESTS_PER_SECOND).toBe(3);
+    expect(IMPORT_REQUESTS_PER_SECOND * 60).toBeLessThanOrEqual(perMinuteInProduction * 0.75);
+  });
+
+  it("is never refused in production: eight a second, 240 a minute", async () => {
+    const { server, first, further, far } = await importThenLookFurther(8, 240);
+    expect(first.app.portfolios).toEqual([]);
+    expect(further.portfolios.map((found) => found.index)).toEqual([far]);
+    expect(further.scannedThrough).toBe(far + EXTENDED_DISCOVERY_GAP);
+    expect(server.refusals()).toBe(0);
+  });
+
+  it("completes on a developer's machine, four a second and 120 a minute, by waiting for the next minute and going on from where it stopped", async () => {
+    const { server, first, further, far } = await importThenLookFurther(4, 120);
+    expect(first.app.portfolios).toEqual([]);
+    expect(further.portfolios.map((found) => found.index)).toEqual([far]);
+    expect(further.scannedThrough).toBe(far + EXTENDED_DISCOVERY_GAP);
+    // More lookups than one minute allows, so the scan crossed into the next one.
+    expect(server.asked.length).toBeGreaterThan(120);
+    expect(server.starts.at(-1)! - server.starts[0]).toBeGreaterThan(MINUTE_MS);
+    // No address was asked about twice: nothing was started again.
+    expect(server.asked.length).toBe(new Set(server.asked).size);
+    // The spent allowance was waited out with a few growing pauses, not hammered.
+    expect(server.refusals()).toBeGreaterThan(0);
+    expect(server.refusals()).toBeLessThan(30);
+  });
+
+  it("waits as long as the server asks when it says so, and slows down", async () => {
+    const mnemonic = generateWalletMnemonic();
+    paceImportWith(createPacer({ perSecond: 8 }));
+    const server = serverAllowing([addressAt(mnemonic, 0)], 4, 10_000);
+    await finished(resolveImportedWallet(mnemonic));
+    expect(server.refusals()).toBeGreaterThan(0);
+    expect(server.refusals()).toBeLessThanOrEqual(5);
+    const gaps = server.starts.slice(8).map((at, index) => at - server.starts[index + 7]);
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(250);
+  });
+
+  it("waits a refusal out with no pacer at all", async () => {
+    paceImportWith(null);
+    const mnemonic = generateWalletMnemonic();
+    const server = serverAllowing([addressAt(mnemonic, 0)], 4, 10_000);
+    const resolution = await finished(resolveImportedWallet(mnemonic));
+    expect(resolution.scheme).toBe("app");
+    expect(server.refusals()).toBeGreaterThan(0);
+  });
+
+  it("says it could not finish only when it is refused for longer than any allowance takes to come back", async () => {
+    const mnemonic = generateWalletMnemonic();
+    const began = Date.now();
+    vi.spyOn(connection, "getMultipleAccountsInfo").mockRejectedValue(
+      new ApiError("rate_limited", 429),
+    );
+    await expect(finished(resolveImportedWallet(mnemonic))).rejects.toThrow("429");
+    expect(Date.now() - began).toBeGreaterThanOrEqual(RATE_LIMIT_PATIENCE_MS);
+    expect(Date.now() - began).toBeLessThan(RATE_LIMIT_PATIENCE_MS * 2);
+    vi.restoreAllMocks();
+    const server = serverAllowing([addressAt(mnemonic, 0)], 4, 120);
+    // What the failed attempt left is carried on from, and the next one completes.
+    expect((await finished(resolveImportedWallet(mnemonic))).scheme).toBe("app");
+    expect(server.refusals()).toBe(0);
   });
 });

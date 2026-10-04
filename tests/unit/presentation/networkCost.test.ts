@@ -53,7 +53,7 @@ describe("networkCostView", () => {
     expect(shown.explanation).toEqual([]);
     expect(shown.details).toEqual({
       summary: "Network cost: 0.03 USDC. What is this?",
-      body: "Every action has a small network cost. NoirWire's relayer pays it, and this portfolio pays the relayer back exactly 0.031234 USDC, from its cash, in the same transaction. The cost moves with the market: if it has risen by the time you confirm, nothing is sent and you are shown the new cost first. A transaction paid this way shows publicly that this portfolio uses NoirWire. It does not show your funding wallet or your other portfolios.",
+      body: "Every action has a small network cost. NoirWire's relayer pays it, and this portfolio pays the relayer back exactly 0.031234 USDC, from its USDC, in the same transaction. The cost moves with the market: if it has risen by the time you confirm, nothing is sent and you are shown the new cost first. A transaction paid this way shows publicly that this portfolio uses NoirWire. It does not show your funding wallet or your other portfolios.",
     });
     expect(shown.confirmDisabled).toBe(false);
   });
@@ -76,7 +76,7 @@ describe("networkCostView", () => {
       "The network cost includes opening this portfolio's account for this tracker, a one-time cost.",
     ]);
     expect(one.details?.body).toContain(
-      "from its cash. The account is opened first, then your order is priced and placed, with one confirmation.",
+      "from its USDC. The account is opened first, then your order is priced and placed, with one confirmation.",
     );
     const several = view(relayer({ opens: "holding", count: 3 }));
     expect(several.explanation).toEqual([
@@ -99,13 +99,13 @@ describe("networkCostView", () => {
     expect(shown.tone).toBe("warning");
     expect(shown.moveMoney).toEqual({
       before:
-        "This portfolio needs at least 0.04 USDC of cash to pay the network cost, and would have 0.01 USDC to spare. ",
-      link: "Move money here",
+        "This portfolio needs at least 0.04 USDC to pay the network cost, and would have 0.01 USDC to spare. ",
+      link: "Move to portfolio",
       after: " or use a smaller amount.",
     });
     expect(shown.confirmDisabled).toBe(true);
     expect(view({ kind: "needsCash", cash: 0.004, free: 0 }).moveMoney?.before).toBe(
-      "This portfolio needs less than 0.01 USDC of cash to pay the network cost, and would have 0.00 USDC to spare. ",
+      "This portfolio needs less than 0.01 USDC to pay the network cost, and would have 0.00 USDC to spare. ",
     );
   });
 

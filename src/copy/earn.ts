@@ -9,13 +9,13 @@ export const earnCopy = {
   rewardsApy: "Rewards APY",
   totalInEarn: "Your total in Earn",
   percent: (rate: string) => `${rate}%`,
-  couldEarn: (rate: string) => `Your cash could earn ${rate}% a year at today's rate.`,
+  couldEarn: (rate: string) => `Your USDC could earn ${rate}% a year at today's rate.`,
   noRate: "A current lending rate is unavailable.",
   rateBreakdown: (supply: string, rewards: string) =>
     `Supply ${supply}% · rewards ${rewards}%. The rate changes.`,
 
   portfolios: "Your portfolios",
-  portfoliosLead: "Move cash from each portfolio into Earn and back.",
+  portfoliosLead: "Move USDC from each portfolio into Earn and back.",
   columns: {
     portfolio: "Portfolio",
     cash: "Cash available",
@@ -29,9 +29,9 @@ export const earnCopy = {
   createPortfolio: "Create a portfolio",
   risksTitle: "Lending risks",
   risks:
-    "Lending has smart-contract risk. USDC in Earn is not insured and is not cash available to trade. Withdrawals can be delayed if the pool is heavily borrowed. APY changes over time.",
+    "Lending has smart-contract risk. USDC in Earn is not insured and is not available to trade. Withdrawals can be delayed if the pool is heavily borrowed. APY changes over time.",
   risksShort:
-    "Lending has smart-contract risk. USDC in Earn is not insured and is not cash available to trade. Withdrawals can be delayed if the pool is heavily borrowed.",
+    "Lending has smart-contract risk. USDC in Earn is not insured and is not available to trade. Withdrawals can be delayed if the pool is heavily borrowed.",
 
   deposit: "Deposit",
   withdraw: "Withdraw",
@@ -55,13 +55,13 @@ export const earnCopy = {
   earning: (amount: string, venue: string) => `${amount} earning through ${venue}`,
 
   rateAnnouncement: (rate: string) => `Current variable rate, ${rate} percent a year`,
-  noCash: "No portfolio has cash to deposit. Add money to a portfolio first.",
+  noMoney: "No portfolio has USDC to deposit. Move money into a portfolio first.",
   riskLine: "Lending carries risk and the rate changes.",
   readRisks: "Read the risks",
   noPortfolio: "Create a portfolio to use Earn.",
-  noPortfolioDetail: "Earn lends a portfolio's cash.",
+  noPortfolioDetail: "Earn lends a portfolio's USDC.",
   continueWith: (portfolio: string) => `Continue with ${portfolio}`,
-  cash: (amount: string) => `${amount} cash`,
+  ready: (amount: string) => `${amount} ready to invest`,
   lent: (amount: string) => `${amount} in Earn`,
   leadFor: {
     deposit: (portfolio: string) => `Lend USDC from ${portfolio}.`,
@@ -74,15 +74,15 @@ export const earnCopy = {
 
   reviewTitle: "Review",
   terms: {
-    leavesCash: (portfolio: string) => `Leaves ${portfolio}'s cash`,
+    leaves: (portfolio: string) => `Leaves ${portfolio}`,
     intoEarn: "Goes into Earn",
-    totalLeaving: (portfolio: string) => `Total leaving ${portfolio}'s cash`,
+    totalLeaving: (portfolio: string) => `Total leaving ${portfolio}`,
     leavesEarn: "Leaves Earn",
-    arrives: (portfolio: string) => `Arrives in ${portfolio}'s cash`,
+    arrives: (portfolio: string) => `Arrives in ${portfolio}`,
   },
   openingReason: "The network cost includes opening this holding, a one-time cost.",
   fromProceeds:
-    "The network cost is paid out of the USDC this returns, so no cash is needed first.",
+    "The network cost is paid out of the USDC this returns, so no USDC is needed first.",
   depositRisk: (venue: string) =>
     `USDC is lent through ${venue}. It is not a bank deposit, and withdrawals can be delayed.`,
   confirmAmount: {
@@ -102,7 +102,7 @@ export const earnCopy = {
   },
   landedBody: {
     deposit: (portfolio: string) => `From ${portfolio}, now in Earn.`,
-    withdraw: (portfolio: string) => `Back in ${portfolio}'s cash.`,
+    withdraw: (portfolio: string) => `Back in ${portfolio}, ready to invest.`,
   },
   unknownTitle: "Sent, but not confirmed",
   unknownBody: (portfolio: string) =>

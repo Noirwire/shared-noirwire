@@ -132,7 +132,7 @@ describe("tradeFormView", () => {
   });
 
   it("says when the amount is over what can be used", () => {
-    expect(form({}, { amountText: "500" }).overCap).toBe("More than your available cash.");
+    expect(form({}, { amountText: "500" }).overCap).toBe("More than this portfolio has to invest.");
     expect(form({ side: "sell" }, { side: "sell", amountText: "500" }).overCap).toBe(
       "More than this portfolio holds.",
     );

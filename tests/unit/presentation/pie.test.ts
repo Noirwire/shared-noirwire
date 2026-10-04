@@ -61,7 +61,7 @@ describe("pieInvestView", () => {
   it("shows how an amount splits and lets it be reviewed", () => {
     expect(pieInvestView({ amount: 30, cash: 50, preview, priced: true, nameOf })).toEqual({
       label: "Invest $",
-      available: "$50.00 cash available",
+      available: "$50.00 ready to invest",
       overCash: null,
       split: {
         title: "How it splits, toward your targets",
@@ -74,7 +74,7 @@ describe("pieInvestView", () => {
 
   it("refuses more than the cash, and waits for prices", () => {
     const over = pieInvestView({ amount: 80, cash: 50, preview, priced: true, nameOf });
-    expect(over.overCash).toBe("More than your available cash.");
+    expect(over.overCash).toBe("More than this pie has to invest.");
     expect(over.split).toBeNull();
     expect(over.review.disabled).toBe(true);
     const unpriced = pieInvestView({ amount: 30, cash: 50, preview, priced: false, nameOf });
@@ -144,7 +144,7 @@ describe("pieReviewView", () => {
     });
     expect(view.totals).toContainEqual({ label: "Of which NoirWire", value: "0.20%" });
     expect(view.totals).toContainEqual({
-      label: "Stays as cash, too small to split",
+      label: "Stays as USDC, too small to split",
       value: "$0.50",
     });
     expect(view.smallOrders).toContain("Small orders carry a larger fee share");
@@ -172,7 +172,7 @@ describe("pieReviewView", () => {
     expect(sells.back).toEqual({ label: "Back", ends: false });
     const buys = review({ mode: "rebalance" });
     expect(buys.step).toBe("Step 2 of 2: invest what the sells returned.");
-    expect(buys.back).toEqual({ label: "Keep as cash", ends: true });
+    expect(buys.back).toEqual({ label: "Keep as USDC", ends: true });
   });
 
   it("will not place orders it cannot fully state or pay for", () => {

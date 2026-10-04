@@ -4,6 +4,7 @@ import type { Denomination, TradeDraft } from "../application/trade.js";
 import { commonCopy } from "../copy/common.js";
 import { errorsCopy } from "../copy/errors.js";
 import { networkCostCopy } from "../copy/networkCost.js";
+import { portfolioCopy } from "../copy/portfolio.js";
 import { mobileTradeCopy, tradeCopy as copy } from "../copy/trade.js";
 import { smallestAmount } from "../domain/amount.js";
 import type { AppPlatform } from "../domain/appPlatform.js";
@@ -13,6 +14,7 @@ import type { PricedOrder, Side } from "../domain/order.js";
 import { resolvePortfolioIcon, type PortfolioIcon } from "../domain/portfolioIcon.js";
 import type { Portfolio, Wallet } from "../domain/wallet.js";
 import { describeFailure } from "./actionResult.js";
+import type { HomeTarget } from "./home.js";
 import { networkCostView, type NetworkCostView } from "./networkCost.js";
 import type { ProgressStep } from "./progress.js";
 
@@ -65,7 +67,7 @@ export function tradeFormView(state: TradeFormState): TradeFormView {
     ),
     available: copy.available(buying ? usd(cash) : `${shares(draft.held)} ${symbol}`),
     estimateBasis: copy.estimateBasis(displayLive),
-    overCap: draft.overCap ? (buying ? copy.moreThanCash : copy.moreThanHeld) : null,
+    overCap: draft.overCap ? (buying ? copy.moreThanReady : copy.moreThanHeld) : null,
     tooPrecise:
       draft.tooPrecise && draft.decimals !== undefined
         ? commonCopy.tooPrecise(
@@ -311,6 +313,41 @@ export function portfolioChoices(
           ? copy.cashAvailable(symbolAmount("USDC", reads.cashOf(portfolio)))
           : copy.held(shownHeld(reads, portfolio, symbol)),
     }));
+}
+
+export type NoMoneyView = {
+  title: string;
+  detail: string;
+  action: { label: string; target: Extract<HomeTarget, { to: "fund" | "addMoney" }> };
+};
+
+/**
+ * Buying with nothing to invest, said on the first tap and not three steps
+ * in. `portfolioId` is the portfolio the buy starts from, or null when it
+ * starts from a tracker's page with none chosen yet: then it is said only
+ * when no active portfolio has anything to invest. Null when there is money
+ * to buy with. With USDC waiting in the funding wallet the way on is to move
+ * it in; with none, to add money.
+ */
+export function noMoneyView(
+  reads: ScreenReads,
+  wallet: Wallet,
+  portfolioId: string | null,
+): NoMoneyView | null {
+  const active = reads.activePortfolios(wallet);
+  const chosen = active.find((portfolio) => portfolio.id === portfolioId);
+  if ((chosen ? [chosen] : active).some((portfolio) => reads.cashOf(portfolio) > 0)) return null;
+  const waiting = (wallet.funding.tokens.USDC ?? 0) > 0;
+  return {
+    title: chosen ? copy.noMoney : copy.noMoneyAnywhere,
+    detail: waiting ? copy.noMoneyDetail : portfolioCopy.home.moneyArrives,
+    action: waiting
+      ? {
+          label: portfolioCopy.detail.moveToPortfolio,
+          target: chosen ? { to: "fund", portfolioId: chosen.id } : { to: "fund" },
+        }
+      : { label: copy.addMoney, target: { to: "addMoney" } },
+  };
 }
 
 /** The order's floor on the amount step: whether Review is held back for being under the smallest order. */

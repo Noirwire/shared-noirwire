@@ -58,12 +58,12 @@ describe("portfolioView", () => {
     const view = found(testWallet());
     expect(view.kindLine).toBe("Portfolio · Created 3 Sep 2026");
     expect(view.value).toBe("$0.00");
-    expect(view.cashLine).toBe("0.00 USDC cash to invest");
+    expect(view.cashLine).toBe("0.00 USDC ready to invest");
     expect(view.primary).toBeNull();
     expect(view.empty).toEqual({
       title: "Nothing here yet.",
-      button: { label: "Move money here", action: { to: "fund" } },
-      caption: "Add money first, then choose a tracker.",
+      button: { label: "Move to portfolio", action: { to: "fund" } },
+      caption: "Move money in first, then choose a tracker.",
     });
     expect(view.quiet.map((button) => [button.label, !!button.disabled])).toEqual([
       ["Receive", false],
@@ -71,7 +71,7 @@ describe("portfolioView", () => {
     ]);
     expect(view.sendReason).toBe("Nothing to send yet.");
     expect(view.activity.empty).toBe(
-      "Nothing has moved yet. Fund or receive into this portfolio to begin.",
+      "Nothing has moved yet. Move money into this portfolio to begin.",
     );
   });
 
@@ -79,7 +79,11 @@ describe("portfolioView", () => {
     const view = found(withFirst((p) => withHolding(p, holding("USDC", 50))));
     expect(view.empty?.button).toEqual({ label: "Add your first tracker", action: { to: "buy" } });
     expect(view.empty?.caption).toBeNull();
-    expect(view.quiet.map((button) => button.label)).toEqual(["Receive", "Send", "Add money"]);
+    expect(view.quiet.map((button) => button.label)).toEqual([
+      "Receive",
+      "Send",
+      "Move to portfolio",
+    ]);
   });
 
   it("lists cash first, then trackers by value, then anything else without an action", () => {
@@ -165,7 +169,7 @@ describe("portfolioView", () => {
     expect(view.mix?.centre).toEqual({ label: "Target", value: "2 trackers" });
     expect(view.mix?.current).toEqual([0, 0]);
     expect(view.mix?.slices.map((slice) => slice.trailing)).toEqual(["Not bought", "Not bought"]);
-    expect(view.primary).toEqual({ label: "Move money here", action: { to: "fund" } });
+    expect(view.primary).toEqual({ label: "Move to portfolio", action: { to: "fund" } });
     expect(view.rebalance).toBeNull();
   });
 

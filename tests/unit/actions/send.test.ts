@@ -371,7 +371,7 @@ describe("reviewing a send", () => {
     ).toMatchObject({
       moveMoney: {
         before:
-          "This portfolio needs at least 0.01 USDC of cash to pay the network cost, and would have 0.00 USDC to spare. ",
+          "This portfolio needs at least 0.01 USDC to pay the network cost, and would have 0.00 USDC to spare. ",
       },
       confirmDisabled: true,
     });

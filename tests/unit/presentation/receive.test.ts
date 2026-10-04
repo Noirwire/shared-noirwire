@@ -15,18 +15,17 @@ describe("receiveView", () => {
         wallet,
         target: { kind: "funding", reveal },
         network: "devnet",
-        platform: "mobile",
       });
     expect(view(false)).toMatchObject({
       kind: "address",
-      title: "Your funding address",
+      title: "Your funding wallet address",
       notice: "This first transfer is public and may link the sending address to you.",
-      masked: { text: "Your funding address is hidden.", show: "Show address" },
+      masked: { text: "Your funding wallet address is hidden.", show: "Show address" },
       address: FUNDING_ADDRESS,
-      qrLabel: "QR code of your funding address",
+      qrLabel: "QR code of your funding wallet address",
       notes: [
         "Only send USDC on Solana. Other assets or networks may be lost.",
-        "Once it arrives, move it into a portfolio through the private route.",
+        "Once it arrives, choose a portfolio and tap Move to portfolio.",
       ],
       what: "funding",
     });
@@ -40,12 +39,11 @@ describe("receiveView", () => {
       wallet,
       target: { kind: "portfolio", id: portfolio.id },
       network: "mainnet-beta",
-      platform: "mobile",
     });
     expect(phone).toMatchObject({
       title: "Receive in Investing",
       notice:
-        "A transfer straight to this address is public and ties the sender to this portfolio. To move in your own money, use Add money instead.",
+        "A transfer straight to this address is public and ties the sender to this portfolio. To move in your own money, use Move to portfolio instead.",
       masked: null,
       address: portfolio.address,
       qrLabel: "QR code of Investing's address",
@@ -58,7 +56,6 @@ describe("receiveView", () => {
       wallet,
       target: { kind: "portfolio", id: portfolio.id },
       network: "devnet",
-      platform: "web",
     });
     expect(web.kind === "address" && web.notice).toMatch(/^A transfer straight to this address/);
     expect(web.kind === "address" && web.notes[0]).toMatch(/devnet assets only/);
@@ -74,7 +71,6 @@ describe("receiveView", () => {
         wallet,
         target: { kind: "portfolio", id },
         network: "devnet",
-        platform: "mobile",
       });
     expect(view("gone")).toMatchObject({
       kind: "unavailable",

@@ -70,7 +70,7 @@ export const pieCopy = {
     tradingUnavailable: (network: string) =>
       `Live tracker trading is unavailable on ${network}. The pie is saved, and can be invested on mainnet.`,
     investLabel: "Invest $",
-    moreThanCash: "More than your available cash.",
+    moreThanReady: "More than this pie has to invest.",
     howItSplits: "How it splits, toward your targets",
     waitingForPrices:
       "Waiting for live prices, so the split can account for what the pie already holds.",
@@ -86,7 +86,7 @@ export const pieCopy = {
     stepBuy: "Step 2 of 2: invest what the sells returned.",
     quantityUnknown: "A token quantity cannot be shown right now. Try again in a moment.",
     feeUnverified: "A fee could not be verified. Go back and price the orders again.",
-    keepAsCash: "Keep as cash",
+    keepAsUsdc: "Keep as USDC",
     place: (count: number) => `Place ${plural(count, "order")}`,
 
     retired: (symbol: string) =>
@@ -104,7 +104,7 @@ export const pieCopy = {
     legNotPlaced: "The order could not be placed.",
     legUnread: "Placed, but the new balances could not be read yet. Stopped here.",
     proceedsUnread:
-      "The sells went through, but the cash they returned could not be read. Invest it once the balance shows.",
+      "The sells went through, but the USDC they returned could not be read. Invest it once the balance shows.",
 
     legBuy: (pay: string, expect: string, atLeast: string, fee: string) =>
       `Pay ${pay} · expect ${expect} · at least ${atLeast} · ${fee}`,
@@ -120,7 +120,7 @@ export const pieCopy = {
     feesFigure: (dollars: string, percent: string) => `about ${dollars} · ${percent}%`,
     ofWhichNoirWire: "Of which NoirWire",
     percent: (percent: string) => `${percent}%`,
-    leftover: "Stays as cash, too small to split",
+    leftover: "Stays as USDC, too small to split",
     smallOrders:
       "Small orders carry a larger fee share, because the fee also covers the network. Investing more at once lowers it.",
     oneAtATime:
@@ -156,8 +156,8 @@ export const pieCopy = {
     floor: (amount: string) =>
       `With this mix, invest at least about ${amount} right now so every order can be placed. This figure is approximate and depends on live prices.`,
     useAmount: (amount: string) => `Use ${amount}`,
-    noCash: "This pie has no cash to invest.",
-    noCashDetail: "Move money into this pie first.",
+    noMoney: "No money in this pie yet",
+    noMoneyDetail: "Move money into this pie first.",
     addMoney: "Add money",
     smallerLeftAlone: "Smaller differences are left as they are.",
     trackersLine: "These are trackers, not shares, and their issuer keeps control over them.",

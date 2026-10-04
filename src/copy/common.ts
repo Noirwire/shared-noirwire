@@ -24,7 +24,7 @@ export const commonCopy = {
   solana: "Solana",
   tracker: (name: string) => `${name} tracker`,
   available: (amount: string) => `Available ${amount}`,
-  cashAvailable: (amount: string) => `${amount} cash available`,
+  readyToInvest: (amount: string) => `${amount} ready to invest`,
   /** After an action that went through whose new balances could not be read back yet. */
   balancesUpdateShortly: "Balances will update shortly.",
   /** An amount typed with more decimals than the asset has. `smallest` is its smallest amount, with its symbol. */
@@ -32,5 +32,5 @@ export const commonCopy = {
     `That amount has too many decimals. The smallest amount is ${smallest}.`,
   balanceUnavailable: "This token's balance cannot be shown right now. Try again in a moment.",
   tradingUnavailableOn: (network: string) =>
-    `Live stock trading is unavailable on ${network}. You can explore investments, but cannot place an order here.`,
+    `Live trading is unavailable on ${network}. You can explore trackers, but cannot place an order here.`,
 } as const;

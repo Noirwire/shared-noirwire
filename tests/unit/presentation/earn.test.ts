@@ -117,7 +117,7 @@ describe("earnPortfolioView", () => {
   it("shows what a portfolio has in Earn and what it earned", () => {
     expect(earnPortfolioView({ archived: false, available: true, cash: 10, position })).toEqual({
       cash: "$10.00",
-      cashAvailable: "$10.00 cash available",
+      cashAvailable: "$10.00 ready to invest",
       inEarn: "$20.00",
       earned: "$0.50",
       earnedLine: "$0.50 earned since deposit",
@@ -165,7 +165,7 @@ describe("earnSummaryView", () => {
       supplyApy: "4.00%",
       rewardsApy: "1.12%",
       total: "$15.00",
-      couldEarn: "Your cash could earn 5.12% a year at today's rate.",
+      couldEarn: "Your USDC could earn 5.12% a year at today's rate.",
       breakdown: "Supply 4.00% · rewards 1.12%. The rate changes.",
     });
   });

@@ -34,9 +34,9 @@ export const errorsCopy = {
 
   funding: {
     failed: "We couldn't move this money. Nothing was moved. Try again.",
-    notPrivate: (symbol: string) => `${symbol} cannot be funded privately. Use a supported token.`,
+    notPrivate: (symbol: string) => `${symbol} cannot be moved privately. Use a supported token.`,
     privateNotStarted:
-      "The private transfer could not be started. Nothing left your funding wallet. Try again.",
+      "The private move could not be started. Nothing left your funding wallet. Try again.",
   },
 
   send: {

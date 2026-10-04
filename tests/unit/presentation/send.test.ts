@@ -172,7 +172,7 @@ describe("sendReviewView", () => {
 
   it("says when cash pays the cost and less is sent than was typed", () => {
     expect(review({ sendAmount: 9.96 }).cashNote).toBe(
-      "0.04 USDC of this portfolio's cash pays the network cost, so 9.96 USDC is sent, not 10.00 USDC.",
+      "0.04 USDC from this portfolio pays the network cost, so 9.96 USDC is sent, not 10.00 USDC.",
     );
     expect(review().cashNote).toBeNull();
   });

@@ -17,3 +17,28 @@ export function unlockProblemText(problem: string, platform: AppPlatform = "web"
 export function isWrongPassword(problem: string): boolean {
   return problem === walletCopy.store.wrongPassword;
 }
+
+export type UnlockProblemView = {
+  text: string;
+  /** Shown under the password field; otherwise as a notice. */
+  underField: boolean;
+  /**
+   * What happens to the password already typed. It is never cleared: after a
+   * wrong password it is kept and selected, so one keystroke replaces it and
+   * a slip can be corrected without typing it all again.
+   */
+  typed: "keepSelected" | "keep";
+};
+
+/** A failed unlock, as the screen shows it. */
+export function unlockProblemView(
+  problem: string,
+  platform: AppPlatform = "web",
+): UnlockProblemView {
+  const wrong = isWrongPassword(problem);
+  return {
+    text: unlockProblemText(problem, platform),
+    underField: wrong,
+    typed: wrong ? "keepSelected" : "keep",
+  };
+}

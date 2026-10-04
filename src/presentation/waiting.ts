@@ -92,7 +92,12 @@ export function waitingView(
   };
 }
 
-export type ImportWaitingView = WaitingView & { title: string; lead: string };
+export type ImportWaitingView = WaitingView & {
+  title: string;
+  lead: string;
+  /** The one quiet line under the button for as long as the import runs: what is happening and about how long it takes. */
+  note: string;
+};
 
 /**
  * An import under way: the phrase is already read, the lookup is running,
@@ -113,6 +118,7 @@ export function importWaitingView(
     ...view,
     title: words.title,
     lead: words.lead,
+    note: onboardingCopy.import.waitingNote,
     stillWorking: view.stillWorking && words.slow,
   };
 }

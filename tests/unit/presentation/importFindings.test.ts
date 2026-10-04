@@ -61,21 +61,32 @@ describe("what an import found, in words", () => {
       "This one has been used.",
     ]);
     expect(importSchemeFor("notSure", resolution)).toBe("app");
+    expect(view.skipped).toBeNull();
   });
 
-  it("opens the addresses most wallets use when the chain cannot decide, and says so", () => {
+  it("opens the addresses most wallets use when both sets were used and the person is not sure", () => {
     const resolution: ImportResolution = {
       scheme: null,
-      app: activity(),
-      walletDefault: activity(),
+      app: activity({ active: true }),
+      walletDefault: activity({ active: true }),
     };
     const view = importSourceView(resolution);
     expect(view.preselected).toBeNull();
+    expect(view.skipped).toBeNull();
     expect(view.options[2].captions[0].text).toBe(
       "Opens the addresses most other wallets use. You can switch afterwards.",
     );
     expect(importSchemeFor("notSure", resolution)).toBe("walletDefault");
     expect(importSchemeFor("app", resolution)).toBe("app");
+  });
+
+  it("skips the choice when nothing was found, and opens a new wallet on NoirWire's addresses", () => {
+    const view = importSourceView({ scheme: null, app: activity(), walletDefault: activity() });
+    expect(view.skipped).toEqual({
+      scheme: "app",
+      line: "Nothing found yet. This phrase will open a new, empty wallet.",
+    });
+    expect(view.preselected).toBeNull();
   });
 
   it("reunites or simply imports", () => {
@@ -93,7 +104,7 @@ describe("what an import found, in words", () => {
     });
     expect(importResultView(activity())).toEqual({
       title: "Wallet imported.",
-      body: "Nothing was found on chain for these addresses yet. Add money whenever you're ready.",
+      body: "Nothing found yet. This phrase will open a new, empty wallet.",
       found: false,
     });
   });

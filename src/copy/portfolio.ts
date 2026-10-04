@@ -1,4 +1,5 @@
 import type { PortfolioIconGlyph, PortfolioIconTint } from "../domain/portfolioIcon.js";
+import { privateMoveTiming } from "./funding.js";
 import { plural } from "./plural.js";
 
 const noDayChange = "No live day change available";
@@ -35,15 +36,14 @@ export const portfolioCopy = {
     title: "Home",
     eyebrow: "Overview",
     addMoney: "Add money",
-    findStocks: "Find stocks",
     summaryLabel: "Wallet summary",
     totalValue: "Total value",
-    dayIndicative: "24h indicative",
-    heldDayIndicative: "held assets · 24h indicative",
+    dayApproximate: "24h approximate",
+    heldDayApproximate: "held assets · 24h approximate",
     noDayChange,
     invested: "Invested",
     heldTrackers: "Held trackers",
-    cashToInvest: "Cash to invest",
+    readyToInvest: "Ready to invest",
     acrossPortfolios: "Across portfolios",
     earning: "Earning",
     apy: (rate: string) => `${rate}% variable APY`,
@@ -85,7 +85,7 @@ export const portfolioCopy = {
     marketLists: "Market lists",
     shelves: {
       watchlist: "My watchlist",
-      stocks: "Stocks",
+      companies: "Companies",
       index: "Index trackers",
     },
     earn: "Earn",
@@ -93,18 +93,18 @@ export const portfolioCopy = {
     findInvestments: "Find investments",
     archivedPortfolios: "Archived portfolios",
     restore: (label: string) => `Restore ${label}`,
-    heldTrackersDay: (delta: string) => `${delta} held trackers · 24h indicative`,
-    togetherOnlyHere: "Shown together only here",
+    heldTrackersDay: (delta: string) => `${delta} held trackers · 24h approximate`,
+    onlyYouSee: "Only you see this total",
     togetherExplained: addedUpHere("in this browser"),
-    cashAvailable: "Cash available to invest",
     findTrackers: "Find trackers",
-    addUsdc: "Add USDC",
-    showFundingAddress: "Show funding address",
-    howToAddMoney: "How to add money",
+    /** Under Home's one button while the wallet is empty. */
+    moneyArrives: "Your money arrives in your funding wallet. Then you move it into a portfolio.",
     lookAtTrackers: "Look at trackers first",
     portfolioLine: {
-      holdings: (cash: string, count: number) => `${cash} cash · ${plural(count, "holding")}`,
-      pie: (count: number, cash: string) => `Pie · ${plural(count, "tracker")} · ${cash} cash`,
+      holdings: (ready: string, count: number) =>
+        `${ready} to invest · ${plural(count, "holding")}`,
+      pie: (count: number, ready: string) =>
+        `Pie · ${plural(count, "tracker")} · ${ready} to invest`,
     },
     archivedCount: (count: number) => `Archived portfolios (${count})`,
     restored: "Restored.",
@@ -115,10 +115,10 @@ export const portfolioCopy = {
     eyebrow: "Earn · Jupiter Lend",
     rate: (rate: string) => `${rate}%`,
     apy: "APY",
-    couldBeEarning: "Your cash could be earning",
-    couldEarn: (cash: string, yearly: string) =>
-      `Your ${cash} in cash could earn about ${yearly} a year.`,
-    waitingCash: "Cash that is waiting to be invested can earn in the meantime.",
+    couldBeEarning: "Your USDC could be earning",
+    couldEarn: (ready: string, yearly: string) =>
+      `Your ${ready} could earn about ${yearly} a year.`,
+    waitingMoney: "Money that is waiting to be invested can earn in the meantime.",
     start: "Start earning",
     footnote: "Variable rate, shown as of now. Lending carries risk.",
   },
@@ -151,8 +151,8 @@ export const portfolioCopy = {
     created: (date: string) => `Created ${date}`,
     value: "Portfolio value",
     valueUnavailable: "Value unavailable",
-    cashToInvest: (amount: string) => `${amount} USDC cash to invest`,
-    moveMoneyHere: "Move money here",
+    readyToInvest: (amount: string) => `${amount} USDC ready to invest`,
+    moveToPortfolio: "Move to portfolio",
     invest: "Invest",
     buy: "Buy an investment",
     rebalance: "Rebalance",
@@ -163,17 +163,16 @@ export const portfolioCopy = {
     archivedLead:
       "It stays visible and its history is kept, but it is hidden from the portfolio list.",
     recentActivity: "Recent activity",
-    nothingMoved: "Nothing has moved yet. Fund or receive into this portfolio to begin.",
+    nothingMoved: "Nothing has moved yet. Move money into this portfolio to begin.",
     advancedAddress: "Advanced portfolio address",
     copyAddress: "Copy address",
     kindLine: (kind: string, date: string) => `${kind} · Created ${date}`,
     buyTracker: "Buy a tracker",
-    addMoney: "Add money",
     sendDisabled: "Nothing to send yet.",
     seePublicView: "See public view",
     emptyTitle: "Nothing here yet.",
     addFirstTracker: "Add your first tracker",
-    addMoneyFirst: "Add money first, then choose a tracker.",
+    moveMoneyFirst: "Move money in first, then choose a tracker.",
     backHome: "Back to Home",
     restore: "Restore",
     cashName: "Cash",
@@ -354,38 +353,49 @@ export const portfolioCopy = {
     copyAddress: "Copy address",
     copyDescribe: "Copy portfolio address",
     publicNote:
-      "A transfer straight to this address is public and ties the sender to this portfolio. Use the private funding flow to move value in from your own funding balance instead.",
-    fundingTitle: "Your funding address",
+      "A transfer straight to this address is public and ties the sender to this portfolio. To move in your own money, use Move to portfolio instead.",
+    fundingTitle: "Your funding wallet address",
+    fundingNotice: "This first transfer is public and may link the sending address to you.",
     portfolioTitle: (name: string) => `Receive in ${name}`,
-    hiddenFunding: "Your funding address is hidden.",
+    hiddenFunding: "Your funding wallet address is hidden.",
     showAddress: "Show address",
     copied: "Copied",
-    qrFunding: "QR code of your funding address",
+    qrFunding: "QR code of your funding wallet address",
     qrPortfolio: (name: string) => `QR code of ${name}'s address`,
-    afterArrival: "Once it arrives, move it into a portfolio through the private route.",
+    afterArrival: "Once it arrives, choose a portfolio and tap Move to portfolio.",
     archived: "This portfolio is archived. Restore it before receiving into it.",
   },
 
+  /** Bringing money in from outside: the explainer, its three steps and the funding wallet's address. */
   addMoney: {
-    title: "Add money",
+    title: "Add digital dollars",
     arrived: (amount: string) =>
       `${amount} USDC has arrived in your funding wallet. Move it to a portfolio before buying.`,
-    moveTo: (portfolio: string) => `Move money to ${portfolio}`,
-    stepGet: (network: string) => `1. Get USDC on ${network}`,
-    stepGetDetail: (network: string) =>
-      `Buy it on an exchange you already use and withdraw it on the ${network} network. USDC is all you need: network costs are a few cents and are paid out of it.`,
-    stepSend: "2. Send it to your funding address",
-    stepSendDetail: "This first transfer is public and may link the sending address to you.",
-    depositAddress: "Get your USDC deposit address",
+    moveTo: (portfolio: string) => `Move to ${portfolio}`,
+    steps: {
+      get: {
+        title: "Get USDC",
+        detail: (network: string) =>
+          `USDC is a digital dollar: 1 USDC = $1. NoirWire cannot take card payments yet. Buy USDC in any app or service that can send it on the ${network} network. No account with us is needed.`,
+      },
+      send: {
+        title: "Send it to your funding wallet",
+        detail: (network: string) =>
+          `Copy the address below. In the other app choose USDC and the ${network} network, and check the address before sending. This transfer is public.`,
+      },
+      move: {
+        title: "Move it into a portfolio",
+        /** `cost` is what a private move costs, from the fee constants: "0.1% + $0.20". */
+        detail: (cost: string) =>
+          `When it arrives, choose a portfolio and tap Move to portfolio. A private move is not linked to your funding wallet in the public record. It costs ${cost}. ${privateMoveTiming}`,
+      },
+    },
+    network: (network: string) => `Network: ${network}`,
     onlyUsdc: (network: string) =>
       `Only send USDC on ${network}. Other assets or networks may be lost.`,
     copyAddress: "Copy address",
-    copyDescribe: "Copy funding address",
-    stepMove: "3. Move USDC into a portfolio privately",
-    stepMoveDetail:
-      "Once it arrives, move it in through the private route so it is not linked to a portfolio on chain.",
-    footnote:
-      "Moving USDC privately has a service fee and may take time to arrive. Trades stay public.",
+    copyDescribe: "Copy funding wallet address",
+    costsLink: "What does it cost?",
   },
 
   notFound: {
@@ -429,10 +439,6 @@ export const mobilePortfolioCopy = {
     kinds: {
       portfolio: { title: "Portfolio", description: "Buy one tracker at a time." },
     },
-  },
-  receive: {
-    portfolioNotice:
-      "A transfer straight to this address is public and ties the sender to this portfolio. To move in your own money, use Add money instead.",
   },
   icon: {
     pieRingMark: "The pie's ring, its default mark",

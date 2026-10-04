@@ -93,8 +93,8 @@ export function pieInvestView(state: {
   const { amount, cash, preview } = state;
   return {
     label: copy.investLabel,
-    available: commonCopy.cashAvailable(usd(cash)),
-    overCash: amount > cash ? copy.moreThanCash : null,
+    available: commonCopy.readyToInvest(usd(cash)),
+    overCash: amount > cash ? copy.moreThanReady : null,
     split:
       preview.length > 0 && amount <= cash
         ? {
@@ -232,7 +232,7 @@ export function pieReviewView(state: PieReviewState): PieReviewView {
     trackers: buying ? orders.map((order) => order.symbol) : null,
     quantityUnknown: quantitiesKnown ? null : copy.quantityUnknown,
     feeUnverified: feesKnown ? null : copy.feeUnverified,
-    back: { label: endsAtBuys ? copy.keepAsCash : commonCopy.back, ends: endsAtBuys },
+    back: { label: endsAtBuys ? copy.keepAsUsdc : commonCopy.back, ends: endsAtBuys },
     confirm: {
       label: copy.place(orders.length),
       disabled: !feesKnown || !quantitiesKnown || networkCost.confirmDisabled,

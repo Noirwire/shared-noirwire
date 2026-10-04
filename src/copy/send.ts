@@ -17,7 +17,7 @@ export const sendCopy = {
   invalidAmount: "Enter an amount, like 12.50.",
   review: "Review",
   explainer: (network: string, symbol: string) =>
-    `Real transfer on ${network}, straight from this portfolio's own ${symbol} balance to the recipient. It cannot be reversed. Before sending, the address is checked to be a wallet and not a token, a token account or a program; who owns it is not verified. This portfolio pays its own network cost, including opening the recipient's account for this asset when they have none, because paying from the funding wallet would publicly link the two. The cost is a few cents, taken from its cash as part of the send, and the review shows the amount first.`,
+    `Real transfer on ${network}, straight from this portfolio's own ${symbol} balance to the recipient. It cannot be reversed. Before sending, the address is checked to be a wallet and not a token, a token account or a program; who owns it is not verified. This portfolio pays its own network cost, including opening the recipient's account for this asset when they have none, because paying from the funding wallet would publicly link the two. The cost is a few cents, taken from its USDC as part of the send, and the review shows the amount first.`,
 
   reviewTitle: "Review send",
   recipientAddress: "Recipient address",
@@ -30,7 +30,7 @@ export const sendCopy = {
   solFeeFromAmount: (fee: string) => `${fee} SOL, taken out of the amount`,
   solFeeOnTop: (fee: string) => `${fee} SOL, on top of the amount`,
   cashPaysCost: (kept: string, sent: string, typed: string) =>
-    `${kept} of this portfolio's cash pays the network cost, so ${sent} is sent, not ${typed}.`,
+    `${kept} from this portfolio pays the network cost, so ${sent} is sent, not ${typed}.`,
 
   linksTitle: "This links the two addresses publicly.",
   linksBody: (other: string) =>
@@ -96,7 +96,7 @@ export const mobileSendCopy = {
   scan: "Scan a QR code",
   available: "Available",
   explainer:
-    "A real transfer on Solana, straight from this portfolio to the recipient. It cannot be reversed. The address is checked to be a wallet and not a token, a token account or a program; who owns it is not verified. This portfolio pays its own network cost in USDC, a few cents taken from its cash, and the review shows the amount first.",
+    "A real transfer on Solana, straight from this portfolio to the recipient. It cannot be reversed. The address is checked to be a wallet and not a token, a token account or a program; who owns it is not verified. This portfolio pays its own network cost in USDC, a few cents taken from its balance, and the review shows the amount first.",
 
   scanTitle: "Scan a QR code",
   scanHint: "Point the camera at the recipient's address code.",

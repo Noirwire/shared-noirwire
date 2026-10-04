@@ -39,6 +39,9 @@ export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
  */
 export type DerivationScheme = "app" | "walletDefault";
 
+/** The fewest characters a wallet password may have. The strength check refuses anything shorter unasked. */
+export const MIN_PASSWORD_LENGTH = 12;
+
 /**
  * The most activity entries the wallet's record keeps. Every entry is sealed
  * and written again with each change, so a list that only grew would make

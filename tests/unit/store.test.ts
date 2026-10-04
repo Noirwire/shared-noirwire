@@ -263,6 +263,24 @@ describe("the wallet store", () => {
       expect(store.getPhrase()).toEqual(FIXTURE_PHRASE);
     });
 
+    it("unlocks with NoirWire out of reach, and asks nothing of the network to do it", async () => {
+      await (await tab()).storeNewWallet(makeWallet(), FIXTURE_PHRASE, PASSWORD);
+      const unreachable = vi.fn(async () => {
+        throw new TypeError("fetch failed");
+      });
+      vi.stubGlobal("fetch", unreachable);
+      try {
+        const store = await tab();
+        expect(await store.unlock("not-the-password")).toMatch(/does not match/);
+        expect(await store.unlock(PASSWORD)).toBeNull();
+        expect(store.isUnlocked()).toBe(true);
+        expect(store.getSnapshot()?.funding.address).toBe(addressAt(0));
+        expect(unreachable).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
     it("drops everything decrypted when locked again", async () => {
       const store = await tab();
       await store.storeNewWallet(makeWallet(), FIXTURE_PHRASE, PASSWORD);
