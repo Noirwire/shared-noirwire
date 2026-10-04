@@ -62,6 +62,7 @@ function sendChain(asset: Partial<SendableAsset<FakeSigner>>) {
     }),
     token: () => undefined,
     isRecipientAddress: () => true,
+    checkRecipient: async () => null,
     cashSymbol: "USDC",
     networkFeeSol: 0.000005,
     cost: { balance: async () => 0, shortfall: async () => null },
@@ -89,8 +90,9 @@ describe("a send", () => {
     expect(actionFailure(result)).toBeNull();
     // Read once before, then asked for three times after landing.
     expect(balance).toHaveBeenCalledTimes(4);
-    expect(h.holding("p1", "USDC")).toMatchObject({ amount: 40 });
-    expect(h.wallet().activity[0]).toMatchObject({ kind: "send", amount: 10 });
+    // What was sent and the network cost paid with it are both taken off, until a refresh reads the chain.
+    expect(h.holding("p1", "USDC")).toMatchObject({ amount: 39.98 });
+    expect(h.wallet().activity[0]).toMatchObject({ kind: "send", amount: 10, networkCost: 0.02 });
     expect(h.track).toHaveBeenCalledWith("sent");
     expect(h.track).not.toHaveBeenCalledWith("send_failed", expect.anything());
     expect(h.pending.pendingFor("p1")).toBeUndefined();

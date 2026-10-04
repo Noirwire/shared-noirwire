@@ -393,6 +393,16 @@ describe("Earn", () => {
       risk: { link: "Read the risks" },
       confirm: { label: "Deposit 10.00 USDC", disabled: false },
     });
+    // An error belongs to the review it was about: the same action and amount, and no other.
+    const failure = { text: "This did not go through.", action: "deposit" as const, amount: 10 };
+    const reviewing = { portfolioLabel: "Investing", cost, venue: "Jupiter Lend", online: true };
+    const again = (action: "deposit" | "withdraw", amount: number) =>
+      earnReviewView({ ...reviewing, action, amount, pending: { blocked: false }, failure }).error;
+    expect(again("deposit", 10)).toBe("This did not go through.");
+    expect(again("deposit", 12)).toBeNull();
+    expect(again("withdraw", 10)).toBeNull();
+    expect(deposit.error).toBeNull();
+
     const withdrawal = earnReviewView({
       action: "withdraw",
       amount: 10,

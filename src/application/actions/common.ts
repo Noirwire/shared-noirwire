@@ -1,6 +1,6 @@
 import { ChainError, isChainError, UnknownOutcomeError } from "../../domain/chainError.js";
 import type { EventData, EventName, failureReason } from "../../domain/usageEvents.js";
-import type { PendingAction } from "../../domain/wallet.js";
+import type { PendingAction, Portfolio } from "../../domain/wallet.js";
 import type { Reservation } from "../pendingActions.js";
 import type {
   OpenSession,
@@ -12,6 +12,7 @@ import type {
   WalletStore,
 } from "../ports.js";
 import { readWithRetries } from "../retries.js";
+import { holdingIn, setRealHolding } from "../walletRecord.js";
 import {
   refused,
   type ActionResult,
@@ -129,6 +130,31 @@ export async function readAfterLanding<T>(read: () => Promise<T>): Promise<T | n
   } catch {
     return null;
   }
+}
+
+const CASH_UNIT = 1_000_000;
+
+/** A relayer's fee as the cash it is: raw USDC units to USDC. Nothing when the relayer was not paid. */
+export function costInCash(relayerFeeRaw: bigint | undefined): number {
+  return relayerFeeRaw === undefined ? 0 : Number(relayerFeeRaw) / CASH_UNIT;
+}
+
+/**
+ * `portfolio` with its cash changed by `delta`, never below nothing: what an
+ * action that landed is known to have taken or brought, standing in until
+ * the next refresh reads the chain. The network cost a relayer was paid is
+ * taken off this way, so cash does not read as it did before the action.
+ */
+export function withCashMoved(
+  prices: Pick<PriceReader, "price" | "isPosition">,
+  portfolio: Portfolio,
+  cashSymbol: string,
+  delta: number,
+): Portfolio {
+  if (delta === 0) return portfolio;
+  const held = holdingIn(portfolio, cashSymbol).amount;
+  const next = Math.max(Math.round((held + delta) * CASH_UNIT) / CASH_UNIT, 0);
+  return setRealHolding(prices, portfolio, cashSymbol, next);
 }
 
 /** Counts a failure, by the kind of failure it was, and hands it back. */

@@ -380,8 +380,14 @@ export function earnReviewView(state: {
   venue: string;
   pending: { blocked: boolean };
   online: boolean;
+  /**
+   * What the last attempt answered, with the action and the amount it was
+   * for. It is shown only on a review of that same action and amount: once
+   * either changes, it was about another review and is gone.
+   */
+  failure?: { text: string; action: EarnAction; amount: number } | null;
 }) {
-  const { action, amount, portfolioLabel, cost } = state;
+  const { action, amount, portfolioLabel, cost, failure } = state;
   const depositing = action === "deposit";
   const network = networkCostView({
     cost,
@@ -416,6 +422,7 @@ export function earnReviewView(state: {
       ? { text: network.moveMoney.before.trim(), action: network.moveMoney.link }
       : null,
     risk: depositing ? { line: copy.depositRisk(state.venue), link: copy.readRisks } : null,
+    error: failure && failure.action === action && failure.amount === amount ? failure.text : null,
     confirm: {
       label: copy.confirmAmount[action](figure(amount)),
       disabled: network.confirmDisabled || !state.online,

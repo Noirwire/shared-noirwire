@@ -171,16 +171,20 @@ npm run format:check
 npm test               # unit tests
 npm run test:integration
 npm run test:contract  # live mainnet, read-only; not part of CI
+npm run test:api       # the clients against the server's OpenAPI file (NOIRWIRE_OPENAPI)
+npm run test:api:live  # the read paths against a running server (NOIRWIRE_API_URL)
 npm run build
 ```
 
 `npm run format` fixes formatting. The package itself is type-checked with `lib: ["ES2022", "WebWorker"]` and `types: []`: the web-platform globals both runtimes provide (fetch, WebCrypto, `TextEncoder`, timers, `URL`) are declared, and `window`, `document`, `localStorage` and every Node global are compile errors.
 
-| Suite       | Command                    | Covers                                                                                                                                        | Runs in CI                                    |
-| ----------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| Unit        | `npm test`                 | Pure logic and view models, against in-memory ports (`tests/setup/platform.ts`), offline                                                      | Every push and pull request                   |
-| Integration | `npm run test:integration` | Real on-chain behaviour against a throwaway `solana-test-validator` (never devnet or mainnet)                                                 | Every push and pull request                   |
-| Contract    | `npm run test:contract`    | Read-only checks that the live services this package reads (Solana RPC, Jupiter) still match what the code expects; nothing is signed or sent | Manual dispatch only, never on a pull request |
+| Suite       | Command                    | Covers                                                                                                                                                                                               | Runs in CI                                                 |
+| ----------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Unit        | `npm test`                 | Pure logic and view models, against in-memory ports (`tests/setup/platform.ts`), offline                                                                                                             | Every push and pull request                                |
+| Integration | `npm run test:integration` | Real on-chain behaviour against a throwaway `solana-test-validator` (never devnet or mainnet)                                                                                                        | Every push and pull request                                |
+| API         | `npm run test:api`         | Every request the clients make and every answer the server documents, against the server's `docs/openapi.json`, named by `NOIRWIRE_OPENAPI`. Offline. Skipped, saying so, when the variable is unset | With the unit suite; checks only where the file is present |
+| API, live   | `npm run test:api:live`    | The read paths (a session, prices, a chart, one RPC read, the relayer's keys) against a running server named by `NOIRWIRE_API_URL`                                                                   | Manual, never on a pull request                            |
+| Contract    | `npm run test:contract`    | Read-only checks that the live services this package reads (Solana RPC, Jupiter) still match what the code expects; nothing is signed or sent                                                        | Manual dispatch only, never on a pull request              |
 
 `tests/webTokens.test.ts` compares the design tokens with the web app's stylesheet when the web app is checked out next to this repository at `../app-noirwire`, and skips otherwise. The integration suite needs `solana-test-validator` on the `PATH`; the contract suite needs `SOLANA_RPC_URL` set to a dedicated mainnet provider (the public endpoint rate-limits it) and, optionally, `JUPITER_API_KEY`. The checks that go through NoirWire's server live with the server, not here.
 

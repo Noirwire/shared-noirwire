@@ -17,7 +17,8 @@ import { outcomeWithin, signatureOf } from "./settlement.js";
 import { UnknownOutcomeError } from "./swap/types.js";
 import { ataFor } from "./tokens.js";
 import { apiUrl } from "../api.js";
-import { authorizedFetch } from "../apiSession.js";
+import { apiErrorOf, authorizedFetch } from "../apiSession.js";
+import { apiErrorIn } from "../../domain/apiError.js";
 import { isChainError } from "../../domain/chainError.js";
 import { privatePaymentCluster } from "./config.js";
 import {
@@ -271,6 +272,8 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
     asksAgain: true,
   });
 
+  const ours = await apiErrorOf(response);
+  if (ours) throw ours;
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     // The service reports a refusal as `{ error: { code, message } }`.
@@ -382,21 +385,21 @@ export async function submitTransfer(
     } | null;
     if (response.ok && payload?.signature) return signature ?? payload.signature;
     if (response.status >= 400 && response.status < 500) {
-      const { error, message } = payload ?? {};
+      // The service's own words are kept; the server's own sentence is never shown.
+      const { error, message } = apiErrorIn(response.status, payload) ? {} : (payload ?? {});
       refusal =
         (typeof error === "string" ? error : error?.message) ??
         message ??
         `The private payment service returned ${response.status}.`;
     }
   } catch (error) {
-    // NoirWire's server would not take the request, so the service never had the transfer.
+    // No session could be had, so the request was never made: nothing left the device.
     if (isChainError(error, "notAvailableNow")) throw error;
     /* no answer at all: settled against the chain below */
   }
-  if (!signature) {
-    if (refusal !== null) throw new Error(refusal);
-    throw new UnknownOutcomeError();
-  }
+  // Handed over with no clear success and no signature to ask the chain
+  // about: what became of it is not known, whatever the answer said.
+  if (!signature) throw new UnknownOutcomeError();
   const outcome = await outcomeWithin(
     signature,
     latest?.lastValidBlockHeight,

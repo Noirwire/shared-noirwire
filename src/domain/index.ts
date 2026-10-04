@@ -80,6 +80,7 @@ export {
   privacyFeeFor,
   privateTransferCosts,
 } from "./privateTransfer.js";
+export { API_ERRORS, ApiError, type ApiErrorCode, apiErrorIn } from "./apiError.js";
 export {
   ChainError,
   type ChainErrorCode,

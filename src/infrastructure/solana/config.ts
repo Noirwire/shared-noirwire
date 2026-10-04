@@ -2,7 +2,7 @@ import { PublicKey } from "@solana/web3.js";
 import type { AppPlatform } from "../../domain/appPlatform.js";
 import { getPlatform, type Env } from "../../platform.js";
 import { apiUrl } from "../api.js";
-import { authorizedFetch } from "../apiSession.js";
+import { apiErrorOf, authorizedFetch } from "../apiSession.js";
 
 /**
  * Chain configuration. Nothing else in this package may hardcode a cluster
@@ -121,12 +121,18 @@ export async function jupiterFetch(
 /**
  * `jupiterFetch` as an app makes it: to Jupiter's own `path`, through
  * NoirWire's server and with the app's session. Every trade is priced and
- * built through it, and Earn is read and built through it.
+ * built through it, and Earn is read and built through it. Jupiter's own
+ * answers, refusals included, come back as Jupiter wrote them; an error the
+ * server wrote itself is thrown as an `ApiError`. The path carries no query:
+ * the server refuses one, and builds Jupiter's from the body.
  */
-export function jupiterThroughApi(path: string, init?: RequestInit): Promise<Response> {
-  return jupiterFetch(apiUrl("jupiter", path), init, (url, request) =>
+export async function jupiterThroughApi(path: string, init?: RequestInit): Promise<Response> {
+  const response = await jupiterFetch(apiUrl("jupiter", path), init, (url, request) =>
     authorizedFetch(url, { ...request, asksAgain: true }),
   );
+  const refusal = await apiErrorOf(response);
+  if (refusal) throw refusal;
+  return response;
 }
 
 type Referral = { account: string | undefined; bps: number };

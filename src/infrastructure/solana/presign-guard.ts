@@ -133,7 +133,32 @@ export type BalanceSnapshot = {
   tokens: Map<string, bigint>;
 };
 
-type BalanceVerification = { ok: true } | { ok: false; reason: string };
+type BalanceVerification =
+  | { ok: true }
+  /** `feePayerShort`: whoever pays the network for it does not hold enough to. */
+  | { ok: false; reason: string; feePayerShort?: true };
+
+/**
+ * What a failed simulation is told as. The chain's own account of it
+ * (`{"InstructionError":[0,{"Custom":1}]}`, `"InsufficientFundsForFee"`) is
+ * for nobody to read and is never passed on: it says which instruction of
+ * which program gave which number, and nothing a person can act on. Every
+ * simulation failure in this package is worded here, and only here.
+ */
+export function simulationRefusal(err: unknown): {
+  ok: false;
+  reason: string;
+  feePayerShort?: true;
+} {
+  if (err === "InsufficientFundsForFee" || err === "InsufficientFundsForRent") {
+    return {
+      ok: false,
+      reason: "There is not enough to cover the network cost, so this was not signed.",
+      feePayerShort: true,
+    };
+  }
+  return { ok: false, reason: "This would not go through if it were sent, so it was not signed." };
+}
 
 /** Pure comparison of two balance snapshots against the limits, split out so it can be tested. */
 export function checkBalanceChanges(
@@ -233,12 +258,7 @@ export async function verifyBalancesBeforeSigning(
     accounts: { encoding: "base64", addresses: watched.map((account) => account.toBase58()) },
   });
 
-  if (simulation.value.err) {
-    return {
-      ok: false,
-      reason: `The transaction would fail on chain (${JSON.stringify(simulation.value.err)}).`,
-    };
-  }
+  if (simulation.value.err) return simulationRefusal(simulation.value.err);
   const simulated = simulation.value.accounts;
   if (!simulated || simulated.length !== watched.length) {
     return { ok: false, reason: "The transaction could not be checked before signing." };

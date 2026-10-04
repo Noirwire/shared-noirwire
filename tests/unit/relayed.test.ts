@@ -544,6 +544,17 @@ describe("reading a relayer-paid transaction", () => {
     expect(read(genuine.deposit()).action).toEqual({ kind: "deposit", amountRaw: 7_000_000n });
     expect(read(genuine.firstDeposit()).opens?.mint.equals(LEND_RECEIPT_MINT)).toBe(true);
     expect(read(genuine.withdraw()).action).toEqual({ kind: "withdraw", amountRaw: 7_000_000n });
+    // The whole position taken back: a withdrawal's accounts, named in shares.
+    const redeem = lend("withdraw", 6_587_401n);
+    Buffer.from([0xb8, 0x0c, 0x56, 0x95, 0x46, 0xc4, 0x61, 0xe1]).copy(redeem.data);
+    expect(read(compile([redeem, payment(PLAIN_FEE)])).action).toEqual({
+      kind: "redeem",
+      amountRaw: 6_587_401n,
+    });
+    // Not with a deposit's accounts, and not under any other name.
+    const wrongAccounts = lend("deposit", 6_587_401n);
+    Buffer.from([0xb8, 0x0c, 0x56, 0x95, 0x46, 0xc4, 0x61, 0xe1]).copy(wrongAccounts.data);
+    expect(readRelayed(compile([wrongAccounts, payment(PLAIN_FEE)]), pins).ok).toBe(false);
     expect(read(genuine.withdrawToNoAccount()).opens?.mint.equals(USDC)).toBe(true);
     expect(read(genuine.openHolding())).toMatchObject({ action: { kind: "open" } });
   });

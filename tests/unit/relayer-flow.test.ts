@@ -15,6 +15,7 @@ import {
   type CostChain,
 } from "../../src/application/networkCost.js";
 import type { NetworkCost } from "../../src/domain/networkCost.js";
+import { describeFailure } from "../../src/presentation/actionResult.js";
 import { networkCostView } from "../../src/presentation/networkCost.js";
 import { connection } from "../../src/infrastructure/solana/client.js";
 import { shortfallFor } from "../../src/infrastructure/solana/fees.js";
@@ -33,6 +34,8 @@ import {
   resetRelayerPins,
   runRelayed,
 } from "../../src/infrastructure/solana/relayer.js";
+import { ChainError } from "../../src/domain/chainError.js";
+import { signatureOf } from "../../src/infrastructure/solana/settlement.js";
 import { UnknownOutcomeError } from "../../src/infrastructure/solana/swap/types.js";
 import {
   ataFor,
@@ -94,7 +97,9 @@ let status: "confirmed" | "failed" | "absent";
 let blockHeight: number;
 
 const answer = (result: unknown) => Response.json({ result });
-const refusal = (error: string, code = 422) => Response.json({ error }, { status: code });
+/** One of the server's own errors: a code to act on, and a sentence nobody here reads. */
+const refusal = (code: string, status = 422) =>
+  Response.json({ code, error: "A sentence for a person." }, { status });
 
 /** Adds the fee payer's signature, as the relayer does: the same message, first slot filled. */
 function coSigned(encoded: unknown) {
@@ -476,11 +481,127 @@ describe("running a relayer-paid action", () => {
   });
 
   it("never asks the relayer to sign a second time when the server turns the request down", async () => {
-    relay.signTransaction = () => new Response("{}", { status: 401 });
+    relay.signTransaction = () => refusal("unauthorized", 401);
     const error = await run().catch((caught: unknown) => caught);
-    // The server did nothing with it, so nothing was sent: not unknown, and not another way to pay.
-    expect(error).toMatchObject({ code: "notAvailableNow" });
+    // It was handed over, and the answer is not a clear one: the outcome is
+    // unknown until the chain says, never "nothing was sent".
+    expect(error).toBeInstanceOf(UnknownOutcomeError);
+    expect((error as UnknownOutcomeError).lastValidBlockHeight).toBe(LAST_VALID);
     expect(methods()).toEqual(["getPayerSigner", "signTransaction"]);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("writes the co-signed transaction's id down before it is broadcast, and sends nothing it could not write", async () => {
+    const order: string[] = [];
+    const { guardSigningWith } = await import("../../src/infrastructure/solana/signerAccounts.js");
+    guardSigningWith(null);
+    let refuse = false;
+    guardSigningWith({
+      confirmNetwork: async () => undefined,
+      record: async (record) => {
+        if (record.signature && refuse) throw new ChainError("notRecorded");
+        order.push(record.signature ? `recorded ${record.signature}` : "recorded, no id yet");
+      },
+    });
+    vi.mocked(connection.sendRawTransaction).mockImplementation(async (raw) => {
+      sent.push(VersionedTransaction.deserialize(raw as Uint8Array));
+      order.push("broadcast");
+      return "signature";
+    });
+
+    const id = await run();
+    expect(order).toEqual(["recorded, no id yet", `recorded ${id}`, "broadcast"]);
+
+    // The record cannot be written: the signed transaction stays on the device.
+    order.length = 0;
+    sent.length = 0;
+    refuse = true;
+    await expect(run()).rejects.toMatchObject({ code: "notRecorded" });
+    expect(order).toEqual(["recorded, no id yet"]);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("takes the signed transaction and its id as the server now answers them", async () => {
+    relay.signTransaction = (params) => {
+      const transaction = coSigned(params.transaction);
+      const decoded = VersionedTransaction.deserialize(Buffer.from(transaction, "base64"));
+      return Response.json({ transaction, signature: signatureOf(decoded) });
+    };
+    expect(await run()).toBe(signatureOf(sent[0]));
+
+    // An id that is not the transaction's own is a different transaction: not sent.
+    sent.length = 0;
+    relay.signTransaction = (params) =>
+      Response.json({ transaction: coSigned(params.transaction), signature: "5".repeat(88) });
+    await expect(run()).rejects.toThrow(/Not sent/);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("reads a fee payer that is out of SOL as the relayer not being usable, never as the chain words it", async () => {
+    vi.mocked(presignGuard.verifyBalancesBeforeSigning).mockResolvedValue(
+      presignGuard.simulationRefusal("InsufficientFundsForFee"),
+    );
+    const error = await run().catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(RelayerUnavailableError);
+    expect(methods()).toEqual(["getPayerSigner"]);
+    expect(sent).toHaveLength(0);
+    // What a person then reads: the cost cannot be covered that way just now, and nothing was sent.
+    expect(
+      describeFailure({
+        kind: "needsReview",
+        change: { because: "relayerUnavailable" },
+        completed: [],
+      }),
+    ).toEqual({
+      error:
+        "The network cost could not be covered in USDC right now. Nothing was sent. Review the network cost again.",
+      reviewAgain: "other",
+    });
+  });
+
+  it("builds again for another replica when the server says the relayer could not be used", async () => {
+    let first = true;
+    const sign = relay.signTransaction;
+    relay.signTransaction = (params) => {
+      if (!first) return sign(params);
+      first = false;
+      return refusal("relayer_unavailable", 503);
+    };
+    await run();
+    expect(methods().filter((method) => method === "signTransaction")).toHaveLength(2);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("goes by the server's code, never its sentence or its status alone", async () => {
+    // A 422 that carries no code of the server's is not a refusal it can vouch for.
+    relay.signTransaction = () => Response.json({ error: "insufficient_payment" }, { status: 422 });
+    await expect(run()).rejects.toBeInstanceOf(UnknownOutcomeError);
+    expect(methods()).toEqual(["getPayerSigner", "signTransaction"]);
+  });
+
+  it("stops with nothing sent when no session could be had, so the request was never made", async () => {
+    const { keepSessionWith } = await import("../../src/infrastructure/apiSession.js");
+    const { ChainError } = await import("../../src/domain/chainError.js");
+    const { fakeSession } = await import("../../src/testing/index.js");
+    let signing = false;
+    const session = fakeSession();
+    keepSessionWith({
+      ...session,
+      token: async () => {
+        if (signing) throw new ChainError("notAvailableNow");
+        return session.token();
+      },
+    });
+    const sign = relay.signTransaction;
+    relay.signTransaction = (params) => sign(params);
+    vi.spyOn(presignGuard, "verifyBalancesBeforeSigning").mockImplementation(async () => {
+      signing = true;
+      return { ok: true } as never;
+    });
+    const error = await run().catch((caught: unknown) => caught);
+    keepSessionWith(fakeSession());
+    expect(error).toMatchObject({ code: "notAvailableNow" });
+    expect(methods()).toEqual(["getPayerSigner"]);
     expect(sent).toHaveLength(0);
   });
 
@@ -489,7 +610,7 @@ describe("running a relayer-paid action", () => {
     relay.estimateTransactionFee = () => {
       if (turnedDown) return answer({ fee_in_token: Number(FEE) });
       turnedDown = true;
-      return new Response("{}", { status: 401 });
+      return refusal("unauthorized", 401);
     };
     expect(await quoteRelayed(owner, build())).toEqual({ feeRaw: FEE, opensAccount: false });
     expect(methods()).toEqual([
@@ -508,7 +629,7 @@ describe("running a relayer-paid action", () => {
 
   it.each([
     ["answers with a failure", () => refusal("no_answer", 502)],
-    ["times out", () => refusal("timeout", 504)],
+    ["times out", () => refusal("upstream_timeout", 504)],
     [
       "drops the connection",
       () => {
@@ -794,19 +915,30 @@ describe("a transaction that was sent and not confirmed", () => {
     expect(await settle({ signature: "sig", lastValidBlockHeight: LAST_VALID })).toBe("landed");
   });
 
-  it("with no id to look up, waits for the chain to pass its last valid block, and nothing less", async () => {
-    expect(await settle({ lastValidBlockHeight: LAST_VALID })).toBe("pending");
+  it("with no id to look up, waits for its last valid block to pass, then looks for it before releasing", async () => {
+    const signer = portfolio.publicKey.toBase58();
+    const sent: SentUnconfirmed = { lastValidBlockHeight: LAST_VALID, blockhash: "hash", signer };
+    const recent = vi.spyOn(connection, "getSignaturesForAddress").mockResolvedValue([]);
+    expect(await settle(sent)).toBe("pending");
+    expect(recent).not.toHaveBeenCalled();
     blockHeight = LAST_VALID + 1;
-    expect(await settle({ lastValidBlockHeight: LAST_VALID })).toBe("expired");
+    // Everything the signer did was read, and it is not there.
+    expect(await settle(sent)).toBe("expired");
+    expect(recent).toHaveBeenCalledTimes(1);
+    // Nothing to look for it by: never released on its blockhash alone.
+    expect(await settle({ lastValidBlockHeight: LAST_VALID })).toBe("unknown");
     vi.mocked(connection.getBlockHeight).mockRejectedValue(new Error("down"));
-    expect(await settle({ lastValidBlockHeight: LAST_VALID })).toBe("pending");
+    expect(await settle(sent)).toBe("pending");
   });
 
   it("with no height, goes by whether the chain still accepts its blockhash", async () => {
     status = "absent";
     expect(await settle({ blockhash: "hash" })).toBe("pending");
     blockhashValid = false;
-    expect(await settle({ blockhash: "hash" })).toBe("expired");
+    vi.spyOn(connection, "getSignaturesForAddress").mockResolvedValue([]);
+    expect(await settle({ blockhash: "hash", signer: portfolio.publicKey.toBase58() })).toBe(
+      "expired",
+    );
     expect(await settle({ signature: "sig", blockhash: "hash" })).toBe("expired");
     status = "confirmed";
     expect(await settle({ signature: "sig", blockhash: "hash" })).toBe("landed");

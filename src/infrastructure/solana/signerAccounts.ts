@@ -4,7 +4,7 @@ import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import type { Keypair, MessageAccountKeys, PublicKey, VersionedTransaction } from "@solana/web3.js";
 import { ChainError } from "../../domain/chainError.js";
 import { connection } from "./client.js";
-import { signatureOf } from "./settlement.js";
+import { signatureBy, signatureOf } from "./settlement.js";
 
 /** The wallet locked before the key could sign. Nothing was signed. */
 export class WalletLockedError extends ChainError {
@@ -41,6 +41,11 @@ export type SignedRecord = {
   signature?: string;
   blockhash: string;
   lastValidBlockHeight?: number;
+  /**
+   * The signer's own signature on the message: how the transaction is
+   * recognised on chain while its id, the fee payer's signature, is not known.
+   */
+  ownSignature?: string;
 };
 
 /**
@@ -126,13 +131,40 @@ export async function signForSending(
   signWhileUnlocked(transaction, signer, stillUnlocked);
   // The id is the fee payer's signature: this signer's own when it pays, or
   // one a sponsor already put there. A fee payer still to sign leaves none.
+  await installed.record(recordOf(transaction, signer.publicKey, lastValidBlockHeight));
+}
+
+function recordOf(
+  transaction: VersionedTransaction,
+  signer: PublicKey,
+  lastValidBlockHeight?: number,
+): SignedRecord {
   const signature = signatureOf(transaction);
-  await installed.record({
-    signer: signer.publicKey,
+  const ownSignature = signatureBy(transaction, signer);
+  return {
+    signer,
     ...(signature ? { signature } : {}),
     blockhash: transaction.message.recentBlockhash,
     ...(lastValidBlockHeight && lastValidBlockHeight > 0 ? { lastValidBlockHeight } : {}),
-  });
+    ...(ownSignature ? { ownSignature } : {}),
+  };
+}
+
+/**
+ * Writes down a transaction that someone else has now signed as its fee
+ * payer, before it is broadcast. Its id is that signature, which was not
+ * known when this wallet signed, so the record made then cannot say whether
+ * it landed. This one can: should the app be closed the moment after it is
+ * sent, the chain is asked about exactly this id. A record that cannot be
+ * written stops the send with nothing broadcast.
+ */
+export async function recordForSending(
+  transaction: VersionedTransaction,
+  signer: PublicKey,
+  lastValidBlockHeight?: number,
+): Promise<void> {
+  if (!guard || !signatureOf(transaction)) throw new ChainError("notRecorded");
+  await guard.record(recordOf(transaction, signer, lastValidBlockHeight));
 }
 
 /** Every token account `owner` holds, under both token programs. */

@@ -130,8 +130,11 @@ export type PortfolioDetailView = {
   icon: PortfolioIcon;
   kindLine: string;
   valueLabel: string;
+  /** Everything the portfolio is worth: what it holds, and what it has in Earn when that was read. */
   value: string;
   valueUnavailable: boolean;
+  /** What it has in Earn, or null where Earn is not offered or was not passed in. */
+  inEarn: { label: string; value: string } | null;
   cashLine: string;
   archived: { title: string; lead: string; restore: string; settings: string } | null;
   pending: string | null;
@@ -326,6 +329,12 @@ export function portfolioView(
   wallet: Wallet,
   id: string,
   updatedAt: number | null,
+  /**
+   * What this portfolio has in Earn: a number, null while it could not be
+   * read, undefined where Earn is not offered. It is part of the value on
+   * both platforms, so one portfolio is worth the same wherever it is shown.
+   */
+  inEarn?: number | null,
 ): PortfolioView {
   const detail = portfolioCopy.detail;
   const portfolio = wallet.portfolios.find((entry) => entry.id === id);
@@ -349,7 +358,14 @@ export function portfolioView(
     icon: resolvePortfolioIcon(portfolio.icon),
     kindLine: detail.kindLine(kind, sinceDate(portfolio.createdAt)),
     valueLabel: detail.value,
-    value: valued ? usd(reads.portfolioValue(portfolio)) : detail.valueUnavailable,
+    value: valued ? usd(reads.portfolioValue(portfolio) + (inEarn ?? 0)) : detail.valueUnavailable,
+    inEarn:
+      inEarn === undefined
+        ? null
+        : {
+            label: portfolioCopy.home.earning,
+            value: inEarn === null ? commonCopy.unavailable : usd(inEarn),
+          },
     valueUnavailable: !valued,
     cashLine: detail.cashToInvest(tokenAmount(cash)),
     archived: archived

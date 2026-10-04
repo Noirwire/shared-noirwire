@@ -1,7 +1,7 @@
 import "./buffer-polyfill.js";
 
 import { Buffer } from "buffer";
-import { SendTransactionError, type VersionedTransaction } from "@solana/web3.js";
+import { SendTransactionError, type PublicKey, type VersionedTransaction } from "@solana/web3.js";
 import { connection } from "./client.js";
 import { isChainError } from "../../domain/chainError.js";
 import { UnknownOutcomeError } from "./swap/types.js";
@@ -29,6 +29,13 @@ const isSigned = (bytes: Uint8Array) => bytes.some((byte) => byte !== 0);
  * base58. Null while that slot is still empty, which is the case whenever
  * someone else pays the fee (an RFQ or gasless order) and signs after us.
  */
+/** `signer`'s own signature on `transaction`, in base58, or null when it has not signed. */
+export function signatureBy(transaction: VersionedTransaction, signer: PublicKey): string | null {
+  const index = transaction.message.staticAccountKeys.findIndex((key) => key.equals(signer));
+  const signature = index < 0 ? undefined : transaction.signatures[index];
+  return signature && isSigned(signature) ? base58(signature) : null;
+}
+
 export function signatureOf(transaction: VersionedTransaction): string | null {
   const bytes = transaction.signatures[0];
   return bytes && isSigned(bytes) ? base58(bytes) : null;
@@ -103,8 +110,9 @@ export const OWN_SEND_WAIT_MS = 120_000;
  *
  * From the moment it is sent the transaction may land whatever happens to
  * the connection, so an error after that is not yet a failure. Only the RPC
- * rejecting it outright is, or NoirWire's server refusing the request before
- * it passed anything on; anything else is settled against the chain, and
+ * rejecting it outright is, or the request never being made for want of a
+ * session; anything else, the server's own 401 included, is settled against
+ * the chain, and
  * thrown as `UnknownOutcomeError` when the chain cannot say either. A
  * transaction the chain shows failed is thrown as `failed()`, each route's
  * own error.
@@ -119,7 +127,7 @@ export async function sendAndSettle(
     () => true,
     (error: unknown) => {
       if (error instanceof SendTransactionError) throw error;
-      // The server would not take the request, so it never had the transaction.
+      // No session could be had, so the request was never made: nothing left the device.
       if (isChainError(error, "notAvailableNow")) throw error;
       return false;
     },

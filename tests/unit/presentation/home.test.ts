@@ -13,6 +13,24 @@ import {
 const reads = testReads();
 
 describe("homeView", () => {
+  it("counts what is in Earn in the total, and says what is there", () => {
+    const wallet = testWallet((w) => ({
+      ...w,
+      portfolios: w.portfolios.map((entry, index) =>
+        index === 0 ? withHolding(entry, holding("USDC", 100)) : entry,
+      ),
+    }));
+    const without = homeView(reads, wallet, UPDATED_AT, undefined);
+    const lending = homeView(reads, wallet, UPDATED_AT, 24.99);
+    const unread = homeView(reads, wallet, UPDATED_AT, null);
+    expect(without.total.value).toBe("$100.00");
+    expect(lending.total.value).toBe("$124.99");
+    expect(lending.earning).toEqual({ label: "Earning", value: "$24.99" });
+    // Not read: the total is of everything else, and the Earn line says it could not be shown.
+    expect(unread.total.value).toBe("$100.00");
+    expect(unread.earning?.value).toBe("Unavailable");
+  });
+
   it("leads an empty wallet with getting USDC in, and no day line", () => {
     const view = homeView(reads, testWallet(), UPDATED_AT, undefined);
     expect(view.empty).toBe(true);

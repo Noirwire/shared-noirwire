@@ -3,6 +3,7 @@ import type { PendingAction, Wallet } from "../domain/wallet.js";
 import {
   pendingReducer,
   signedSomething,
+  userClearable,
   type ChainOutcome,
   type PendingEvent,
 } from "./pending.js";
@@ -49,6 +50,8 @@ export type SignedRecord = {
   signature?: string;
   blockhash: string;
   lastValidBlockHeight?: number;
+  /** The signer's own signature on the message. */
+  ownSignature?: string;
 };
 
 export type PendingActionsDeps = {
@@ -68,7 +71,10 @@ export type PendingActionsDeps = {
   };
   /** Asks the chain what became of a signed or sent transaction. */
   settle(
-    sent: Pick<PendingAction, "signature" | "lastValidBlockHeight" | "blockhash">,
+    sent: Pick<
+      PendingAction,
+      "signature" | "lastValidBlockHeight" | "blockhash" | "signer" | "ownSignature"
+    >,
   ): Promise<ChainOutcome>;
   prices: Pick<PriceReader, "isPosition" | "shownUnits">;
 };
@@ -146,6 +152,13 @@ export function createPendingActions(deps: PendingActionsDeps) {
     };
   }
 
+  function addressOf(portfolioId: string): string | undefined {
+    const wallet = store.snapshot();
+    return portfolioId === FUNDING
+      ? wallet?.funding.address
+      : wallet?.portfolios.find((entry) => entry.id === portfolioId)?.address;
+  }
+
   function pendingFor(portfolioId: string): PendingAction | undefined {
     const wallet = store.snapshot();
     return wallet ? pendingIn(wallet, portfolioId) : undefined;
@@ -220,6 +233,8 @@ export function createPendingActions(deps: PendingActionsDeps) {
         signature: record.signature,
         blockhash: record.blockhash,
         lastValidBlockHeight: record.lastValidBlockHeight,
+        signer: record.signer,
+        ownSignature: record.ownSignature,
       }),
     );
     if (!saved || pendingFor(entry.portfolioId)?.id !== entry.id) {
@@ -242,8 +257,10 @@ export function createPendingActions(deps: PendingActionsDeps) {
     if (runningHere(portfolioId)) return "pending";
 
     let outcome: ChainOutcome;
-    if (signedSomething(sent) || sent.status !== "reserved") outcome = await deps.settle(sent);
-    else {
+    if (signedSomething(sent) || sent.status !== "reserved") {
+      // A record from before the signer was kept is still that portfolio's own transaction.
+      outcome = await deps.settle({ ...sent, signer: sent.signer ?? addressOf(portfolioId) });
+    } else {
       // Nothing was signed under it. It is either still running in the tab
       // that made it, or that tab is gone and nothing ever will be.
       const gone = await locks.ownerGone(sent.id);
@@ -252,7 +269,14 @@ export function createPendingActions(deps: PendingActionsDeps) {
       await store.update((wallet) => applied(wallet, portfolioId, sent.id, { type: "released" }));
       return "expired";
     }
-    if (outcome === "pending" || outcome === "unknown") return outcome;
+    if (outcome === "pending") return outcome;
+    if (outcome === "unknown") {
+      if (sent.signature || userClearable(sent)) return outcome;
+      await store.update((wallet) =>
+        applied(wallet, portfolioId, sent.id, { type: "chainChecked", outcome }),
+      );
+      return outcome;
+    }
 
     await store.update((wallet) => {
       const cleared = applied(wallet, portfolioId, sent.id, { type: "chainChecked", outcome });

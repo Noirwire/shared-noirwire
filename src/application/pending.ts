@@ -32,7 +32,15 @@ export type PendingEvent =
       activity?: PendingAction["activity"];
     }
   /** A transaction of the action was signed and may now leave this device. A later one replaces it. */
-  | { type: "signed"; signature?: string; blockhash: string; lastValidBlockHeight?: number }
+  | {
+      type: "signed";
+      signature?: string;
+      blockhash: string;
+      lastValidBlockHeight?: number;
+      /** Who signed, and their own signature on it: how it is found on chain when it has no id. */
+      signer?: string;
+      ownSignature?: string;
+    }
   /** Sent and accepted by a service that lands it later, such as a private transfer. */
   | { type: "submitted"; signature: string }
   /** Sent, with no word on whether it landed. */
@@ -54,9 +62,13 @@ export function signedSomething(pending: PendingAction): boolean {
   return Boolean(pending.signature || pending.blockhash || pending.lastValidBlockHeight);
 }
 
-/** Whether only the user can release it: there is neither a block height nor a blockhash to settle it by. */
+/**
+ * Whether only the user can release it: there is neither a block height nor
+ * a blockhash to settle it by, or the chain was asked about one with no
+ * recorded id and could not say whether it landed.
+ */
 export function userClearable(pending: PendingAction): boolean {
-  return !pending.lastValidBlockHeight && !pending.blockhash;
+  return (!pending.lastValidBlockHeight && !pending.blockhash) || pending.unfindable === true;
 }
 
 /**
@@ -79,12 +91,16 @@ export function pendingReducer(
       const rest = { ...pending };
       delete rest.signature;
       delete rest.lastValidBlockHeight;
+      delete rest.ownSignature;
+      delete rest.unfindable;
       return {
         ...rest,
         status: "unknown",
         ...(event.signature ? { signature: event.signature } : {}),
         blockhash: event.blockhash,
         ...(event.lastValidBlockHeight ? { lastValidBlockHeight: event.lastValidBlockHeight } : {}),
+        ...(event.signer ? { signer: event.signer } : {}),
+        ...(event.ownSignature ? { ownSignature: event.ownSignature } : {}),
       };
     }
     case "submitted":
@@ -103,7 +119,11 @@ export function pendingReducer(
     case "released":
       return undefined;
     case "chainChecked":
-      return event.outcome === "landed" || event.outcome === "expired" ? undefined : pending;
+      if (event.outcome === "landed" || event.outcome === "expired") return undefined;
+      // With no id and nothing more the chain can say, it is the person's to release.
+      return event.outcome === "unknown" && !pending.signature && !userClearable(pending)
+        ? { ...pending, unfindable: true }
+        : pending;
     case "userCleared":
       return userClearable(pending) ? undefined : pending;
   }

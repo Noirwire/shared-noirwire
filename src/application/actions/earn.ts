@@ -3,14 +3,16 @@ import type { EarnAction } from "../earn.js";
 import { planNetworkCost, type CostAgreed, type CostChain } from "../networkCost.js";
 import type { RelayerQuote, Signer, StillUnlocked } from "../ports.js";
 import { refused, type Settlement, type Unsuccessful } from "../result.js";
-import { holdingIn, logged, othersOf, positive } from "../walletRecord.js";
+import { holdingIn, logged, mapPortfolio, othersOf, positive } from "../walletRecord.js";
 import {
   costChangedOf,
+  costInCash,
   counted,
   ended,
   failedOf,
   openSession,
   unknownOf,
+  withCashMoved,
   type ActionDeps,
   type Refresh,
 } from "./common.js";
@@ -111,11 +113,13 @@ export async function earn<K extends Signer>(
   const owner = session.portfolioSigner(portfolio);
   if (!owner) return refused(session.refusal());
 
+  const cost = costInCash(network?.relayerFeeRaw);
   const entry = {
     kind: action === "deposit" ? ("earnDeposit" as const) : ("earnWithdraw" as const),
     symbol: chain.cashSymbol,
     amount,
     usd: amount * deps.prices.price(chain.cashSymbol),
+    ...(network?.relayerFeeRaw === undefined ? {} : { networkCost: cost }),
   };
   const reservation = await deps.pending.reserve(
     id,
@@ -157,8 +161,21 @@ export async function earn<K extends Signer>(
   // Settle. From here the move has landed, so nothing below may report it
   // as failed.
   const read = await reread();
+  // Cash that could not be read back is put where the move is known to have
+  // left it, network cost included, until a refresh reads the chain.
+  const moved = (action === "deposit" ? -amount : amount) - cost;
   void deps.store
-    .update((current) => logged(current, { portfolioId: id, ...entry }, deps.prices))
+    .update((current) =>
+      logged(
+        read
+          ? current
+          : mapPortfolio(current, id, (held) =>
+              withCashMoved(deps.prices, held, chain.cashSymbol, moved),
+            ),
+        { portfolioId: id, ...entry },
+        deps.prices,
+      ),
+    )
     .catch(() => false);
   deps.track(`earn_${action}`);
   return { kind: "confirmed", signature, settlement: read ? "balancesRead" : "balancesEstimated" };

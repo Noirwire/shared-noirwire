@@ -188,6 +188,7 @@ const sendChain: SendChain<Keypair> = {
     };
   },
   isRecipientAddress,
+  checkRecipient,
   cashSymbol: QUOTE_TOKEN.symbol,
   networkFeeSol: lamportsToSol(NETWORK_FEE_LAMPORTS),
   cost,

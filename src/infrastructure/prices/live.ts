@@ -43,13 +43,12 @@ async function refresh() {
   try {
     const response = await readFetch(apiUrl("prices"));
     if (response.ok) {
-      const payload = (await response.json()) as { prices: Record<string, LivePrice> | null };
-      if (payload.prices) {
-        prices = new Map(Object.entries(payload.prices));
-        // Aged from when the source supplied them: a copy the cache held for a
-        // minute is a minute old, however recently it arrived here.
-        updatedAt = Date.now() - (Number(response.headers.get("age")) || 0) * 1000;
-      }
+      const payload = (await response.json()) as { prices: Record<string, LivePrice> };
+      prices = new Map(Object.entries(payload.prices));
+      // Aged from when the source supplied them, which the `Age` header says
+      // in seconds: a copy the server held for a minute is a minute old,
+      // however recently it arrived here.
+      updatedAt = Date.now() - (Number(response.headers.get("age")) || 0) * 1000;
     }
   } catch {
     /* the last prices age out on their own */

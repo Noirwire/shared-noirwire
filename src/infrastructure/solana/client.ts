@@ -3,7 +3,7 @@ import "./buffer-polyfill.js";
 import { Connection } from "@solana/web3.js";
 import { getPlatform } from "../../platform.js";
 import { apiUrl } from "../api.js";
-import { authorizedFetch } from "../apiSession.js";
+import { apiErrorOf, authorizedFetch } from "../apiSession.js";
 
 /**
  * Every RPC call goes to NoirWire's server, never to the provider, so the
@@ -33,10 +33,22 @@ export function sendsTransaction(body: unknown): boolean {
   }
 }
 
-const relayedFetch: typeof fetch = (_input, init) => {
+/**
+ * One RPC call, through the server. The provider's own answers, its JSON-RPC
+ * errors included, come back as it wrote them. An error the server wrote
+ * itself is not JSON-RPC and is thrown as the `ApiError` it is, so a caller
+ * sees its code and never a status line with a body pasted after it.
+ */
+const relayedFetch: typeof fetch = async (_input, init) => {
   const { rpcUrl } = getPlatform().env;
   if (rpcUrl) return fetch(rpcUrl, init);
-  return authorizedFetch(apiUrl("rpc"), { ...init, asksAgain: !sendsTransaction(init?.body) });
+  const response = await authorizedFetch(apiUrl("rpc"), {
+    ...init,
+    asksAgain: !sendsTransaction(init?.body),
+  });
+  const refusal = await apiErrorOf(response);
+  if (refusal) throw refusal;
+  return response;
 };
 
 /**

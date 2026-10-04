@@ -3,12 +3,17 @@ import {
   ComputeBudgetProgram,
   Keypair,
   PublicKey,
+  TransactionInstruction,
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
 import { connection } from "../../src/infrastructure/solana/client.js";
 import { usdcMint } from "../../src/infrastructure/solana/config.js";
-import { prepareEarn, sharesFor } from "../../src/infrastructure/solana/earn/jupiterLend.js";
+import {
+  prepareEarn,
+  relayedEarnDraft,
+  sharesFor,
+} from "../../src/infrastructure/solana/earn/jupiterLend.js";
 
 const LEND_PROGRAM = new PublicKey("jup3YeL8QhtSx1e253b2FDvsMNC87fDrgQZivbrndc9");
 const RECEIPT_MINT = new PublicKey("9BEcn9aPEmhSPbPQeFGjidRiEKki46fVQDyPpSQXPA2D");
@@ -91,6 +96,140 @@ describe("prepareEarn", () => {
     const withdrawal = await prepareEarn("withdraw", owner, 10);
     expect(withdrawal.limits.maxCashSpent).toBe((9_410_798n * 10_050n) / 10_000n + 1n);
     expect(withdrawal.limits.receive?.minAmount).toBe(TEN_USDC - 1n);
+  });
+
+  describe("a withdrawal of everything", () => {
+    const PRICE = 1_062_609_067_277n;
+    const SHARES = 37_643_197n;
+    const WORTH = (SHARES * PRICE) / ONE;
+    const REDEEM = [0xb8, 0x0c, 0x56, 0x95, 0x46, 0xc4, 0x61, 0xe1];
+    const WITHDRAW = [0xb7, 0x12, 0x46, 0x9c, 0x94, 0x6d, 0xa1, 0x22];
+
+    /** The API builds a genuine withdrawal for whatever amount it is asked for. */
+    function lendApi() {
+      const asked: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string, init?: RequestInit) => {
+          const { amount } = JSON.parse(init!.body as string) as { amount: string };
+          asked.push(amount);
+          const data = Buffer.alloc(16);
+          Buffer.from(WITHDRAW).copy(data);
+          data.writeBigUInt64LE(BigInt(amount), 8);
+          const built = new VersionedTransaction(
+            new TransactionMessage({
+              payerKey: owner,
+              recentBlockhash: Keypair.generate().publicKey.toBase58(),
+              instructions: [
+                new TransactionInstruction({
+                  programId: LEND_PROGRAM,
+                  keys: [{ pubkey: owner, isSigner: true, isWritable: true }],
+                  data,
+                }),
+              ],
+            }).compileToV0Message(),
+          );
+          return Response.json({ transaction: Buffer.from(built.serialize()).toString("base64") });
+        }),
+      );
+      return asked;
+    }
+
+    /** The chain: the vault at `PRICE`, and the portfolio's receipt account holding `SHARES`. */
+    function position(shares = SHARES) {
+      const receipt = Buffer.alloc(165);
+      receipt.writeBigUInt64LE(shares, 64);
+      vi.spyOn(connection, "getAccountInfo").mockImplementation((async (key: PublicKey) =>
+        key.equals(new PublicKey("2vVYHYM8VYnvZqQWpTJSj8o8DBf1wM8pVs3bsTgYZiqJ"))
+          ? lendingAccount(PRICE)
+          : { owner: LEND_PROGRAM, data: receipt }) as never);
+    }
+
+    const lendInstruction = (transaction: VersionedTransaction) =>
+      TransactionMessage.decompile(transaction.message).instructions.find((entry) =>
+        entry.programId.equals(LEND_PROGRAM),
+      )!;
+
+    it.each([
+      ["exactly what the position is worth", Number(WORTH) / 1e6],
+      ["what Max fills, a few units over what the chain will give", Number(WORTH + 16n) / 1e6],
+      ["far more than there is", 1_000],
+    ])(
+      "redeems every share when asked for %s, and leaves nothing behind",
+      async (_what, amount) => {
+        lendApi();
+        position();
+        const { transaction, limits } = await prepareEarn("withdraw", owner, amount);
+        const { data } = lendInstruction(transaction);
+        expect([...data.subarray(0, 8)]).toEqual(REDEEM);
+        expect(data.readBigUInt64LE(8)).toBe(SHARES);
+        // Every share may leave and not one more; at least what they were worth must arrive.
+        expect(limits.maxCashSpent).toBe(SHARES);
+        expect(limits.receive?.minAmount).toBe(WORTH - 1n);
+      },
+    );
+
+    it("stays a withdrawal of the amount typed when that is less than the position", async () => {
+      const asked = lendApi();
+      position();
+      const { transaction, limits } = await prepareEarn("withdraw", owner, 10);
+      const { data } = lendInstruction(transaction);
+      expect([...data.subarray(0, 8)]).toEqual(WITHDRAW);
+      expect(data.readBigUInt64LE(8)).toBe(TEN_USDC);
+      expect(asked).toEqual(["10000000"]);
+      expect(limits.receive?.minAmount).toBe(TEN_USDC - 1n);
+    });
+
+    it("is the same for the relayer: one redemption of every share, reviewed as that", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string, init?: RequestInit) => {
+          const { amount } = JSON.parse(init!.body as string) as { amount: string };
+          const data = Buffer.alloc(16);
+          Buffer.from(WITHDRAW).copy(data);
+          data.writeBigUInt64LE(BigInt(amount), 8);
+          return Response.json({
+            instructions: [
+              {
+                programId: LEND_PROGRAM.toBase58(),
+                accounts: [{ pubkey: owner.toBase58(), isSigner: true, isWritable: true }],
+                data: data.toString("base64"),
+              },
+            ],
+          });
+        }),
+      );
+      position();
+      const receipt = Buffer.alloc(165);
+      receipt.writeBigUInt64LE(SHARES, 64);
+      const cash = Buffer.alloc(165);
+      vi.spyOn(connection, "getMultipleAccountsInfo").mockResolvedValue([
+        { data: cash },
+        { data: receipt },
+      ] as never);
+      const terms = { feePayer: Keypair.generate().publicKey, feeRaw: 20_000n, pricing: false };
+
+      const all = await relayedEarnDraft("withdraw", owner, Number(WORTH + 16n) / 1e6, terms);
+      expect(all.intent).toEqual({ kind: "redeem", amountRaw: SHARES });
+      const { data } = all.instructions.at(-1)!;
+      expect([...data.subarray(0, 8)]).toEqual(REDEEM);
+      expect(data.readBigUInt64LE(8)).toBe(SHARES);
+      expect(all.limits(20_000n)).toMatchObject({
+        maxCashSpent: SHARES,
+        receive: { minAmount: WORTH - 1n - 20_000n },
+      });
+
+      const some = await relayedEarnDraft("withdraw", owner, 10, terms);
+      expect(some.intent).toEqual({ kind: "withdraw", amountRaw: TEN_USDC });
+    });
+
+    it("refuses to turn anything but Jupiter's withdrawal into a redemption", async () => {
+      hostileApi();
+      position();
+      await expect(prepareEarn("withdraw", owner, 1_000)).rejects.toThrow(
+        /other than a withdrawal/,
+      );
+    });
   });
 
   it("builds nothing when the vault account is not the one expected", async () => {

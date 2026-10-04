@@ -1,3 +1,4 @@
+import { ApiError } from "../domain/apiError.js";
 import { ChainError } from "../domain/chainError.js";
 
 /**
@@ -49,9 +50,11 @@ export function isBusyStatus(status: number): boolean {
 /**
  * Whether a thrown failure is of the asking, not an answer: the request never
  * got through, ran out of time, or came back 429 or 5xx. A `ChainError` is a
- * typed refusal and never is.
+ * typed refusal and never is. An error NoirWire's server wrote itself is
+ * judged by its code, not its words.
  */
 export function isTransient(error: unknown): boolean {
+  if (error instanceof ApiError) return error.asksAgain;
   if (error instanceof ChainError || !(error instanceof Error)) return false;
   if (error.name === "TypeError" || error.name === "AbortError" || error.name === "TimeoutError") {
     return true;

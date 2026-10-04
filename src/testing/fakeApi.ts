@@ -42,13 +42,29 @@ function handlerFor(routes: Record<string, ApiHandler>, call: ApiCall): ApiHandl
   return wild ? routes[wild] : undefined;
 }
 
+/** What a route answered, or the rejection of a real `fetch` once the request is aborted. */
+function answered(answer: unknown, signal: AbortSignal | null | undefined): Promise<unknown> {
+  if (!signal) return Promise.resolve(answer);
+  return new Promise((resolve, reject) => {
+    const aborted = () => {
+      const error = new Error("This operation was aborted.");
+      error.name = "AbortError";
+      reject(error);
+    };
+    if (signal.aborted) return aborted();
+    signal.addEventListener("abort", aborted, { once: true });
+    Promise.resolve(answer).then(resolve, reject);
+  });
+}
+
 /**
  * Stands in for the network in a test, by path. `routes` maps a path
  * (`/v1/prices`), optionally with its method in front (`POST /v1/relayer`)
  * or a `*` at its end (`/v1/jupiter/*`), to what answers it. The host is
  * not looked at, and a request to a path with no host (the web's `/api`) is
  * read as it stands. A request no route answers throws and names itself:
- * nothing ever goes out.
+ * nothing ever goes out. A route may never answer; the request then ends
+ * when its caller aborts it, as a real one would.
  *
  * It replaces the global `fetch` until `restore()` is called.
  */
@@ -71,7 +87,7 @@ export function fakeApi(routes: Record<string, ApiHandler>): FakeApi {
     calls.push(call);
     const handler = handlerFor(routes, call);
     if (!handler) throw new Error(`fakeApi: no route answers ${call.method} ${call.path}.`);
-    const answer = await handler(call);
+    const answer = await answered(handler(call), init?.signal);
     return answer instanceof Response
       ? answer
       : new Response(JSON.stringify(answer), {

@@ -86,6 +86,7 @@ function investments(
 function totalOf(
   overview: ReturnType<ScreenReads["portfolioOverview"]>,
   empty: boolean,
+  earn: EarnTotal,
 ): HomeView["total"] {
   const home = portfolioCopy.home;
   const label = home.totalValue;
@@ -98,7 +99,9 @@ function totalOf(
       changeTone: "faint",
     };
   }
-  const value = usd(overview.total);
+  // What is lent is the person's money like the rest, so it counts. While
+  // it cannot be read, the total is of everything else, and the Earn line says so.
+  const value = usd(overview.total + (earn ?? 0));
   if (empty || !overview.hasInvestments) {
     return { label, value, unavailable: false, changeTone: "dim" };
   }
@@ -157,7 +160,7 @@ export function homeView(
   const archived = reads.archivedPortfolios(wallet);
 
   return {
-    total: totalOf(overview, empty),
+    total: totalOf(overview, empty, earn),
     cash: { label: home.cashAvailable, value: usd(overview.cash) },
     earning:
       earn === undefined

@@ -123,6 +123,7 @@ describe("activityListView", () => {
       title: "Your buys, sells and money moves will appear here.",
       detail:
         "History is kept on this phone only. A wallet restored on a new phone starts with an empty list.",
+      importedNote: null,
     });
     const web = list(withEntries([]), "all", 50, "web");
     expect(web.kind === "none" && web.detail).toBe(
@@ -170,6 +171,7 @@ describe("activityListView", () => {
     expect(list(wallet, "trades")).toEqual({
       kind: "noMatch",
       title: "Nothing matches that filter.",
+      importedNote: null,
     });
   });
 });
@@ -204,5 +206,97 @@ describe("activityDetailView", () => {
 describe("dayHeading", () => {
   it("writes an older day as a date", () => {
     expect(dayHeading(NOW - 2 * DAY, NOW)).toBe("28 Sep 2026");
+  });
+});
+
+describe("the network cost of an entry", () => {
+  const withdrawal = activity({
+    id: "back",
+    portfolioId: "acc_1",
+    kind: "earnWithdraw",
+    amount: 10,
+    usd: 10,
+    networkCost: 0.02,
+    at: NOW,
+  });
+
+  it("shows a return from Earn as what arrived, with the cost beside it", () => {
+    const row = activityRow(reads, withEntries([withdrawal]), withdrawal);
+    expect(row).toMatchObject({
+      title: "Returned from Earn",
+      amount: "9.98 USDC",
+      value: { text: "+$9.98" },
+      networkCost: "Network cost 0.02 USDC",
+    });
+    expect(row.spoken).toContain("9.98 USDC, Network cost 0.02 USDC");
+  });
+
+  it("gives the detail both figures: what was withdrawn, and what arrived", () => {
+    expect(activityDetailView(reads, withEntries([withdrawal]), "back")).toMatchObject({
+      headline: "+$9.98",
+      amount: "10.00 USDC",
+      arrived: "9.98 USDC",
+      networkCost: "0.02 USDC",
+    });
+  });
+
+  it("leaves a send and a deposit as they were made, and states their cost", () => {
+    const sent = activity({
+      id: "sent",
+      portfolioId: "acc_1",
+      kind: "send",
+      amount: 5,
+      usd: 5,
+      networkCost: 0.004,
+    });
+    const row = activityRow(reads, withEntries([sent]), sent);
+    expect(row).toMatchObject({ amount: "5.00 USDC", networkCost: "Network cost 0.004 USDC" });
+    expect(activityDetailView(reads, withEntries([sent]), "sent")).toMatchObject({
+      amount: "5.00 USDC",
+      arrived: null,
+      networkCost: "0.004 USDC",
+    });
+  });
+
+  it("says nothing of a cost on an entry that was charged none, or recorded before costs were", () => {
+    const old = activity({
+      id: "old",
+      portfolioId: "acc_1",
+      kind: "earnWithdraw",
+      amount: 10,
+      usd: 10,
+    });
+    expect(activityRow(reads, withEntries([old]), old)).toMatchObject({
+      amount: "10.00 USDC",
+      networkCost: null,
+    });
+    expect(activityDetailView(reads, withEntries([old]), "old")).toMatchObject({
+      arrived: null,
+      networkCost: null,
+    });
+  });
+});
+
+describe("an imported wallet's activity", () => {
+  const imported = (entries: Activity[]) =>
+    testWallet((w) => ({ ...w, activity: entries, imported: true }));
+  const view = (wallet: ReturnType<typeof testWallet>, platform: "web" | "mobile") =>
+    activityListView(reads, { wallet, filter: "all", limit: 50, now: NOW, platform });
+
+  it("says plainly that what was done before, on another device, is not shown here", () => {
+    expect(view(imported([]), "web")).toMatchObject({
+      kind: "none",
+      importedNote:
+        "This wallet was imported in this browser. Activity from before the import, made on another device, is not shown here. Your balances are complete.",
+    });
+    expect(view(imported([]), "mobile").importedNote).toBe(
+      "This wallet was imported on this phone. Activity from before the import, made on another device, is not shown here. Your balances are complete.",
+    );
+    const some = imported([activity({ portfolioId: "acc_1", kind: "fund" })]);
+    expect(view(some, "web")).toMatchObject({ kind: "list", importedNote: expect.any(String) });
+  });
+
+  it("says nothing of it on a wallet made here", () => {
+    expect(view(withEntries([]), "web").importedNote).toBeNull();
   });
 });

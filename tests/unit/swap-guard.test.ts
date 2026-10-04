@@ -199,7 +199,7 @@ describe("verifySwapBeforeSigning", () => {
     });
     expect(await verify()).toMatchObject({
       ok: false,
-      reason: expect.stringContaining("would fail on chain"),
+      reason: "This would not go through if it were sent, so it was not signed.",
     });
   });
 

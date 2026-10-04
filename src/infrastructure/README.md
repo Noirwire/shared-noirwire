@@ -10,7 +10,9 @@ Every request goes to NoirWire's own server. `api.ts` builds its address, in one
 - `solana/private-payments.ts`: private funding through MagicBlock, each built transaction checked before it is signed.
 - `solana/mintPolicy.mjs`: what a stock's mint must look like. Plain JavaScript, so a catalog script can run it under Node with no build step.
 
-**A request that hands over a signature is never made twice.** `authorizedFetch` makes a request again after a 401 only when it is a `GET` or is marked `asksAgain`, which `readFetch` and `jupiterThroughApi` do for reads and unsigned builds. A swap's `execute`, a private transfer's `send`, the relayer's `signTransaction` and an RPC `sendTransaction` are sent bare, and fail as `notAvailableNow` with nothing sent.
+**A request that hands over a signature is never made twice, and never called unsent once it has left.** `authorizedFetch` makes a request again after a 401 only when it is a `GET` or is marked `asksAgain`, which `readFetch` and `jupiterThroughApi` do for reads and unsigned builds. A swap's `execute`, a private transfer's `send`, the relayer's `signTransaction` and an RPC `sendTransaction` are sent bare: any answer short of a clear success, a 401 included, is an unknown outcome that the chain settles. Only a request that was never made, because no session could be had, fails as `notAvailableNow`.
+
+**The server's own errors are read by their `code`** (`domain/apiError.ts`), never by their sentence. `apiErrorOf(response)` finds one; a provider's error has none and passes as it came.
 
 **Belongs here:** request building, response parsing, retries, and the checks above.
 

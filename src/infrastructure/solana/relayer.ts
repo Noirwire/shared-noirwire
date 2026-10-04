@@ -12,7 +12,7 @@ import {
 import { bytesEqual } from "./bytes.js";
 import { connection } from "./client.js";
 import { apiUrl } from "../api.js";
-import { authorizedFetch } from "../apiSession.js";
+import { apiErrorOf, authorizedFetch } from "../apiSession.js";
 import { readFetch } from "../readFetch.js";
 import { usdcMint, usdcMintKey } from "./config.js";
 import { type BalanceLimits, verifyBalancesBeforeSigning } from "./presign-guard.js";
@@ -23,7 +23,7 @@ import {
   type RelayedRefusal,
   type RelayerPins,
 } from "./relayed.js";
-import { signForSending, type StillUnlocked } from "./signerAccounts.js";
+import { recordForSending, signForSending, type StillUnlocked } from "./signerAccounts.js";
 import { sendAndSettle, signatureOf } from "./settlement.js";
 import { ChainError, isChainError } from "../../domain/chainError.js";
 import { UnknownOutcomeError } from "./swap/types.js";
@@ -141,7 +141,7 @@ export function resetRelayerPins() {
   pinsCache = null;
 }
 
-/** A refusal: the relay or the relayer turned the request down, so the relayer signed nothing. */
+/** A refusal, by the server's code: the request was turned down, so the relayer signed nothing. */
 class RelayerRefusal extends Error {
   constructor(readonly reason: string) {
     super("The relayer refused the request.");
@@ -151,8 +151,27 @@ class RelayerRefusal extends Error {
 /** No usable answer came back, so what the relayer did with the request is not known. */
 class RelayerSilence extends Error {}
 
-/** The statuses with which the relay answers a request it did not act on. */
-const REFUSED = [400, 403, 413, 422, 429, 503];
+/**
+ * The server's codes for a request it did not act on: the relayer was not
+ * asked to sign, or never received what it was sent. Any other answer short
+ * of a result, a 401 included, leaves what the relayer did unknown.
+ */
+const NOT_ACTED_ON = [
+  "invalid_request",
+  "origin_not_allowed",
+  "method_not_allowed",
+  "request_timeout",
+  "request_too_large",
+  "refused",
+  "insufficient_payment",
+  "rate_limited",
+  "unavailable",
+  "relayer_unavailable",
+  "upstream_not_reached",
+];
+
+/** The codes that say the relayer never had the request: the action may be built again for another replica. */
+const NEVER_RECEIVED = ["relayer_unavailable", "unavailable"];
 
 async function call<T>(method: string, params?: Record<string, unknown>): Promise<T> {
   let response: Response;
@@ -164,18 +183,20 @@ async function call<T>(method: string, params?: Record<string, unknown>): Promis
       asksAgain: method !== SIGN_METHOD,
     });
   } catch (error) {
-    // The server would not take the request at all: nothing reached the relayer.
+    // No session could be had, so the request was never made: nothing left the device.
     if (isChainError(error, "notAvailableNow")) throw error;
     throw new RelayerSilence();
   }
-  const payload = (await response.json().catch(() => null)) as {
-    result?: T;
-    error?: unknown;
-  } | null;
+  const payload = (await response
+    .clone()
+    .json()
+    .catch(() => null)) as { result?: T } | null;
   if (response.ok && payload?.result) return payload.result;
-  if (REFUSED.includes(response.status)) {
-    throw new RelayerRefusal(typeof payload?.error === "string" ? payload.error : "refused");
-  }
+  // A signature is answered with the signed transaction itself, and its id beside it.
+  if (response.ok && method === SIGN_METHOD && "transaction" in (payload ?? {}))
+    return payload as T;
+  const refusal = await apiErrorOf(response);
+  if (refusal && NOT_ACTED_ON.includes(refusal.code)) throw new RelayerRefusal(refusal.code);
   throw new RelayerSilence();
 }
 
@@ -197,6 +218,8 @@ export type RelayedIntent =
       amountRaw: bigint;
     }
   | { kind: "deposit" | "withdraw"; amountRaw: bigint }
+  /** The whole Earn position taken back: `amountRaw` is the receipt shares redeemed. */
+  | { kind: "redeem"; amountRaw: bigint }
   /** Opening this portfolio's own account for a tracker, ahead of a first buy. */
   | { kind: "open" };
 
@@ -410,7 +433,7 @@ async function relayerFor(
  * have arrived all the same.
  */
 function neverReceived(error: unknown): boolean {
-  return error instanceof RelayerRefusal && error.reason === "unavailable";
+  return error instanceof RelayerRefusal && NEVER_RECEIVED.includes(error.reason);
 }
 
 async function estimate(transaction: VersionedTransaction, feePayer: PublicKey): Promise<bigint> {
@@ -476,7 +499,9 @@ export async function quoteRelayed(
 /**
  * Runs an action whose review showed `reviewedFeeRaw` as its network cost:
  * builds it, checks it, has the portfolio sign, has the relayer add the fee
- * payer's signature, sends it through the server's RPC route and watches
+ * payer's signature (the relayer signs and broadcasts nothing), checks that
+ * what came back is the same message with the portfolio's own signature
+ * intact, writes its id into the reservation, and only then sends it through the server's RPC route and watches
  * for it. Returns the transaction's signature, which is the fee payer's.
  *
  * Until the relayer has signed, nothing can land, so a failure up to there
@@ -549,19 +574,22 @@ export async function runRelayed(run: {
       portfolio,
       draft.limits(reviewedFeeRaw),
     );
+    // The relayer is the fee payer: one that cannot pay cannot be used, and
+    // the cost is met another way. Nothing is signed either way.
+    if (!balances.ok && balances.feePayerShort) throw new RelayerUnavailableError();
     if (!balances.ok) throw new Error(balances.reason);
 
     await signForSending(transaction, owner, stillUnlocked, latest.lastValidBlockHeight);
 
-    let answer: { signed_transaction: string };
+    let answer: { transaction?: string; signed_transaction?: string; signature?: string };
     try {
       answer = await call(SIGN_METHOD, {
         transaction: encoded(transaction),
         signer_key: feePayer.toBase58(),
       });
     } catch (error) {
-      // The server refused the request before the relayer saw it. Nothing
-      // was sent, and nothing is asked of the relayer again here.
+      // The request was never made, for want of a session. Nothing left
+      // the device, and nothing is asked of the relayer again here.
       if (isChainError(error, "notAvailableNow")) throw error;
       // This replica never had the transaction. Another is asked for, and
       // when none is left that ends it (`relayerFor` above).
@@ -585,12 +613,23 @@ export async function runRelayed(run: {
       continue;
     }
 
-    const complete = checkCoSigned(answer.signed_transaction, transaction);
+    // The relayer only signs. Nothing has been broadcast, by it or by anyone.
+    const complete = checkCoSigned(
+      answer.transaction ?? answer.signed_transaction ?? "",
+      transaction,
+    );
     if (!complete) {
       throw new Error("The relayer returned a different transaction than was signed. Not sent.");
     }
     // The fee payer signs first, so the transaction's id is its signature, not the portfolio's.
     const signature = signatureOf(complete)!;
+    if (answer.signature !== undefined && answer.signature !== signature) {
+      throw new Error("The relayer named a different transaction than it signed. Not sent.");
+    }
+    // Its id is written into the reservation before it is sent. An app closed
+    // a moment after the broadcast then finds, on reopening, exactly which
+    // transaction to ask the chain about. One that cannot be written is not sent.
+    await recordForSending(complete, portfolio, latest.lastValidBlockHeight);
     return sendAndSettle(
       complete,
       signature,

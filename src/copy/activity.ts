@@ -15,6 +15,10 @@ const olderNotKept = (place: string) => (count: number) =>
 const recordedWhere = (place: string) =>
   `Recorded ${place} when it happened. The transfer itself is public on chain.`;
 
+/** An imported wallet's history starts at the import. `where` is "in this browser" or "on this phone". */
+const importedNote = (where: string) =>
+  `This wallet was imported ${where}. Activity from before the import, made on another device, is not shown here. Your balances are complete.`;
+
 /** The record of money moves and trades. */
 export const activityCopy = {
   title: "Activity",
@@ -82,11 +86,20 @@ export const activityCopy = {
   olderNotKept: olderNotKept("in this browser"),
   plus: "plus",
   minus: "minus",
+  /** Under a row whose action was charged a network cost. */
+  networkCost: (cost: string) => `Network cost ${cost}`,
+  /**
+   * On an imported wallet: what it did before was never written down here.
+   * `where` is "in this browser" or "on this phone".
+   */
+  importedNote: importedNote("in this browser"),
 
   detail: {
     portfolio: "Portfolio",
     date: "Date",
     amount: "Amount",
+    arrived: "Arrived",
+    networkCost: "Network cost",
     valueAtTime: "Value at the time",
     sentTo: "Sent to",
     addressYouEntered: "An address you entered",
@@ -104,6 +117,7 @@ export const activityCopy = {
 
 /** What the phone says differently on Activity. Everything else is `activityCopy`. */
 export const mobileActivityCopy = {
+  importedNote: importedNote("on this phone"),
   emptyDetail: keptOnly("on this phone", "on a new phone"),
   olderNotKept: olderNotKept("on this phone"),
   detail: {

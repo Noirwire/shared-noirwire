@@ -1,6 +1,9 @@
 import { Keypair, VersionedTransaction } from "@solana/web3.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ChainError } from "../../src/domain/chainError.js";
+import { ApiError } from "../../src/domain/apiError.js";
+import { ChainError, UnknownOutcomeError } from "../../src/domain/chainError.js";
+import { keepSessionWith } from "../../src/infrastructure/apiSession.js";
+import { jupiterThroughApi } from "../../src/infrastructure/solana/config.js";
 import { priceHistory } from "../../src/infrastructure/prices/history.js";
 import { connection, sendsTransaction } from "../../src/infrastructure/solana/client.js";
 import { jupiterLend } from "../../src/infrastructure/solana/earn/jupiterLend.js";
@@ -33,7 +36,9 @@ const rpcResult = (call: ApiCall, result: unknown) => ({
   id: (call.json as { id: string }).id,
   result,
 });
-const unauthorized = () => new Response("{}", { status: 401 });
+const refusal = (code: string, status: number) =>
+  new Response(JSON.stringify({ code, error: "A sentence for a person." }), { status });
+const unauthorized = () => refusal("unauthorized", 401);
 const turnedDownOnce = (answer: (call: ApiCall) => unknown) => (call: ApiCall) =>
   call.headers.authorization === "Bearer test-token-1" ? unauthorized() : answer(call);
 const methodsAsked = () =>
@@ -80,9 +85,35 @@ describe("the chain client", () => {
     const failure = await connection
       .sendRawTransaction(signed().serialize(), { skipPreflight: true })
       .catch((error: unknown) => error);
-    expect(failure).toBeInstanceOf(ChainError);
-    expect(failure).toMatchObject({ code: "notAvailableNow" });
+    expect(failure).toBeInstanceOf(ApiError);
+    expect(failure).toMatchObject({ code: "unauthorized", status: 401 });
     expect(methodsAsked()).toEqual(["sendTransaction"]);
+    // The session is put right for the next attempt all the same.
+    await vi.waitFor(() => expect(session.renewals).toBe(1));
+  });
+
+  it("throws the server's own errors by their code, and passes the provider's on", async () => {
+    api = fakeApi({ "POST /v1/rpc": () => refusal("method_not_allowed", 403) });
+    await expect(connection.getBlockHeight()).rejects.toMatchObject({
+      name: "ApiError",
+      code: "method_not_allowed",
+      asksAgain: false,
+    });
+    api.restore();
+    api = fakeApi({ "POST /v1/rpc": () => refusal("rate_limited", 429) });
+    await expect(connection.getBlockHeight()).rejects.toMatchObject({
+      code: "rate_limited",
+      asksAgain: true,
+    });
+    api.restore();
+    api = fakeApi({
+      "POST /v1/rpc": (call) => ({
+        jsonrpc: "2.0",
+        id: (call.json as { id: string }).id,
+        error: { code: -32602, message: "Invalid params" },
+      }),
+    });
+    await expect(connection.getBlockHeight()).rejects.toThrow(/Invalid params/);
   });
 
   it("tells a send from a read by what the request asks for", () => {
@@ -106,29 +137,85 @@ describe("the chain client", () => {
   });
 });
 
+/** A session that cannot be had: the request is never made. */
+function noSession() {
+  keepSessionWith({
+    token: () => Promise.reject(new ChainError("notAvailableNow")),
+    renew: () => Promise.reject(new ChainError("notAvailableNow")),
+    drop: async () => undefined,
+  });
+}
+
 describe("a transaction this wallet sends itself", () => {
-  it("ends as not available now, with nothing sent, when the server turns the send down", async () => {
-    api = fakeApi({ "POST /v1/rpc": () => unauthorized() });
-    const transaction = signed();
-    const failure = await sendAndSettle(transaction, "signature", 1_000, () => new Error("failed"))
-      .then(() => null)
-      .catch((error: unknown) => error);
-    expect(failure).toMatchObject({ code: "notAvailableNow" });
-    // Not called unknown, and the chain is not asked about a transaction nobody received.
-    expect(methodsAsked()).toEqual(["sendTransaction"]);
+  const chainSays = (call: ApiCall, status: object | null, height = 900) => {
+    const { method } = call.json as { method: string };
+    if (method === "getSignatureStatuses")
+      return rpcResult(call, { context: { slot: 1 }, value: [status] });
+    if (method === "getBlockHeight") return rpcResult(call, height);
+    return unauthorized();
+  };
+  const send = () =>
+    sendAndSettle(signed(), "5".repeat(88), 1_000, () => new Error("failed")).catch(
+      (error: unknown) => error,
+    );
+
+  it("is unknown, never 'nothing was sent', when the server answers a 401 to the send", async () => {
+    api = fakeApi({ "POST /v1/rpc": (call) => chainSays(call, null) });
+    const failure = await send();
+    expect(failure).toBeInstanceOf(UnknownOutcomeError);
+    expect(failure).toMatchObject({ signature: "5".repeat(88), lastValidBlockHeight: 1_000 });
+    expect(methodsAsked().filter((method) => method === "sendTransaction")).toHaveLength(1);
+  });
+
+  it("is done when the chain shows it landed after that 401", async () => {
+    api = fakeApi({
+      "POST /v1/rpc": (call) =>
+        chainSays(call, { slot: 1, confirmations: 1, err: null, confirmationStatus: "confirmed" }),
+    });
+    expect(await send()).toBe("5".repeat(88));
+  });
+
+  it("fails with nothing sent only when the request never left the device", async () => {
+    noSession();
+    api = fakeApi({});
+    expect(await send()).toMatchObject({ code: "notAvailableNow" });
+    expect(api.calls).toHaveLength(0);
   });
 });
 
 describe("the swap venue", () => {
   const QUOTE = { raw: { requestId: "request-1", lastValidBlockHeight: 1_000 } } as SwapQuote;
 
-  it("never hands a signed swap over a second time, and says nothing was sent", async () => {
-    api = fakeApi({ "POST /v1/jupiter/swap/v2/execute": () => unauthorized() });
+  it("never hands a signed swap over a second time, and calls a 401 unknown", async () => {
+    api = fakeApi({
+      "POST /v1/jupiter/swap/v2/execute": () => unauthorized(),
+      "POST /v1/rpc": (call) =>
+        (call.json as { method: string }).method === "getBlockHeight"
+          ? rpcResult(call, 900)
+          : rpcResult(call, { context: { slot: 1 }, value: [null] }),
+    });
     const failure = await executeJupiterSwap(QUOTE, signed()).catch((error: unknown) => error);
-    expect(failure).toBeInstanceOf(ChainError);
-    expect(failure).toMatchObject({ code: "notAvailableNow" });
-    expect(api.calls.map((call) => call.path)).toEqual(["/v1/jupiter/swap/v2/execute"]);
+    expect(failure).toBeInstanceOf(UnknownOutcomeError);
+    expect(api.callsTo("/v1/jupiter/swap/v2/execute")).toHaveLength(1);
     expect(api.calls[0].headers.authorization).toBe("Bearer test-token-1");
+  });
+
+  it("fails a swap with nothing sent only when the request never left the device", async () => {
+    noSession();
+    api = fakeApi({});
+    expect(
+      await executeJupiterSwap(QUOTE, signed()).catch((error: unknown) => error),
+    ).toMatchObject({ code: "notAvailableNow" });
+    expect(api.calls).toHaveLength(0);
+  });
+
+  it("throws the server's own error for an order, and never shows its sentence", async () => {
+    api = fakeApi({ "POST /v1/jupiter/swap/v2/order": () => refusal("upstream_timeout", 504) });
+    const failure = await jupiterThroughApi("/swap/v2/order", { method: "POST", body: "{}" }).catch(
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(ApiError);
+    expect((failure as ApiError).message).toBe("504 upstream_timeout");
   });
 
   it("reads the lending rate through the server, and again after a 401", async () => {
@@ -144,16 +231,29 @@ describe("the swap venue", () => {
 });
 
 describe("a private transfer", () => {
-  it("never hands a signed transfer over a second time, and does not call it unknown", async () => {
-    api = fakeApi({
-      "POST /v1/rpc": (call) => rpcResult(call, null),
-      "POST /v1/private-payments/v1/transaction/send": () => unauthorized(),
-    });
+  it.each([
+    ["a 401", () => unauthorized()],
+    ["a refusal of the server's", () => refusal("rate_limited", 429)],
+    [
+      "a refusal of the service's",
+      () => new Response('{"error":{"message":"no"}}', { status: 400 }),
+    ],
+  ])("never hands a signed transfer over twice, and calls %s unknown", async (_what, answer) => {
+    api = fakeApi({ "POST /v1/private-payments/v1/transaction/send": answer });
     const failure = await submitTransfer({ transactionBase64: "AQID" }, null).catch(
       (error: unknown) => error,
     );
-    expect(failure).toMatchObject({ code: "notAvailableNow" });
+    expect(failure).toBeInstanceOf(UnknownOutcomeError);
     expect(api.callsTo("/v1/private-payments/v1/transaction/send")).toHaveLength(1);
+  });
+
+  it("fails a transfer with nothing sent only when the request never left the device", async () => {
+    noSession();
+    api = fakeApi({});
+    expect(
+      await submitTransfer({ transactionBase64: "AQID" }, null).catch((error: unknown) => error),
+    ).toMatchObject({ code: "notAvailableNow" });
+    expect(api.calls).toHaveLength(0);
   });
 });
 

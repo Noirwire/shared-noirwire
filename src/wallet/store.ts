@@ -169,6 +169,9 @@ function isPendingAction(value: unknown) {
     text(value.what) &&
     (value.blockhash === undefined || text(value.blockhash)) &&
     (value.signature === undefined || text(value.signature)) &&
+    (value.signer === undefined || text(value.signer)) &&
+    (value.ownSignature === undefined || text(value.ownSignature)) &&
+    (value.unfindable === undefined || value.unfindable === true) &&
     (value.lastValidBlockHeight === undefined || nonnegative(value.lastValidBlockHeight)) &&
     (value.activity === undefined || record(value.activity))
   );

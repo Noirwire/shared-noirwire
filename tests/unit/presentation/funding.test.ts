@@ -106,7 +106,7 @@ describe("fundingAmountView", () => {
       "A private transfer has to be at least 0.50 USDC.",
     );
     expect(amountView({}, { amountText: "19.9" }).unaffordable).toBe(
-      "With fees this takes 20.12 USDC from your funding wallet, more than it holds. Enter a smaller amount.",
+      "With fees this takes 20.1199 USDC from your funding wallet, more than it holds. Enter a smaller amount.",
     );
     expect(amountView({}, { amountText: "10" }).next).toEqual({
       label: "Continue",
@@ -115,6 +115,21 @@ describe("fundingAmountView", () => {
     expect(amountView({ pending: { blocked: true } }, { amountText: "10" }).next.disabled).toBe(
       true,
     );
+  });
+
+  it("states the fees to the same decimal the review does, so 0.025 is not 0.03 in one and 0.025 in the other", () => {
+    const form = amountView({ fundingBalance: 100 }, { amountText: "25", fundingBalance: 100 });
+    const review = fundingReviewView({
+      draft: draft({ fundingBalance: 100 }),
+      asset: "USDC",
+      amount: 25,
+      portfolioLabel: "Investing",
+      pending: { blocked: false },
+    });
+    expect(form.terms.map((term) => term.value)).toEqual(review.terms.map((term) => term.value));
+    expect(form.total.value).toBe(review.total.value);
+    expect(form.terms[1].value).toBe("0.025 USDC");
+    expect(form.total.value).toBe("25.225 USDC");
   });
 
   it("points an empty funding wallet to its deposit address", () => {

@@ -127,6 +127,20 @@ export function sendFormView(state: SendFormState): SendFormView {
   };
 }
 
+/**
+ * Why a review of a send cannot go ahead because of who it is to: the
+ * recipient cannot receive, or could not be checked. Null for a wallet. A
+ * screen shows this in place of the review, whatever the cost says.
+ */
+export function sendRecipientRefusal(review: {
+  recipient: Unsendable | "unreadable" | null;
+}): string | null {
+  if (review.recipient === null) return null;
+  return review.recipient === "unreadable"
+    ? copy.recipientUnreadable
+    : copy.unsendable[review.recipient];
+}
+
 /** What can be sent from a portfolio: its cash, then one choice per tracker held. */
 export function sendAssets(
   holdings: readonly { symbol: string; amount: number }[],

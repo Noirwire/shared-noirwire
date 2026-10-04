@@ -47,6 +47,9 @@ let blockHeight: number;
 let blockhashValid: boolean;
 /** The chain the connection serves: the one the app is built for, or another one. */
 let genesisHash: string;
+/** What the chain holds of the signer's own transactions, newest first, and whether it can be asked. */
+let onChain: { signature: string; signatures: string[]; blockhash: string; failed?: boolean }[];
+let search: "answers" | "is down" | "is not allowed";
 
 /**
  * A freshly loaded tab: the store and everything built on it are imported
@@ -76,6 +79,33 @@ async function openTab() {
     context: { slot: 1 },
     value: blockhashValid,
   }));
+  const { ApiError } = await import("../../src/domain/apiError.js");
+  const asked = () => {
+    if (search === "is down") throw new ApiError("upstream_timeout", 504);
+    if (search === "is not allowed") throw new ApiError("method_not_allowed", 403);
+  };
+  vi.spyOn(connection, "getSignaturesForAddress").mockImplementation(async () => {
+    asked();
+    return onChain.map((entry) => ({
+      signature: entry.signature,
+      slot: 1,
+      err: entry.failed ? { InstructionError: [0, "Custom"] } : null,
+      memo: null,
+    }));
+  });
+  vi.spyOn(connection, "getTransaction").mockImplementation((async (signature: string) => {
+    asked();
+    const entry = onChain.find((candidate) => candidate.signature === signature);
+    return entry
+      ? {
+          meta: { err: null },
+          transaction: {
+            signatures: entry.signatures,
+            message: { recentBlockhash: entry.blockhash },
+          },
+        }
+      : null;
+  }) as never);
   vi.spyOn(connection, "getSignatureStatus").mockImplementation(async () => ({
     context: { slot: 1 },
     value:
@@ -98,6 +128,26 @@ const SEND = {
   usd: 5,
   counterparty: addressAt(9),
 };
+
+const EARN = { kind: "earnWithdraw" as const, symbol: "USDC", amount: 10, usd: 10 };
+const relayerKey = Keypair.generate();
+
+/** A transaction the relayer pays for: its id is the relayer's signature, unknown until it signs. */
+function relayedTransaction() {
+  return new VersionedTransaction(
+    new TransactionMessage({
+      payerKey: relayerKey.publicKey,
+      recentBlockhash: Keypair.generate().publicKey.toBase58(),
+      instructions: [
+        SystemProgram.transfer({
+          fromPubkey: keyAt(1).publicKey,
+          toPubkey: keyAt(9).publicKey,
+          lamports: 1,
+        }),
+      ],
+    }).compileToLegacyMessage(),
+  );
+}
 
 /** A transaction the portfolio pays for itself, as the app signs one. */
 function ownTransaction() {
@@ -138,6 +188,8 @@ describe("reserving an action", () => {
     blockHeight = LAST_VALID - 10;
     blockhashValid = true;
     genesisHash = "expected";
+    onChain = [];
+    search = "answers";
   });
 
   afterEach(() => {
@@ -322,6 +374,111 @@ describe("reserving an action", () => {
     expect(await reloaded.pending.settlePending("acc_1")).toBe("expired");
   });
 
+  describe.each([
+    ["a send", SEND],
+    ["an Earn withdrawal", EARN],
+  ])("%s the relayer pays for, when the app is closed", (what, activity) => {
+    /** Reserved, signed by the portfolio, co-signed by the relayer: as far as the app gets before it sends. */
+    async function coSigned() {
+      const first = await walletTab();
+      await first.pending.reserve("acc_1", PORTFOLIO, what, activity);
+      const transaction = relayedTransaction();
+      await first.signing.signForSending(transaction, keyAt(1), () => true, LAST_VALID);
+      const { signatureBy } = await import("../../src/infrastructure/solana/settlement.js");
+      const own = signatureBy(transaction, keyAt(1).publicKey)!;
+      // The portfolio has signed, the fee payer has not: there is no id yet.
+      expect(first.pending.pendingFor("acc_1")).toMatchObject({
+        status: "unknown",
+        signer: PORTFOLIO,
+        ownSignature: own,
+      });
+      expect(first.pending.pendingFor("acc_1")?.signature).toBeUndefined();
+      transaction.sign([relayerKey]);
+      return { first, transaction, own };
+    }
+
+    async function reopened() {
+      held.clear();
+      const again = await tab();
+      expect(await again.store.unlock(PASSWORD)).toBeNull();
+      return again;
+    }
+
+    it("right after it was broadcast: its id is on record, it settles as sent and is in Activity", async () => {
+      const { first, transaction } = await coSigned();
+      await first.signing.recordForSending(transaction, keyAt(1).publicKey, LAST_VALID);
+      const { signatureOf } = await import("../../src/infrastructure/solana/settlement.js");
+      const id = signatureOf(transaction)!;
+      expect(first.pending.pendingFor("acc_1")).toMatchObject({ signature: id });
+
+      // Broadcast, and the app is killed before any answer. It did land.
+      const again = await reopened();
+      expect(again.pending.pendingFor("acc_1")).toMatchObject({ signature: id });
+      expect(await again.pending.settlePending("acc_1")).toBe("pending");
+      blockHeight = LAST_VALID + 1;
+      status = "confirmed";
+      expect(await again.pending.settlePending("acc_1")).toBe("landed");
+      expect(again.pending.pendingFor("acc_1")).toBeUndefined();
+      expect(again.store.getSnapshot()?.activity).toMatchObject([
+        { portfolioId: "acc_1", ...activity },
+      ]);
+    });
+
+    it("before it was broadcast: nothing was sent, and it is released truthfully", async () => {
+      await coSigned();
+      // Killed with the signed transaction in hand, before it was recorded or sent.
+      const again = await reopened();
+      expect(await again.pending.settlePending("acc_1")).toBe("pending");
+      blockHeight = LAST_VALID + 1;
+      // Its time has run out, and the portfolio's own transactions do not include it.
+      expect(await again.pending.settlePending("acc_1")).toBe("expired");
+      expect(again.pending.pendingFor("acc_1")).toBeUndefined();
+      expect(again.store.getSnapshot()?.activity).toEqual([]);
+    });
+
+    it("with no id on record but landed all the same: it is found, never called expired", async () => {
+      const { own, transaction } = await coSigned();
+      onChain = [
+        { signature: "someone-elses", signatures: ["other"], blockhash: "other" },
+        {
+          signature: "the-relayers-id",
+          signatures: ["the-relayers-id", own],
+          blockhash: transaction.message.recentBlockhash,
+        },
+      ];
+      const again = await reopened();
+      blockHeight = LAST_VALID + 1;
+      expect(await again.pending.settlePending("acc_1")).toBe("landed");
+      expect(again.store.getSnapshot()?.activity).toMatchObject([
+        { portfolioId: "acc_1", ...activity },
+      ]);
+    });
+
+    it("is kept while the chain cannot be searched, and is the person's to clear when it never can be", async () => {
+      await coSigned();
+      const again = await reopened();
+      blockHeight = LAST_VALID + 1;
+      search = "is down";
+      expect(await again.pending.settlePending("acc_1")).toBe("pending");
+      search = "is not allowed";
+      expect(await again.pending.settlePending("acc_1")).toBe("unknown");
+      const kept = again.pending.pendingFor("acc_1")!;
+      expect(kept).toMatchObject({ unfindable: true });
+      expect(await again.pending.reserve("acc_1", PORTFOLIO, "again")).toBeNull();
+      await again.pending.clearPending("acc_1", kept.id);
+      expect(again.pending.pendingFor("acc_1")).toBeUndefined();
+    });
+  });
+
+  it("does not record a co-signed transaction with no reservation, so it is never sent", async () => {
+    const { signing } = await walletTab();
+    const transaction = relayedTransaction();
+    transaction.sign([keyAt(1), relayerKey]);
+    await expect(
+      signing.recordForSending(transaction, keyAt(1).publicKey, LAST_VALID),
+    ).rejects.toMatchObject({ code: "notRecorded" });
+  });
+
   it("is still there after a lock and unlock", async () => {
     const { store, pending, UnknownOutcomeError } = await walletTab();
     const sending = await pending.reserve("acc_1", PORTFOLIO, "a send", SEND);
@@ -468,6 +625,8 @@ describe("a pending action stored by the previous build", () => {
     blockHeight = LAST_VALID - 10;
     blockhashValid = true;
     genesisHash = "expected";
+    onChain = [];
+    search = "answers";
   });
 
   afterEach(() => {
@@ -511,6 +670,52 @@ describe("a pending action stored by the previous build", () => {
     blockhashValid = false;
     expect(await pending.settlePending("acc_1")).toBe("expired");
     expect(pending.pendingFor("acc_1")).toBeUndefined();
+  });
+
+  it("finds one that was signed with no id recorded and did land, and does not release it as expired", async () => {
+    const { pending, store } = await storePrevious({
+      state: "reserved",
+      id: "act_old",
+      at: 1,
+      what: "a send of 5.00 USDC",
+      blockhash: "old-blockhash",
+      activity: SEND,
+    });
+    onChain = [
+      { signature: "newer", signatures: ["newer"], blockhash: "another-blockhash" },
+      {
+        signature: "landed-unseen",
+        signatures: ["landed-unseen", "own"],
+        blockhash: "old-blockhash",
+      },
+    ];
+    blockhashValid = false;
+    expect(await pending.settlePending("acc_1")).toBe("landed");
+    expect(pending.pendingFor("acc_1")).toBeUndefined();
+    expect(store.getSnapshot()?.activity).toMatchObject([{ portfolioId: "acc_1", ...SEND }]);
+  });
+
+  it("releases a legacy one that failed on chain, and keeps one whose search ran out of reach", async () => {
+    const first = await storePrevious({
+      state: "reserved",
+      id: "act_old",
+      at: 1,
+      what: "a send",
+      blockhash: "old-blockhash",
+    });
+    blockhashValid = false;
+    // More of the signer's transactions since than are looked through: nothing is concluded.
+    onChain = Array.from({ length: 50 }, (_, index) => ({
+      signature: `later-${index}`,
+      signatures: [`later-${index}`],
+      blockhash: "another",
+    }));
+    expect(await first.pending.settlePending("acc_1")).toBe("unknown");
+    expect(first.pending.pendingFor("acc_1")).toMatchObject({ unfindable: true });
+    onChain = [
+      { signature: "failed", signatures: ["failed"], blockhash: "old-blockhash", failed: true },
+    ];
+    expect(await first.pending.settlePending("acc_1")).toBe("expired");
   });
 
   it("reads one reserved with nothing signed and releases it once its tab is gone", async () => {

@@ -191,6 +191,7 @@ export async function reviewOrdersCost<K extends Signer, P extends TradeOrder>(
         owner,
         lamportsNeeded,
         cashFree: holdingIn(portfolio, chain.cashSymbol).amount - spent,
+        cashHeld: holdingIn(portfolio, chain.cashSymbol).amount,
         solPrice: deps.prices.price("SOL") || undefined,
         relayer:
           withoutRelayer || !onlyFirstBuys

@@ -132,7 +132,7 @@ export function fundingAmountView(state: FundingAmountState): FundingAmountView 
     shown && draft.amountValid && !draft.affordable(draft.customAmount)
       ? draft.customAmount < draft.minimum
         ? copy.belowMinimum(symbolAmount(asset, draft.minimum))
-        : copy.overBalance(symbolAmount(asset, draft.leaving(draft.customAmount)))
+        : copy.overBalance(exactAmount(asset, draft.leaving(draft.customAmount)))
       : null;
   const empty = read && fundingBalance <= 0;
   const { terms, total } = privateTerms(
@@ -141,7 +141,8 @@ export function fundingAmountView(state: FundingAmountState): FundingAmountView 
     typed ? draft.customAmount : 0,
     portfolioLabel,
     platform,
-    symbolAmount,
+    // The same figures the review states: a fee of 0.025 is not shown as 0.03 here and 0.025 there.
+    exactAmount,
   );
   return {
     lead: mobile
@@ -171,7 +172,7 @@ export function fundingAmountView(state: FundingAmountState): FundingAmountView 
         ? mobileCopy.costs(symbolAmount(asset, draft.minimum))
         : copy.privateCosts(
             PRIVACY_FEE_PERCENT,
-            symbolAmount(asset, draft.costsOf(0).relayFee),
+            exactAmount(asset, draft.costsOf(0).relayFee),
             asset,
             symbolAmount(asset, draft.minimum),
           ),

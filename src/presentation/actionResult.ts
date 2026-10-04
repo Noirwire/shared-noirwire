@@ -72,12 +72,26 @@ const FAILURES: Record<FailureReason, string> = {
 const STATUS_WORDS = /^\d{3}\b|\breturned \d{3}\b/;
 
 /**
+ * The chain's or a program's own account of a failure: JSON, an instruction
+ * error, a program log, a hex code. `{"InstructionError":[0,{"Custom":1}]}`
+ * tells a person nothing they can act on.
+ */
+const RAW_CHAIN_WORDS =
+  /[{}[\]]|InstructionError|InsufficientFundsFor|\bCustom\b|custom program error|\b0x[0-9a-f]+\b|\bProgram (log|data|return|\w+ (failed|invoke|consumed|success))|AnchorError|Error (Code|Number):|Transaction simulation failed|SendTransactionError/i;
+
+/** Whether `text` carries raw JSON or a chain or program error as the chain words it. */
+export function saysRawChainError(text: string): boolean {
+  return RAW_CHAIN_WORDS.test(text);
+}
+
+/**
  * Whether a failure's own account is about how the app asked, not about the
- * person's money: a request that did not get through, a status code. A
- * person is never told that; they are told what it means for them.
+ * person's money: a request that did not get through, a status code, or the
+ * chain's raw words for an error. A person is never told that; they are told
+ * what it means for them. Every failure a view model shows passes here.
  */
 function isTechnical(detail: string): boolean {
-  return saysTransportFailure(detail) || STATUS_WORDS.test(detail);
+  return saysTransportFailure(detail) || STATUS_WORDS.test(detail) || saysRawChainError(detail);
 }
 
 /**

@@ -70,8 +70,16 @@ export const RENEW_BEFORE_EXPIRY_MS = 60_000;
  */
 export const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
-/** The platform lock a renewal runs under, so two tabs never spend the same refresh token. */
+/** The platform lock a renewal and a drop run under, so two tabs never spend the same refresh token, and a drop is not undone by a renewal that was under way elsewhere. */
 export const SESSION_LOCK = "noirwire-session";
+
+/**
+ * How long nothing more is asked after a session could not be had: a second
+ * after the first failure, twice as long after each one that follows, a
+ * minute at most, each stretched by up to half at random so copies of the
+ * app that failed together do not come back together.
+ */
+export const SESSION_RETRY = { firstMs: 1_000, capMs: 60_000, jitter: 0.5 } as const;
 
 function parsed(raw: string | null): ApiSession | null {
   if (!raw) return null;
@@ -99,11 +107,21 @@ function parsed(raw: string | null): ApiSession | null {
  * shortly before its token runs out and whenever the server turns it down,
  * and replaced by a new one once it is `maxAgeMs` old.
  *
+ * Storage is the truth, for every tab. What is held here is checked against
+ * it before each use, so a session another tab renewed is taken up, and one
+ * another tab dropped is not used again. Only when the store cannot be read,
+ * or would not keep what it was given, does the copy held here stand alone.
+ *
  * Callers that arrive together share one start or renewal, and it runs under
  * the platform lock, so another tab or process that got there first is found
  * in storage and used instead of spending the same refresh token twice. A
- * renewal the server refuses is followed by a new session. When no session
- * can be had at all, the failure is `notAvailableNow`.
+ * drop takes the same lock: a renewal under way anywhere finishes first, and
+ * what it stored is then removed. A renewal the server refuses is followed
+ * by a new session.
+ *
+ * When no session can be had, the failure is `notAvailableNow`, and for a
+ * while (`SESSION_RETRY`) every caller is told so at once without the server
+ * being asked again.
  *
  * Its collaborators are read each time they are needed, never when this is
  * made, so it can be made before the platform is installed.
@@ -114,11 +132,17 @@ export function createSessionKeeper(deps: {
   locks: () => Locks;
   /** `SESSION_MAX_AGE_MS` when left out or when it answers nothing. */
   maxAgeMs?: () => number | undefined;
+  /** A number from 0 up to 1 for the retry delay's jitter. `Math.random` when left out. */
+  random?: () => number;
 }): SessionKeeper {
   let held: ApiSession | null = null;
+  /** False once the store would not keep a session: from then on storage says nothing about `held`. */
+  let storeKeeps = true;
   let renewing: Promise<ApiSession> | null = null;
   /** Moves on every drop, so a renewal that finishes after one is not kept. */
   let dropped = 0;
+  let failures = 0;
+  let askAgainAt = 0;
 
   const expired = (session: ApiSession) => session.expiresAt <= Date.now();
   const tooOld = (session: ApiSession) =>
@@ -126,20 +150,23 @@ export function createSessionKeeper(deps: {
   const fresh = (session: ApiSession) =>
     !tooOld(session) && session.expiresAt - Date.now() > RENEW_BEFORE_EXPIRY_MS;
 
-  async function stored(): Promise<ApiSession | null> {
+  /** What is stored, or undefined when the store cannot be read. */
+  async function stored(): Promise<ApiSession | null | undefined> {
     try {
       return parsed(await deps.store().get());
     } catch {
-      return null;
+      return undefined;
     }
   }
 
-  /** A store that will not take or give up the value is left at that: the session is still held here. */
+  /** Stores `session` and reads it back. A store that will not keep it leaves it held here alone. */
   async function save(session: ApiSession): Promise<void> {
+    const value = JSON.stringify(session);
     try {
-      await deps.store().set(JSON.stringify(session));
+      await deps.store().set(value);
+      storeKeeps = (await deps.store().get()) === value;
     } catch {
-      /* kept in memory only */
+      storeKeeps = false;
     }
   }
 
@@ -149,6 +176,15 @@ export function createSessionKeeper(deps: {
     } catch {
       /* nothing more to do */
     }
+  }
+
+  /** Brings what is held into step with storage: another tab may have renewed the session, or dropped it. */
+  async function inStep(): Promise<void> {
+    if (!storeKeeps) return;
+    const startedAt = dropped;
+    const found = await stored();
+    if (found === undefined || startedAt !== dropped) return;
+    if (found?.accessToken !== held?.accessToken) held = found;
   }
 
   /**
@@ -166,25 +202,40 @@ export function createSessionKeeper(deps: {
     return { ...(await deps.gateway().start()), startedAt: Date.now() };
   }
 
+  function failed() {
+    failures += 1;
+    const pause = Math.min(SESSION_RETRY.capMs, SESSION_RETRY.firstMs * 2 ** (failures - 1));
+    askAgainAt = Date.now() + pause * (1 + SESSION_RETRY.jitter * (deps.random ?? Math.random)());
+  }
+
   function renewed(refused: string | null, startOver = false): Promise<ApiSession> {
     if (renewing) return renewing;
     const flight = deps
       .locks()
       .withLock(SESSION_LOCK, async () => {
         const startedAt = dropped;
-        const found = await stored();
+        const found = storeKeeps ? await stored() : undefined;
         if (found && found.accessToken !== refused && fresh(found)) {
           if (startedAt === dropped) held = found;
           return found;
         }
-        const next = await obtain(startOver ? null : (found ?? held));
+        const next = await obtain(startOver ? null : found === undefined ? held : found);
+        // Dropped while it was being had: it belongs to what was dropped, and is not kept.
         if (startedAt !== dropped) return next;
         held = next;
         await save(next);
-        // Dropped while it was being written: what was just stored goes too.
-        if (startedAt !== dropped) await forget();
         return next;
       })
+      .then(
+        (session) => {
+          if (renewing === flight) [failures, askAgainAt] = [0, 0];
+          return session;
+        },
+        (error: unknown) => {
+          if (renewing === flight) failed();
+          throw error;
+        },
+      )
       .finally(() => {
         if (renewing === flight) renewing = null;
       });
@@ -192,25 +243,30 @@ export function createSessionKeeper(deps: {
     return flight;
   }
 
-  const notAvailable = (cause: unknown) => new ChainError("notAvailableNow", { cause });
+  const notAvailable = (cause?: unknown) => new ChainError("notAvailableNow", { cause });
+  const pausing = () => renewing === null && Date.now() < askAgainAt;
+  const stillGood = (session: ApiSession | null): session is ApiSession =>
+    session !== null && held === session && !expired(session) && !tooOld(session);
 
   return {
     async token() {
+      await inStep();
       const current = held;
       if (current && fresh(current)) return current.accessToken;
       try {
+        if (pausing()) throw notAvailable();
         return (await renewed(null)).accessToken;
       } catch (error) {
         // Renewing early could not be asked for. The token held is still good for a while.
-        if (current && held === current && !expired(current) && !tooOld(current)) {
-          return current.accessToken;
-        }
-        throw notAvailable(error);
+        if (stillGood(current)) return current.accessToken;
+        throw error instanceof ChainError ? error : notAvailable(error);
       }
     },
 
     async renew(refused, startOver = false) {
+      await inStep();
       if (held && held.accessToken !== refused && fresh(held)) return held.accessToken;
+      if (pausing()) throw notAvailable();
       try {
         return (await renewed(refused, startOver)).accessToken;
       } catch (error) {
@@ -221,8 +277,10 @@ export function createSessionKeeper(deps: {
     async drop() {
       dropped += 1;
       held = null;
+      storeKeeps = true;
       renewing = null;
-      await forget();
+      [failures, askAgainAt] = [0, 0];
+      await deps.locks().withLock(SESSION_LOCK, forget);
     },
   };
 }

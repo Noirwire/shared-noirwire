@@ -4,6 +4,7 @@ export {
   RENEW_BEFORE_EXPIRY_MS,
   SESSION_LOCK,
   SESSION_MAX_AGE_MS,
+  SESSION_RETRY,
   type SessionGateway,
   type SessionKeeper,
   SessionRefused,

@@ -58,7 +58,10 @@ export type ActivityRowView = {
   title: string;
   caption: string;
   value: ActivityValue;
+  /** What moved, as it arrived: a return from Earn less the network cost taken out of it. */
   amount: string;
+  /** "Network cost 0.02 USDC" when the action was charged one, else null. */
+  networkCost: string | null;
   /** The whole row as one sentence, with the sign spoken rather than coloured. */
   spoken: string;
 };
@@ -107,12 +110,40 @@ function portfolioName(wallet: Wallet, id: string): string {
   );
 }
 
-export function activityRow(reads: Reads, wallet: Wallet, entry: Activity): ActivityRowView {
+const ONE_CENT = 0.01;
+
+/** A network cost as money: to the cent, or as it is when it is under one. */
+function costFigure(cost: number): string {
+  return `${cost < ONE_CENT ? Number(cost.toFixed(6)) : cost.toFixed(2)} USDC`;
+}
+
+/** The network cost an entry was charged, when it was charged one in cash. */
+function chargedOf(entry: Activity): number {
+  return entry.networkCost && entry.networkCost > 0 ? entry.networkCost : 0;
+}
+
+/**
+ * An entry as what really arrived. A return from Earn pays its network cost
+ * out of the cash it returns, so 10.00 withdrawn with a cost of 0.02 arrived
+ * as 9.98, and that is the amount and the value shown. Every other entry is
+ * as it was recorded: its cost came out of cash beside it.
+ */
+export function asArrived(entry: Activity): Activity {
+  const cost = chargedOf(entry);
+  if (entry.kind !== "earnWithdraw" || cost === 0 || !(entry.amount > cost)) return entry;
+  const arrived = entry.amount - cost;
+  return { ...entry, amount: arrived, usd: entry.usd * (arrived / entry.amount) };
+}
+
+export function activityRow(reads: Reads, wallet: Wallet, recorded: Activity): ActivityRowView {
+  const entry = asArrived(recorded);
   const name = portfolioName(wallet, entry.portfolioId);
   const title = activityTitle(reads, entry);
   const caption = entry.kind === "send" ? activityCopy.sentCaption(name) : name;
   const value = activityValue(entry);
   const amount = entryAmount(reads, entry);
+  const cost = chargedOf(recorded);
+  const networkCost = cost > 0 ? activityCopy.networkCost(costFigure(cost)) : null;
   const spokenValue = value.priced
     ? `${INCOMING[entry.kind] ? activityCopy.plus : activityCopy.minus} ${usd(entry.usd)}`
     : value.text;
@@ -123,7 +154,10 @@ export function activityRow(reads: Reads, wallet: Wallet, entry: Activity): Acti
     caption,
     value,
     amount,
-    spoken: [title, caption, spokenDay(entry.at), spokenValue, amount].join(", "),
+    networkCost,
+    spoken: [title, caption, spokenDay(entry.at), spokenValue, amount, networkCost]
+      .filter((part) => part !== null)
+      .join(", "),
   };
 }
 
@@ -150,20 +184,29 @@ export function dayHeading(at: number, now: number): string {
   return sinceDate(at);
 }
 
-export type ActivityListView =
+export type ActivityListView = (
   | { kind: "none"; title: string; detail: string }
   | { kind: "noMatch"; title: string }
-  | {
-      kind: "list";
-      sections: ActivitySection[];
-      more: boolean;
-      /**
-       * Said under the last row once the list has reached the most the
-       * record keeps: older entries are no longer on this device. Null while
-       * more rows are still to be shown, or the list is short of the limit.
-       */
-      olderNotKept: string | null;
-    };
+  | ActivityRows
+) & {
+  /**
+   * Said on a wallet that was imported: what it did before, on another
+   * device, is not in this list. Null on a wallet created here.
+   */
+  importedNote: string | null;
+};
+
+type ActivityRows = {
+  kind: "list";
+  sections: ActivitySection[];
+  more: boolean;
+  /**
+   * Said under the last row once the list has reached the most the
+   * record keeps: older entries are no longer on this device. Null while
+   * more rows are still to be shown, or the list is short of the limit.
+   */
+  olderNotKept: string | null;
+};
 
 /**
  * The Activity screen: the log this device keeps, newest first, filtered,
@@ -181,13 +224,15 @@ export function activityListView(
   },
 ): ActivityListView {
   const { wallet, filter, limit, now } = state;
+  const words = state.platform === "mobile" ? mobileActivityCopy : activityCopy;
+  const importedNote = wallet.imported ? words.importedNote : null;
   if (wallet.activity.length === 0) {
-    const detail =
-      state.platform === "mobile" ? mobileActivityCopy.emptyDetail : activityCopy.emptyDetail;
-    return { kind: "none", title: activityCopy.empty, detail };
+    return { kind: "none", title: activityCopy.empty, detail: words.emptyDetail, importedNote };
   }
   const matching = newestFirst(filterActivity(wallet.activity, filter));
-  if (matching.length === 0) return { kind: "noMatch", title: activityCopy.noMatch };
+  if (matching.length === 0) {
+    return { kind: "noMatch", title: activityCopy.noMatch, importedNote };
+  }
   const sections: ActivitySection[] = [];
   for (const entry of matching.slice(0, limit)) {
     const title = dayHeading(entry.at, now);
@@ -197,12 +242,11 @@ export function activityListView(
     else sections.push({ title, rows: [row] });
   }
   const more = matching.length > limit;
-  const words = state.platform === "mobile" ? mobileActivityCopy : activityCopy;
   const olderNotKept =
     !more && wallet.activity.length >= MAX_ACTIVITY_ENTRIES
       ? words.olderNotKept(MAX_ACTIVITY_ENTRIES)
       : null;
-  return { kind: "list", sections, more, olderNotKept };
+  return { kind: "list", sections, more, olderNotKept, importedNote };
 }
 
 /** The most recent rows, for Home (every portfolio) or one portfolio's screen. */
@@ -227,7 +271,12 @@ export type ActivityDetailView = {
   portfolio: { id: string; name: string; icon: PortfolioIcon } | null;
   portfolioFallback: string;
   date: string;
+  /** What the action was for: 10.00 USDC withdrawn, 5.00 USDC sent. */
   amount: string;
+  /** What arrived once a network cost was taken out of it, when that differs from `amount`. Else null. */
+  arrived: string | null;
+  /** The network cost the action was charged, or null when it was charged none in cash. */
+  networkCost: string | null;
   value: string;
   /** Only for a send: the address the person entered, held back until asked for. */
   recipient: string | null;
@@ -239,10 +288,12 @@ export function activityDetailView(
   wallet: Wallet,
   id: string,
 ): ActivityDetailView | null {
-  const entry = wallet.activity.find((item) => item.id === id);
-  if (!entry) return null;
+  const recorded = wallet.activity.find((item) => item.id === id);
+  if (!recorded) return null;
+  const entry = asArrived(recorded);
   const value = activityValue(entry);
-  const amount = entryAmount(reads, entry);
+  const amount = entryAmount(reads, recorded);
+  const cost = chargedOf(recorded);
   const portfolio = wallet.portfolios.find((item) => item.id === entry.portfolioId);
   return {
     title: activityTitle(reads, entry),
@@ -254,6 +305,8 @@ export function activityDetailView(
     portfolioFallback: activityCopy.portfolioFallback,
     date: dateAndTime(entry.at),
     amount,
+    arrived: entry === recorded ? null : entryAmount(reads, entry),
+    networkCost: cost > 0 ? costFigure(cost) : null,
     value: value.priced ? usd(entry.usd) : activityCopy.notPriced,
     recipient: entry.kind === "send" && entry.counterparty ? entry.counterparty : null,
   };

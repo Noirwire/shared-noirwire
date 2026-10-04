@@ -7,6 +7,8 @@ import {
 } from "../../../src/application/actions/send.js";
 import { ChainError, UnknownOutcomeError } from "../../../src/domain/chainError.js";
 import { actionFailure } from "../../../src/presentation/actionResult.js";
+import { networkCostView } from "../../../src/presentation/networkCost.js";
+import { sendRecipientRefusal } from "../../../src/presentation/send.js";
 import {
   FUNDING_ADDRESS,
   harness,
@@ -48,6 +50,7 @@ function chain(
           },
     isRecipientAddress: (address) =>
       address.startsWith("Recipient") || address.startsWith("Portfolio"),
+    checkRecipient: async () => null,
     cashSymbol: "USDC",
     networkFeeSol: 0.000005,
     cost: { balance: async () => 0, shortfall: async () => ({ required: 1 }) },
@@ -72,6 +75,64 @@ function sending(moves = [asset("USDC")], h = harness()) {
       }),
   };
 }
+
+describe("the network cost of a send that landed", () => {
+  async function withTracker() {
+    const h = harness();
+    await h.deps.store.update((wallet) => ({
+      ...wallet,
+      portfolios: wallet.portfolios.map((portfolio) =>
+        portfolio.id === "p1"
+          ? {
+              ...portfolio,
+              holdings: [...portfolio.holdings, { symbol: "SPYx", amount: 3, cost: 30 }],
+            }
+          : portfolio,
+      ),
+    }));
+    return h;
+  }
+
+  it("is taken off cash at once when a tracker is sent, and is written into Activity", async () => {
+    const h = await withTracker();
+    const tracker = asset("SPYx", {
+      balance: vi.fn().mockResolvedValueOnce(3).mockResolvedValueOnce(2),
+    });
+    const deps = { ...h.deps, chain: chain([tracker]) };
+    const result = await send(deps, {
+      portfolioId: "p1",
+      send: { symbol: "SPYx", amount: 1, to: RECIPIENT },
+      network: { relayerFeeRaw: 20_000n },
+    });
+    expect(result).toMatchObject({ kind: "confirmed" });
+    expect(h.holding("p1", "SPYx")).toMatchObject({ amount: 2 });
+    // Nothing re-read the cash: it is no longer what it was before the send.
+    expect(h.holding("p1", "USDC")).toMatchObject({ amount: 49.98 });
+    expect(h.wallet().activity[0]).toMatchObject({
+      kind: "send",
+      symbol: "SPYx",
+      amount: 1,
+      networkCost: 0.02,
+    });
+  });
+
+  it("is not taken off when the portfolio paid the network itself", async () => {
+    const h = await withTracker();
+    const deps = { ...h.deps, chain: chain([asset("SPYx", { balance: vi.fn(async () => 3) })]) };
+    await send(deps, { portfolioId: "p1", send: { symbol: "SPYx", amount: 1, to: RECIPIENT } });
+    expect(h.holding("p1", "USDC")).toMatchObject({ amount: 50 });
+    expect(h.wallet().activity[0]).not.toHaveProperty("networkCost");
+  });
+
+  it("is kept with the reservation, so a send that lands unseen is recorded with it", async () => {
+    const usdc = asset("USDC", {
+      sendRelayed: vi.fn(async () => Promise.reject(new UnknownOutcomeError("sig", 700))),
+    });
+    const { h, run } = sending([usdc]);
+    await run({}, 20_000n);
+    expect(h.pending.pendingFor("p1")?.activity).toMatchObject({ amount: 10, networkCost: 0.02 });
+  });
+});
 
 describe("sending from a portfolio", () => {
   it("has the relayer pay when the review showed it, keeping out every other address of the wallet but the recipient", async () => {
@@ -215,7 +276,7 @@ describe("reviewing a send", () => {
         send: { symbol: "SOL", amount: 1, to: RECIPIENT },
         withoutRelayer: false,
       }),
-    ).toEqual({ cost: { kind: "covered" }, amount: 1 });
+    ).toEqual({ cost: { kind: "covered" }, amount: 1, recipient: null });
   });
 
   it("sends the rest of the cash when all of it is sent and the relayer's fee comes out of it", async () => {
@@ -237,6 +298,82 @@ describe("reviewing a send", () => {
         send: { symbol: "USDC", amount: 10, to: RECIPIENT },
         withoutRelayer: true,
       }),
-    ).toEqual({ cost: { kind: "unavailable" }, amount: 10 });
+    ).toEqual({ cost: { kind: "unavailable" }, amount: 10, recipient: null });
+  });
+
+  it("reads the recipient from the network in every review, so no screen can skip it", async () => {
+    const checkRecipient = vi.fn(async () => "mint" as const);
+    const { deps } = sending();
+    const review = await reviewSend(
+      { ...deps, chain: { ...deps.chain, checkRecipient } },
+      {
+        portfolioId: "p1",
+        send: { symbol: "USDC", amount: 10, to: RECIPIENT },
+        withoutRelayer: false,
+      },
+    );
+    expect(checkRecipient).toHaveBeenCalledWith(RECIPIENT);
+    expect(review).toEqual({ cost: { kind: "unavailable" }, amount: 10, recipient: "mint" });
+    expect(sendRecipientRefusal(review)).toBe(
+      "This is a token's own mint address, not a wallet. Anything sent to it could not be moved again.",
+    );
+  });
+
+  it("says the recipient could not be checked when the network cannot be asked, not that the send cannot be made", async () => {
+    const { deps } = sending();
+    const review = await reviewSend(
+      {
+        ...deps,
+        chain: { ...deps.chain, checkRecipient: () => Promise.reject(new Error("fetch failed")) },
+      },
+      {
+        portfolioId: "p1",
+        send: { symbol: "USDC", amount: 10, to: RECIPIENT },
+        withoutRelayer: false,
+      },
+    );
+    expect(review.recipient).toBe("unreadable");
+    expect(sendRecipientRefusal(review)).not.toBeNull();
+    expect(sendRecipientRefusal({ recipient: null })).toBeNull();
+  });
+
+  it("says a tracker sent from a portfolio with no cash needs cash, before the relayer is asked", async () => {
+    const h = harness();
+    await h.deps.store.update((wallet) => ({
+      ...wallet,
+      portfolios: wallet.portfolios.map((portfolio) =>
+        portfolio.id === "p1"
+          ? { ...portfolio, holdings: [{ symbol: "SPYx", amount: 3, cost: 30 }] }
+          : portfolio,
+      ),
+    }));
+    const quoteRelayed = vi.fn(async () => Promise.reject(new Error("simulation failed")));
+    const deps = {
+      ...h.deps,
+      chain: chain([asset("SPYx")], {
+        token: (symbol) => ({
+          symbol,
+          decimals: 8,
+          sendLamports: async () => 2_000_000,
+          quoteRelayed,
+        }),
+      }),
+    };
+    const review = await reviewSend(deps, {
+      portfolioId: "p1",
+      send: { symbol: "SPYx", amount: 1, to: RECIPIENT },
+      withoutRelayer: false,
+    });
+    expect(review.cost).toEqual({ kind: "needsCash", cash: 0.01, free: 0 });
+    expect(quoteRelayed).not.toHaveBeenCalled();
+    expect(
+      networkCostView({ cost: review.cost, pending: { blocked: false }, submitting: false }),
+    ).toMatchObject({
+      moveMoney: {
+        before:
+          "This portfolio needs at least 0.01 USDC of cash to pay the network cost, and would have 0.00 USDC to spare. ",
+      },
+      confirmDisabled: true,
+    });
   });
 });

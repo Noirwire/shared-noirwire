@@ -51,7 +51,9 @@ await authorizedFetch(apiUrl("events"), {
 });
 ```
 
-A request that cannot be made as the app (the server turned the session down twice, or no session could be had) throws a `ChainError` with the code `notAvailableNow`. `chainErrorMessage` and `failureMessage` word it for a person; a screen never says more than that.
+The body of an event is the server's: `{ path, display?, arrival?, name?, data? }`, from its closed list. The answer is `204` whatever was done with it.
+
+A request that cannot be made as the app (a read the server turned down twice for its session, or no session could be had) throws a `ChainError` with the code `notAvailableNow`. `chainErrorMessage` and `failureMessage` word it for a person; a screen never says more than that. An error the server wrote itself comes back as `{ code, error }`; read it with `apiErrorOf(response)` and act on the code, never on the sentence.
 
 ## An app's tests
 

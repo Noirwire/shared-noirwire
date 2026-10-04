@@ -23,7 +23,7 @@ import {
   type ProgramRule,
   verifyBalancesBeforeSigning,
 } from "../presign-guard.js";
-import { LEND_PROGRAM, LEND_RECEIPT_MINT } from "../relayed.js";
+import { LEND_PROGRAM, LEND_RECEIPT_MINT, LEND_REDEEM, LEND_WITHDRAW } from "../relayed.js";
 import type { RelayedDraft, RelayerTerms } from "../relayer.js";
 import { signForSending, type StillUnlocked } from "../signerAccounts.js";
 import { readTokenAmount } from "../swap/guard.js";
@@ -115,6 +115,60 @@ export function sharesFor(amountRaw: bigint, price: bigint): bigint {
     throw new Error("The Jupiter Lend share price cannot be right. Not signed.");
   }
   return (amountRaw * PRICE_SCALE) / price;
+}
+
+/** What `shares` are worth in USDC at `price`, rounded down: the least a redemption returns. */
+function assetsFor(shares: bigint, price: bigint): bigint {
+  sharesFor(0n, price);
+  return (shares * price) / PRICE_SCALE;
+}
+
+/**
+ * Jupiter's withdrawal instruction turned into the program's `redeem` for
+ * `shares`: the same accounts, with the instruction named in shares. A
+ * withdrawal names USDC, and the shares it burns are worked out on chain at
+ * a price that has moved on since any figure the app holds: asking for what
+ * a whole position was last said to be worth either leaves a few shares
+ * behind or asks for more than there is and fails. Redeeming every share
+ * takes all of it, exactly. Anything but the withdrawal it expects is
+ * refused.
+ */
+function asRedemption(withdrawal: TransactionInstruction, shares: bigint): TransactionInstruction {
+  const { data } = withdrawal;
+  if (
+    !withdrawal.programId.equals(LEND_PROGRAM) ||
+    data.length !== 16 ||
+    !bytesEqual(data.subarray(0, 8), Uint8Array.from(LEND_WITHDRAW))
+  ) {
+    throw new Error("Jupiter Lend returned something other than a withdrawal. Not signed.");
+  }
+  const redeem = new Uint8Array(16);
+  redeem.set(LEND_REDEEM, 0);
+  new DataView(redeem.buffer).setBigUint64(8, shares, true);
+  return new TransactionInstruction({
+    programId: withdrawal.programId,
+    keys: withdrawal.keys,
+    data: Buffer.from(redeem),
+  });
+}
+
+/**
+ * What a withdrawal of `amountRaw` really is, read from the chain: when it
+ * asks for everything the position is worth or more, it is the whole
+ * position, taken back by its shares. That is what "Max" fills, and what any
+ * amount above the position can only mean.
+ */
+async function withdrawalOf(
+  receipt: Uint8Array | undefined,
+  amountRaw: bigint,
+): Promise<{ price: bigint; shares: bigint; all: boolean; amountRaw: bigint }> {
+  const price = await sharePrice();
+  const held = readTokenAmount(receipt);
+  const worth = assetsFor(held, price);
+  const all = held > 0n && amountRaw >= worth;
+  return all
+    ? { price, shares: held, all, amountRaw: worth }
+    : { price, shares: sharesFor(amountRaw, price), all, amountRaw };
 }
 
 type VaultInfo = {
@@ -232,6 +286,19 @@ function withTokenAccount(
   return new VersionedTransaction(message.compileToV0Message());
 }
 
+/** `transaction` with its one Lend withdrawal turned into a redemption of `shares`. */
+function redeeming(transaction: VersionedTransaction, shares: bigint): VersionedTransaction {
+  const message = TransactionMessage.decompile(transaction.message);
+  const lends = message.instructions.filter((entry) => entry.programId.equals(LEND_PROGRAM));
+  if (lends.length !== 1) {
+    throw new Error("Jupiter Lend returned something other than a withdrawal. Not signed.");
+  }
+  message.instructions = message.instructions.map((entry) =>
+    entry === lends[0] ? asRedemption(entry, shares) : entry,
+  );
+  return new VersionedTransaction(message.compileToV0Message());
+}
+
 /**
  * Builds the transaction and the limits it must satisfy before it is signed.
  * Split from signing so the exact same check can be run against live
@@ -242,15 +309,25 @@ export async function prepareEarn(
   owner: PublicKey,
   amount: number,
 ): Promise<{ transaction: VersionedTransaction; limits: BalanceLimits }> {
-  const amountRaw = toRaw(amount);
-  const shares = sharesFor(amountRaw, await sharePrice());
   const cash = ataFor(usdcMintKey(), owner);
   const receipt = ataFor(RECEIPT_MINT, owner);
+  const asked = toRaw(amount);
+  const withdrawal =
+    action === "withdraw"
+      ? await withdrawalOf((await connection.getAccountInfo(receipt))?.data, asked)
+      : null;
+  const amountRaw = withdrawal?.amountRaw ?? asked;
+  const shares = withdrawal?.shares ?? sharesFor(amountRaw, await sharePrice());
   const built = await buildTransaction(action, owner, amountRaw);
   const transaction =
     action === "deposit"
       ? withTokenAccount(built, owner, receipt, RECEIPT_MINT)
-      : withTokenAccount(built, owner, cash, usdcMintKey());
+      : withTokenAccount(
+          withdrawal?.all ? redeeming(built, shares) : built,
+          owner,
+          cash,
+          usdcMintKey(),
+        );
   const base = { maxLamportsSpent: BigInt(EARN_FIRST_DEPOSIT_LAMPORTS), programs: PROGRAMS };
 
   const limits: BalanceLimits =
@@ -264,7 +341,8 @@ export async function prepareEarn(
       : {
           ...base,
           cashAccount: receipt,
-          maxCashSpent: (shares * (10_000n + SLACK_BPS)) / 10_000n + 1n,
+          // Every share, and not one more, when the whole position is taken back.
+          maxCashSpent: withdrawal?.all ? shares : (shares * (10_000n + SLACK_BPS)) / 10_000n + 1n,
           receive: { account: cash, minAmount: amountRaw - 1n },
         };
   return { transaction, limits };
@@ -357,17 +435,19 @@ export async function relayedEarnDraft(
   // While pricing, the fee is a placeholder: a deposit of everything is reduced to leave room for it.
   const room = readTokenAmount(cashInfo?.data) - terms.feeRaw;
   const asked = toRaw(amount);
-  const amountRaw = action === "deposit" && terms.pricing && asked > room ? room : asked;
+  const withdrawal = action === "withdraw" ? await withdrawalOf(receiptInfo?.data, asked) : null;
+  const amountRaw = withdrawal?.amountRaw ?? (terms.pricing && asked > room ? room : asked);
   if (amountRaw <= 0n) throw new Error("Enter an amount greater than zero.");
   if (action === "withdraw" && amountRaw <= terms.feeRaw + 1n) {
     throw new Error("This withdrawal is smaller than its own network cost.");
   }
 
-  const shares = sharesFor(amountRaw, await sharePrice());
+  const shares = withdrawal?.shares ?? sharesFor(amountRaw, await sharePrice());
   const paidInto = action === "deposit" ? RECEIPT_MINT : usdcMintKey();
   const exists = action === "deposit" ? receiptInfo : cashInfo;
   const opens = exists ? null : { owner, mint: paidInto, programId: TOKEN_PROGRAM_ID };
-  const lend = await lendInstruction(action, owner, amountRaw);
+  const built = await lendInstruction(action, owner, amountRaw);
+  const lend = withdrawal?.all ? asRedemption(built, shares) : built;
 
   return {
     instructions: [
@@ -383,7 +463,7 @@ export async function relayedEarnDraft(
         : []),
       lend,
     ],
-    intent: { kind: action, amountRaw },
+    intent: withdrawal?.all ? { kind: "redeem", amountRaw: shares } : { kind: action, amountRaw },
     opens,
     mints: [
       { mint: usdcMintKey(), programId: TOKEN_PROGRAM_ID },
@@ -400,7 +480,9 @@ export async function relayedEarnDraft(
           }
         : {
             cashAccount: receipt,
-            maxCashSpent: (shares * (10_000n + SLACK_BPS)) / 10_000n + 1n,
+            maxCashSpent: withdrawal?.all
+              ? shares
+              : (shares * (10_000n + SLACK_BPS)) / 10_000n + 1n,
             maxLamportsSpent: 0n,
             receive: { account: cash, minAmount: amountRaw - 1n - feeRaw },
             programs: RELAYED_PROGRAMS,

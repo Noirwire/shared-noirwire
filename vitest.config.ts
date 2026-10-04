@@ -8,7 +8,13 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "tests/*.test.ts", "tests/unit/**/*.test.ts"],
+    include: [
+      "src/**/*.test.ts",
+      "tests/*.test.ts",
+      "tests/unit/**/*.test.ts",
+      // Held to the server's OpenAPI file when NOIRWIRE_OPENAPI names it; skipped otherwise.
+      "tests/api/openapi.test.ts",
+    ],
     setupFiles: ["tests/setup/platform.ts"],
     // The dependency rule's suite starts ESLint, which takes seconds on a busy machine.
     testTimeout: 20_000,

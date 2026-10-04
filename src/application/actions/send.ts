@@ -1,4 +1,5 @@
 import type { NetworkCost } from "../../domain/networkCost.js";
+import type { Unsendable } from "../../domain/recipients.js";
 import { planSendCost, type CostAgreed, type CostChain } from "../networkCost.js";
 import type { RelayerQuote, Signer, StillUnlocked } from "../ports.js";
 import { readWithRetries } from "../retries.js";
@@ -14,12 +15,14 @@ import {
 } from "../walletRecord.js";
 import {
   costChangedOf,
+  costInCash,
   counted,
   ended,
   failedOf,
   openSession,
   readAfterLanding,
   unknownOf,
+  withCashMoved,
   type ActionDeps,
 } from "./common.js";
 import type { AssetMoves } from "./fundDirectly.js";
@@ -56,6 +59,8 @@ export type SendChain<K extends Signer> = {
   /** The token `symbol` names, or undefined for SOL and anything unregistered. */
   token(symbol: string): SendToken | undefined;
   isRecipientAddress(address: string): boolean;
+  /** Reads the recipient from the network: why it cannot receive, or null for a wallet. */
+  checkRecipient(address: string): Promise<Unsendable | null>;
   /** The symbol of the cash a relayer's fee is paid in. */
   cashSymbol: string;
   /** What a portfolio's own one-signature transaction costs it, in SOL. */
@@ -77,6 +82,44 @@ export type SendInput = { symbol: string; amount: number; to: string };
  * just failed must not offer it straight back.
  */
 export async function reviewSend<K extends Signer>(
+  deps: Pick<SendDeps<K>, "store" | "prices" | "chain">,
+  input: { portfolioId: string; send: SendInput; withoutRelayer: boolean },
+): Promise<SendReview> {
+  const recipient = await recipientOf(deps.chain, input.send.to);
+  // A recipient that cannot receive, or could not be read, is the whole
+  // answer: no cost is worked out for a send that will not be made.
+  if (recipient !== null) {
+    return { cost: { kind: "unavailable" }, amount: input.send.amount, recipient };
+  }
+  return { ...(await reviewCost(deps, input)), recipient };
+}
+
+/**
+ * What a review of a send answers: its cost, the amount that will really be
+ * sent, and what the network said of the recipient. The recipient is part of
+ * every review, so no screen can show one for an address nobody checked:
+ * null for a wallet, why it cannot receive, or "unreadable" when the network
+ * could not be asked.
+ */
+export type SendReview = {
+  cost: NetworkCost;
+  amount: number;
+  recipient: Unsendable | "unreadable" | null;
+};
+
+async function recipientOf<K extends Signer>(
+  chain: SendChain<K>,
+  to: string,
+): Promise<SendReview["recipient"]> {
+  if (!chain.isRecipientAddress(to.trim())) return "offCurve";
+  try {
+    return await chain.checkRecipient(to.trim());
+  } catch {
+    return "unreadable";
+  }
+}
+
+async function reviewCost<K extends Signer>(
   deps: Pick<SendDeps<K>, "store" | "prices" | "chain">,
   input: { portfolioId: string; send: SendInput; withoutRelayer: boolean },
 ): Promise<{ cost: NetworkCost; amount: number }> {
@@ -154,6 +197,11 @@ export async function send<K extends Signer>(
   const funder = session.fundingSigner();
   if (!owner || !funder) return refused(session.refusal());
   const ownerAddress = owner.publicKey.toBase58();
+  // What the relayer is paid, when the review showed it paying: cash that
+  // leaves with the send, whatever is sent.
+  const relayed = Boolean(handle.sendRelayed) && network?.relayerFeeRaw !== undefined;
+  const cost = relayed ? costInCash(network?.relayerFeeRaw) : 0;
+  const charged = cost > 0 ? { networkCost: cost } : {};
 
   // Reserve, with the activity entry to write should it land unseen.
   const reservation = await deps.pending.reserve(
@@ -166,6 +214,7 @@ export async function send<K extends Signer>(
       amount,
       usd: amount * prices.price(handle.symbol),
       counterparty: recipient,
+      ...charged,
     },
   );
   if (!reservation) return refused("actionPending");
@@ -223,13 +272,17 @@ export async function send<K extends Signer>(
   const sent =
     handle.symbol === "SOL" && amount === realBalance ? amount - chain.networkFeeSol : amount;
   const read = await readAfterLanding(() => handle.balance(ownerAddress));
-  const newBalance = read ?? Math.max(realBalance - amount, 0);
+  const isCash = handle.symbol === chain.cashSymbol;
+  const newBalance = read ?? Math.max(realBalance - amount - (isCash ? cost : 0), 0);
   void deps.store
     .update((current) =>
       logged(
-        mapPortfolio(current, id, (entry) =>
-          setRealHolding(prices, entry, handle.symbol, newBalance),
-        ),
+        mapPortfolio(current, id, (entry) => {
+          const sentFrom = setRealHolding(prices, entry, handle.symbol, newBalance);
+          // The cost was paid in cash. When cash is not what was sent, nothing
+          // above read it back, so it is taken off here until a refresh does.
+          return isCash ? sentFrom : withCashMoved(prices, sentFrom, chain.cashSymbol, -cost);
+        }),
         {
           portfolioId: id,
           kind: "send",
@@ -237,6 +290,7 @@ export async function send<K extends Signer>(
           amount: sent,
           usd: sent * prices.price(handle.symbol),
           counterparty: recipient,
+          ...charged,
         },
         prices,
       ),

@@ -17,7 +17,7 @@ import {
 import { bytesEqual, readU32LE, readU64LE } from "../bytes.js";
 import { connection } from "../client.js";
 import { jupiterReferralAccount, noirwireFeeBps } from "../config.js";
-import { checkPrograms, type ProgramRule } from "../presign-guard.js";
+import { checkPrograms, simulationRefusal, type ProgramRule } from "../presign-guard.js";
 import { ownedTokenAccountsIn, resolveAccountKeys } from "../signerAccounts.js";
 import { inspectMint, multiplierSchedule, multiplierSwitching } from "../mintPolicy.mjs";
 import type { SwapQuote } from "./types.js";
@@ -408,12 +408,7 @@ export async function verifySwapBeforeSigning(
     accounts: { encoding: "base64", addresses: watched.map((account) => account.toBase58()) },
   });
 
-  if (simulation.value.err) {
-    return {
-      ok: false,
-      reason: `The swap would fail on chain (${JSON.stringify(simulation.value.err)}).`,
-    };
-  }
+  if (simulation.value.err) return simulationRefusal(simulation.value.err);
 
   const simulated = simulation.value.accounts;
   if (!simulated || simulated.length !== watched.length) return UNCHECKED;

@@ -65,6 +65,12 @@ export type Activity = {
   /** Dollar value at the time, or 0 when there was no live price to value it with. */
   usd: number;
   /**
+   * What the action's network cost was, in USDC, when the portfolio paid it
+   * out of its cash or out of what the action returned. Absent when nothing
+   * was charged in cash, and on entries from before this was recorded.
+   */
+  networkCost?: number;
+  /**
    * A send only: the address it went to, as the person entered it. Kept only
    * inside the encrypted record, so a screen can reveal it on request.
    */
@@ -121,12 +127,27 @@ export type PendingAction = {
   lastValidBlockHeight?: number;
   /** The blockhash it was signed against. */
   blockhash?: string;
+  /** The address that signed it, which every transaction of the action names. */
+  signer?: string;
+  /**
+   * The signer's own signature on it. It is over the message and nothing
+   * else, so it stands for exactly that message. When the id is not known (a
+   * fee payer that signs after this wallet), this is how the transaction is
+   * recognised among the signer's own on chain.
+   */
+  ownSignature?: string;
+  /**
+   * Set once the chain was asked about a transaction with no recorded id and
+   * could not say: its time has run out, and whether it landed cannot be
+   * looked up. Only the person, who can check the balance, can release it.
+   */
+  unfindable?: true;
   /** When it was reserved, by this device's clock. Shown, never used to release it. */
   at: number;
   /** What it was, in the words the user is told it with: "a send of 5.00 USDC". */
   what: string;
   /** The activity entry to write if it turns out to have landed. A send only. */
-  activity?: Pick<Activity, "kind" | "symbol" | "amount" | "usd" | "counterparty">;
+  activity?: Pick<Activity, "kind" | "symbol" | "amount" | "usd" | "counterparty" | "networkCost">;
 };
 
 type FundingWallet = {
@@ -162,4 +183,9 @@ export type Wallet = {
   portfolios: Portfolio[];
   activity: Activity[];
   watchlist: string[];
+  /**
+   * Set on a wallet that was imported from its recovery phrase: what it did
+   * before, on another device, was never recorded here.
+   */
+  imported?: true;
 };

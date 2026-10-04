@@ -27,6 +27,25 @@ function found(wallet: Wallet, at: number | null = UPDATED_AT): PortfolioDetailV
 }
 
 describe("portfolioView", () => {
+  it("counts what the portfolio has in Earn in its value, the same on every platform", () => {
+    const wallet = withFirst((entry) => withHolding(entry, holding("USDC", 396.12)));
+    const id = wallet.portfolios[0].id;
+    const value = (inEarn?: number | null) => {
+      const view = portfolioView(reads, wallet, id, UPDATED_AT, inEarn);
+      if (view.kind !== "found") throw new Error("expected a portfolio");
+      return { value: view.value, inEarn: view.inEarn };
+    };
+    expect(value(24.99)).toEqual({
+      value: "$421.11",
+      inEarn: { label: "Earning", value: "$24.99" },
+    });
+    expect(value(null)).toEqual({
+      value: "$396.12",
+      inEarn: { label: "Earning", value: "Unavailable" },
+    });
+    expect(value()).toEqual({ value: "$396.12", inEarn: null });
+  });
+
   it("says a stale route's portfolio does not exist", () => {
     expect(portfolioView(reads, testWallet(), "gone", UPDATED_AT)).toEqual({
       kind: "missing",

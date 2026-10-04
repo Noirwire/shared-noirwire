@@ -287,7 +287,7 @@ export async function executeJupiterSwap(
     status = response.status;
     result = (await response.json().catch(() => null)) as ExecuteResult | null;
   } catch (error) {
-    // NoirWire's server would not take the request, so Jupiter never had the swap.
+    // No session could be had, so the request was never made: nothing left the device.
     if (isChainError(error, "notAvailableNow")) throw error;
     /* no answer; settled against the chain below */
   }

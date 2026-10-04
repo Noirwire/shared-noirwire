@@ -137,6 +137,55 @@ describe("lending and withdrawing", () => {
   });
 });
 
+describe("the network cost of an Earn move that landed", () => {
+  it("is written into Activity, and kept with the reservation for a move that lands unseen", async () => {
+    const t = lending();
+    await t.run({ action: "withdraw", amount: 10 }, 20_000n);
+    expect(t.h.wallet().activity[0]).toMatchObject({
+      kind: "earnWithdraw",
+      amount: 10,
+      networkCost: 0.02,
+    });
+
+    const unknown = lending(
+      chain({ moveRelayed: vi.fn(async () => Promise.reject(new UnknownOutcomeError("s", 700))) }),
+    );
+    await unknown.run({ action: "deposit", amount: 10 }, 20_000n);
+    expect(unknown.h.pending.pendingFor("p1")?.activity).toMatchObject({
+      kind: "earnDeposit",
+      networkCost: 0.02,
+    });
+  });
+
+  it("is not recorded when the portfolio paid the network itself", async () => {
+    const t = lending();
+    await t.run({ action: "deposit", amount: 10 });
+    expect(t.h.wallet().activity[0]).not.toHaveProperty("networkCost");
+  });
+
+  it("is taken off cash with the move itself when the balances cannot be read back", async () => {
+    const withdrawing = lending();
+    withdrawing.refresh.portfolioCash.mockResolvedValue(false);
+    expect(await withdrawing.run({ action: "withdraw", amount: 10 }, 20_000n)).toMatchObject({
+      kind: "confirmed",
+      settlement: "balancesEstimated",
+    });
+    // 50 held, 10 back from Earn, 0.02 of it paid for the network.
+    expect(withdrawing.h.holding("p1", "USDC")).toMatchObject({ amount: 59.98 });
+
+    const depositing = lending();
+    depositing.refresh.portfolioCash.mockResolvedValue(false);
+    await depositing.run({ action: "deposit", amount: 10 }, 20_000n);
+    expect(depositing.h.holding("p1", "USDC")).toMatchObject({ amount: 39.98 });
+  });
+
+  it("leaves cash as it was read when it could be read", async () => {
+    const t = lending();
+    await t.run({ action: "withdraw", amount: 10 }, 20_000n);
+    expect(t.h.holding("p1", "USDC")).toMatchObject({ amount: 50 });
+  });
+});
+
 describe("reviewing the cost of Earn", () => {
   it("lets a withdrawal pay the relayer out of what it returns", async () => {
     const t = lending();

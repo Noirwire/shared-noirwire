@@ -113,6 +113,13 @@ export const LEND_RECEIPT_MINT = new PublicKey("9BEcn9aPEmhSPbPQeFGjidRiEKki46fV
  * and Earn is paid for the other way meanwhile.
  */
 const LEND_DATA_LEN = 16;
+/**
+ * The program's `redeem`: a withdrawal stated in receipt shares, which is
+ * how a whole position is taken back with nothing left behind. Its accounts
+ * are a withdrawal's.
+ */
+export const LEND_REDEEM = [0xb8, 0x0c, 0x56, 0x95, 0x46, 0xc4, 0x61, 0xe1];
+export const LEND_WITHDRAW = [0xb7, 0x12, 0x46, 0x9c, 0x94, 0x6d, 0xa1, 0x22];
 const LEND_SHAPES = {
   deposit: {
     discriminator: [0xf2, 0x23, 0xc6, 0x89, 0x52, 0xe1, 0xf2, 0xb6],
@@ -138,7 +145,7 @@ const LEND_SHAPES = {
     ],
   },
   withdraw: {
-    discriminator: [0xb7, 0x12, 0x46, 0x9c, 0x94, 0x6d, 0xa1, 0x22],
+    discriminator: LEND_WITHDRAW,
     get own() {
       return [LEND_RECEIPT_MINT, usdcMintKey()];
     },
@@ -188,6 +195,8 @@ export type RelayedAction =
       amountRaw: bigint;
     }
   | { kind: "deposit" | "withdraw"; amountRaw: bigint }
+  /** Taking the whole position back: `amountRaw` is the receipt shares redeemed, not USDC. */
+  | { kind: "redeem"; amountRaw: bigint }
   /** Nothing but opening the portfolio's own account for a tracker, ahead of a first buy. */
   | { kind: "open" };
 
@@ -271,9 +280,11 @@ function createdAccount(instruction: Instruction, feePayer: PublicKey): OpenedAc
 function lendAction(instruction: Instruction, portfolio: PublicKey): RelayedAction | null {
   const { accounts, data } = instruction;
   if (!instruction.programId.equals(LEND_PROGRAM) || data.length !== LEND_DATA_LEN) return null;
-  for (const kind of ["deposit", "withdraw"] as const) {
-    const shape = LEND_SHAPES[kind];
-    if (!bytesEqual(data.subarray(0, 8), Uint8Array.from(shape.discriminator))) continue;
+  for (const kind of ["deposit", "withdraw", "redeem"] as const) {
+    // A redemption is a withdrawal counted in shares: the same accounts, another instruction.
+    const shape = LEND_SHAPES[kind === "redeem" ? "withdraw" : kind];
+    const discriminator = kind === "redeem" ? LEND_REDEEM : shape.discriminator;
+    if (!bytesEqual(data.subarray(0, 8), Uint8Array.from(discriminator))) continue;
     const expected = [
       portfolio,
       ...shape.own.map((mint) => ata(mint, portfolio)),

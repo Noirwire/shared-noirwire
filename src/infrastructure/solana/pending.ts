@@ -1,3 +1,5 @@
+import { PublicKey } from "@solana/web3.js";
+import { isTransient } from "../../application/retries.js";
 import { connection } from "./client.js";
 
 /**
@@ -18,7 +20,58 @@ export type SentUnconfirmed = {
   lastValidBlockHeight?: number;
   /** The blockhash it was signed against, for when the height is not known. */
   blockhash?: string;
+  /** The address that signed it. */
+  signer?: string;
+  /** The signer's own signature on it. Absent on a record made before this was kept. */
+  ownSignature?: string;
 };
+
+/** How many of the signer's most recent transactions are looked through for one with no recorded id. */
+const SEARCH_LIMIT = 50;
+
+/**
+ * Looks on chain for a transaction whose id was never recorded: among the
+ * signer's own most recent transactions, the one that carries the signer's
+ * recorded signature, which only that exact message can; or, for a record
+ * made before that signature was kept, the one signed against the recorded
+ * blockhash.
+ *
+ * - "landed" or "failed": it is there, and that is what became of it;
+ * - "absent": everything the signer did recently was read, and it is not
+ *   among it. Only this is evidence that it never landed;
+ * - "unread": the chain could not be asked just now;
+ * - "unsearchable": there is nothing to look for it by, the signer has done
+ *   more since than is looked through, or the chain cannot be asked this at
+ *   all. Nothing is concluded.
+ */
+async function sought(
+  sent: SentUnconfirmed,
+): Promise<"landed" | "failed" | "absent" | "unread" | "unsearchable"> {
+  if (!sent.signer || (!sent.blockhash && !sent.ownSignature)) return "unsearchable";
+  try {
+    const recent = await connection.getSignaturesForAddress(
+      new PublicKey(sent.signer),
+      { limit: SEARCH_LIMIT },
+      "confirmed",
+    );
+    for (const entry of recent) {
+      const found = await connection.getTransaction(entry.signature, {
+        commitment: "confirmed",
+        maxSupportedTransactionVersion: 0,
+      });
+      if (!found) return "unread";
+      const { message, signatures } = found.transaction;
+      const same = sent.ownSignature
+        ? signatures.includes(sent.ownSignature)
+        : message.recentBlockhash === sent.blockhash;
+      if (!same) continue;
+      return entry.err || found.meta?.err ? "failed" : "landed";
+    }
+    return recent.length < SEARCH_LIMIT ? "absent" : "unsearchable";
+  } catch (error) {
+    return isTransient(error) ? "unread" : "unsearchable";
+  }
+}
 
 /**
  * What became of `sent`:
@@ -29,6 +82,12 @@ export type SentUnconfirmed = {
  * - "unknown": there is nothing to settle it by, neither when it expires nor
  *   (with no id) whether it landed. Only the person who can check the
  *   balance can release it.
+ *
+ * A transaction with no recorded id is never called expired on its blockhash
+ * alone. Someone else signed it as fee payer after this wallet did, so it
+ * may have been sent and have landed under an id this device never saw.
+ * Once its blockhash has expired, the signer's recent transactions are
+ * searched for it, and it is released only when that search is conclusive.
  *
  * Expiry is read before the status, so that one landing between the two
  * reads is seen as landed and not as expired.
@@ -61,5 +120,11 @@ export async function settle(
     if (status.value) return "pending";
   }
   if (expired === null) return "unknown";
-  return expired ? "expired" : "pending";
+  if (!expired) return "pending";
+  if (sent.signature) return "expired";
+
+  const found = await sought(sent);
+  if (found === "landed") return "landed";
+  if (found === "failed" || found === "absent") return "expired";
+  return found === "unread" ? "pending" : "unknown";
 }

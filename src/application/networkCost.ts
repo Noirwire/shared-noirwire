@@ -51,6 +51,13 @@ type Need = {
   lamportsNeeded: number;
   /** Cash the portfolio has left once the action has taken its own. */
   cashFree: number;
+  /**
+   * All the cash the portfolio holds, when the action itself brings none.
+   * With none at all the relayer cannot be paid, which is said before it is
+   * asked. Left out for an action that moves cash, which the relayer prices
+   * by taking its fee out of the amount.
+   */
+  cashHeld?: number;
   /** Dollars per SOL from this site's price index, for stating a cost the portfolio pays in SOL. */
   solPrice?: number;
   /**
@@ -72,6 +79,15 @@ const CASH_UNIT = 1_000_000;
 const LAMPORTS_PER_SOL = 1_000_000_000;
 
 /**
+ * What a portfolio with no cash at all is told it needs, at the least, for a
+ * cost the relayer pays. The real figure cannot be had for it: the relayer's
+ * price is a simulation of the payment, and with nothing to pay from there
+ * is nothing to simulate. Once some cash is there the review states the
+ * exact cost.
+ */
+export const LEAST_CASH_FOR_COST = 0.01;
+
+/**
  * Works out, before the review is shown, how the action's network cost is
  * met. The relayer is asked first, whatever the portfolio holds. Only when
  * it cannot be used does a portfolio's own SOL pay, and only when there is a
@@ -82,6 +98,15 @@ const LAMPORTS_PER_SOL = 1_000_000_000;
 export async function planNetworkCost(need: Need, chain: CostChain): Promise<NetworkCost> {
   const { owner, lamportsNeeded, cashFree, relayer, solPrice } = need;
   if (lamportsNeeded <= 0) return { kind: "covered" };
+
+  // Decided before the relayer is asked. A portfolio with no cash cannot
+  // make the payment the relayer prices, so asking only fails, and the
+  // failure would read as "not available right now" when what is missing is
+  // cash: a tracker sent from a portfolio that holds no USDC.
+  const { cashHeld } = need;
+  if (relayer && !relayer.paidFromProceeds && cashHeld !== undefined && cashHeld < 1 / CASH_UNIT) {
+    return { kind: "needsCash", cash: LEAST_CASH_FOR_COST, free: 0 };
+  }
 
   const quoted = relayer ? await readWithRetries(relayer.quote).catch(() => null) : null;
   if (quoted && relayer) {
@@ -146,6 +171,8 @@ export async function planSendCost(
         owner,
         lamportsNeeded,
         cashFree: isCash ? held - sent : send.cashHeld,
+        // Sending anything but cash brings none to pay with.
+        ...(isCash ? {} : { cashHeld: send.cashHeld }),
         solPrice: send.solPrice,
         relayer,
       },

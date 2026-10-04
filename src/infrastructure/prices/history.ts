@@ -21,9 +21,10 @@ const seriesCache = new Map<string, { at: number; points: Promise<number[] | nul
 
 async function fetchSeries(symbol: string, range: PriceRange): Promise<number[] | null> {
   const response = await readFetch(apiUrl("history", `/${encodeURIComponent(symbol)}/${range}`));
+  // Anything but a series is no chart: `not_found` for a tracker with no history, or the source being down.
   if (!response.ok) return null;
-  const { points } = (await response.json()) as { points: number[] | null };
-  return points && points.length >= 2 ? points : null;
+  const { points } = (await response.json()) as { points?: number[] };
+  return Array.isArray(points) && points.length >= 2 ? points : null;
 }
 
 export function priceHistory(symbol: string, range: PriceRange): Promise<number[] | null> {

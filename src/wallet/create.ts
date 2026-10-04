@@ -120,7 +120,8 @@ export function createWalletFromMnemonic(
   fundingBalanceSol = 0,
   discoveredPortfolios: DiscoveredPortfolio[] = [],
 ): WalletDraft {
-  return buildWallet(words.join(" "), scheme, fundingBalanceSol, discoveredPortfolios);
+  const draft = buildWallet(words.join(" "), scheme, fundingBalanceSol, discoveredPortfolios);
+  return { ...draft, wallet: { ...draft.wallet, imported: true } };
 }
 
 export function createPortfolio(

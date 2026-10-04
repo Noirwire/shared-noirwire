@@ -58,6 +58,8 @@
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:contract": "vitest run --config vitest.contract.config.ts",
+    "test:api": "vitest run tests/api/openapi.test.ts",
+    "test:api:live": "vitest run --config vitest.api-live.config.ts",
     "prepare": "npm run build",
     "prepack": "npm run build"
   },
