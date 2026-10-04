@@ -7,7 +7,11 @@ import {
 } from "../../src/infrastructure/apiSession.js";
 import { priceHistory } from "../../src/infrastructure/prices/history.js";
 import { readFetch } from "../../src/infrastructure/readFetch.js";
+import { Keypair } from "@solana/web3.js";
 import { connection } from "../../src/infrastructure/solana/client.js";
+import { redemptionInstruction } from "../../src/infrastructure/solana/earn/jupiterLend.js";
+import { settle } from "../../src/infrastructure/solana/pending.js";
+import { LEND_PROGRAM, LEND_REDEEM } from "../../src/infrastructure/solana/relayed.js";
 import { expectedGenesisHash } from "../../src/infrastructure/solana/config.js";
 import { relayerPins } from "../../src/infrastructure/solana/relayer.js";
 import { TRADABLE_STOCKS } from "../../src/infrastructure/solana/tokenRegistry.js";
@@ -90,6 +94,28 @@ describe.skipIf(!URL_)("a running server (NOIRWIRE_API_URL)", () => {
       name: "ApiError",
       code: "method_not_allowed",
     });
+  });
+
+  it("looks through an address's recent transactions the way a settle does, and is let", async () => {
+    const quiet = Keypair.generate().publicKey.toBase58();
+    // Nothing ever signed by it: everything recent was read, and it is not there.
+    expect(await settle({ blockhash: "11111111111111111111111111111111", signer: quiet })).toBe(
+      "expired",
+    );
+  });
+
+  it("builds the redemption of a whole Earn position, and sends nothing", async () => {
+    const owner = Keypair.generate().publicKey;
+    const shares = 37_643_197n;
+    const instruction = await redemptionInstruction(owner, shares, 40_000_000n);
+    expect(instruction.programId.equals(LEND_PROGRAM)).toBe(true);
+    expect([...instruction.data.subarray(0, 8)]).toEqual(LEND_REDEEM);
+    expect(instruction.data.readBigUInt64LE(8)).toBe(shares);
+    // A withdrawal's accounts, led by the owner as the one signer.
+    expect(instruction.keys[0]).toMatchObject({ isSigner: true });
+    expect(instruction.keys[0].pubkey.equals(owner)).toBe(true);
+    expect(instruction.keys.filter((key) => key.isSigner)).toHaveLength(1);
+    expect(instruction.keys.length).toBe(18);
   });
 
   it("says whether there is a relayer, and its keys when there is", async () => {

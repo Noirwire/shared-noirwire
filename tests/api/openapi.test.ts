@@ -17,6 +17,7 @@ import {
   relayerPins,
   resetRelayerPins,
 } from "../../src/infrastructure/solana/relayer.js";
+import { settle } from "../../src/infrastructure/solana/pending.js";
 import { sendAndSettle } from "../../src/infrastructure/solana/settlement.js";
 import { executeJupiterSwap, jupiterVenue } from "../../src/infrastructure/solana/swap/jupiter.js";
 import type { SwapQuote } from "../../src/infrastructure/solana/swap/types.js";
@@ -46,17 +47,22 @@ const FILE = process.env.NOIRWIRE_OPENAPI?.trim();
 
 type Schema = {
   type?: string;
+  description?: string;
   required?: string[];
   properties?: Record<string, Schema>;
-  additionalProperties?: boolean;
+  additionalProperties?: boolean | Schema;
   enum?: unknown[];
   oneOf?: Schema[];
   maxLength?: number;
+  minItems?: number;
+  pattern?: string;
+  nullable?: boolean;
   items?: Schema;
 };
 type Content = { schema?: Schema; examples?: Record<string, { value: unknown }> };
 type Operation = {
   description?: string;
+  parameters?: { name: string; in: string; schema?: Schema }[];
   security?: unknown[];
   requestBody?: { content: Record<string, Content> };
   responses: Record<string, { content?: Record<string, Content> }>;
@@ -73,6 +79,7 @@ function problems(value: unknown, schema: Schema, at = "body"): string[] {
       ? []
       : [`${at} matches none of its alternatives`];
   }
+  if (value === null && schema.nullable) return [];
   const found: string[] = [];
   const type = Array.isArray(value) ? "array" : value === null ? "null" : typeof value;
   const wanted = schema.type === "integer" ? "number" : schema.type;
@@ -81,6 +88,12 @@ function problems(value: unknown, schema: Schema, at = "body"): string[] {
   if (schema.enum && !schema.enum.includes(value)) found.push(`${at} is not one of the listed`);
   if (typeof value === "string" && schema.maxLength && value.length > schema.maxLength) {
     found.push(`${at} is longer than ${schema.maxLength}`);
+  }
+  if (typeof value === "string" && schema.pattern && !new RegExp(schema.pattern).test(value)) {
+    found.push(`${at} does not match ${schema.pattern}`);
+  }
+  if (type === "array" && schema.minItems && (value as unknown[]).length < schema.minItems) {
+    found.push(`${at} has fewer than ${schema.minItems} items`);
   }
   if (type === "array" && schema.items) {
     (value as unknown[]).forEach((item, index) =>
@@ -94,8 +107,10 @@ function problems(value: unknown, schema: Schema, at = "body"): string[] {
     }
     for (const [name, field] of Object.entries(fields)) {
       const known = schema.properties?.[name];
+      const others = schema.additionalProperties;
       if (known) found.push(...problems(field, known, `${at}.${name}`));
-      else if (schema.additionalProperties === false) found.push(`${at}.${name} is not allowed`);
+      else if (others === false) found.push(`${at}.${name} is not allowed`);
+      else if (typeof others === "object") found.push(...problems(field, others, `${at}.${name}`));
     }
   }
   return found;
@@ -131,10 +146,29 @@ function documented(template: string, method: string) {
   });
 }
 
+/** The codes a response of `status` may carry, as its schema lists them. */
+const codesOf = (response: { content?: Record<string, Content> }) =>
+  (jsonOf(response.content)?.schema?.properties?.code?.enum ?? []) as string[];
+
+/**
+ * Every error an operation documents: each code its schema lists for each
+ * failing status, as the body the server would write. Taken from the lists,
+ * not the examples, so a code the file adds is run through its client the
+ * same day.
+ */
 const errorsOf = (template: string, method: string) =>
-  documented(template, method)
-    .filter((answer) => answer.status >= 400)
-    .map((answer) => [(answer.body as { code: string }).code, answer.status, answer.body] as const);
+  Object.entries(spec!.paths[template][method].responses)
+    .filter(([status]) => Number(status) >= 400)
+    .flatMap(([status, response]) =>
+      codesOf(response).map(
+        (code) => [code, Number(status), { code, error: "A sentence nobody here reads." }] as const,
+      ),
+    );
+
+/** The sub-paths a `{path}` operation lists. */
+const pathsOf = (template: string, method: string) =>
+  (spec!.paths[template][method].parameters?.find((entry) => entry.name === "path")?.schema?.enum ??
+    []) as string[];
 
 const answering = (status: number, body: unknown, headers?: Record<string, string>) =>
   new Response(body === null ? null : JSON.stringify(body), { status, headers });
@@ -238,25 +272,40 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
 
   describe("its error codes", () => {
     it("are exactly the ones this package knows, each with the status it knows", () => {
-      const seen = new Map<string, number>();
+      const listed = new Map<string, Set<number>>();
       for (const [template, operations] of Object.entries(spec!.paths)) {
-        for (const method of Object.keys(operations)) {
-          for (const [code, status, body] of errorsOf(template, method)) {
-            expect(Object.keys(body as object).sort(), `${method} ${template}`).toEqual([
-              "code",
-              "error",
-            ]);
-            seen.set(code, status);
-          }
-          for (const [status, response] of Object.entries(operations[method].responses)) {
-            const listed = jsonOf(response.content)?.schema?.properties?.code?.enum;
-            if (Number(status) >= 400)
-              expect(listed?.sort()).toEqual(Object.keys(API_ERRORS).sort());
+        for (const [method, operation] of Object.entries(operations)) {
+          for (const [status, response] of Object.entries(operation.responses)) {
+            if (Number(status) < 400) continue;
+            const where = `${method} ${template} ${status}`;
+            const codes = codesOf(response);
+            // An error with no list of codes is one no client can be held to.
+            expect(codes.length, `${where} lists no codes`).toBeGreaterThan(0);
+            const schema = jsonOf(response.content)!.schema!;
+            expect(schema.required?.slice().sort(), where).toEqual(["code", "error"]);
+            for (const code of codes) {
+              listed.set(code, (listed.get(code) ?? new Set()).add(Number(status)));
+            }
+            for (const example of Object.values(jsonOf(response.content)?.examples ?? {})) {
+              expect(problems(example.value, schema), where).toEqual([]);
+            }
           }
         }
       }
-      for (const [code, status] of seen) {
-        expect(API_ERRORS[code as keyof typeof API_ERRORS]?.status, code).toBe(status);
+      // Both ways: a code the server added is unknown here, and one it dropped is dead here.
+      expect([...listed.keys()].sort()).toEqual(Object.keys(API_ERRORS).sort());
+      for (const [code, statuses] of listed) {
+        expect([...statuses], code).toEqual([API_ERRORS[code as keyof typeof API_ERRORS].status]);
+      }
+    });
+
+    it("are all worded for a person by what the app was doing, an unknown one included", async () => {
+      const { failedOf } = await import("../../src/application/actions/common.js");
+      const { failureMessage } = await import("../../src/presentation/actionResult.js");
+      for (const code of [...Object.keys(API_ERRORS), "a_code_from_the_future"]) {
+        const status = API_ERRORS[code as keyof typeof API_ERRORS]?.status ?? 418;
+        const said = failureMessage(failedOf("earnFailed", new ApiError(code, status)));
+        expect(said, code).toBe("This did not go through. Nothing was moved. Try again.");
       }
     });
 
@@ -343,9 +392,10 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
         const needsSession = (operation.security ?? []).length > 0;
         expect(Boolean(call.headers.authorization), `${what} and its session`).toBe(needsSession);
         if (rest) {
-          expect(operation.description, `${what}: \`${rest}\` is not a listed path`).toContain(
-            `\`${rest}\``,
-          );
+          expect(
+            pathsOf(template, call.method.toLowerCase()),
+            `${what} is not a listed path`,
+          ).toContain(rest);
         }
         const schema = jsonOf(operation.requestBody?.content)?.schema;
         if (schema) {
@@ -365,9 +415,10 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
       ]);
     });
 
-    it("asks the RPC only for methods the server allows", async () => {
+    it("asks the RPC for exactly the methods the server allows: none it refuses, none it allows for nothing", () => {
       const allowed = jsonOf(spec!.paths["/v1/rpc"].post.requestBody?.content)?.schema?.properties
         ?.method.enum;
+      // What this package's connection calls come to on the wire.
       const used = [
         "getAccountInfo",
         "getBalance",
@@ -378,48 +429,164 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
         "getMinimumBalanceForRentExemption",
         "getMultipleAccounts",
         "getSignatureStatuses",
+        "getSignaturesForAddress",
         "getTokenAccountsByOwner",
         "getTransaction",
         "isBlockhashValid",
         "sendTransaction",
         "simulateTransaction",
       ];
-      for (const method of used) expect(allowed, method).toContain(method);
+      expect([...(allowed as string[])].sort()).toEqual(used);
     });
 
-    // Settling a transaction whose id was never recorded looks through the
-    // signer's recent transactions. The server does not allow that call yet,
-    // and until it does such a transaction can only be released by the
-    // person. This turns red the day the server lists it, as the cue to
-    // make it an ordinary assertion.
-    it.fails("is allowed getSignaturesForAddress, which the server does not list yet", () => {
-      const allowed = jsonOf(spec!.paths["/v1/rpc"].post.requestBody?.content)?.schema?.properties
-        ?.method.enum;
-      expect(allowed).toContain("getSignaturesForAddress");
+    it("looks for a transaction with no recorded id the way the server allows: one address, a stated limit of 50 at most", async () => {
+      api = fakeApi({
+        "POST /v1/rpc": (call) => {
+          const { method } = call.json as { method: string };
+          if (method === "getBlockHeight") return rpc(call, 2_000);
+          return rpc(call, []);
+        },
+      });
+      const signer = Keypair.generate().publicKey.toBase58();
+      expect(await settle({ lastValidBlockHeight: 1_000, blockhash: "hash", signer })).toBe(
+        "expired",
+      );
+      const search = api.calls
+        .map((call) => call.json as { method: string; params: [string, { limit: number }] })
+        .find((call) => call.method === "getSignaturesForAddress")!;
+      expect(search.params[0]).toBe(signer);
+      expect(search.params[1].limit).toBeGreaterThanOrEqual(1);
+      expect(search.params[1].limit).toBeLessThanOrEqual(50);
+      expect(
+        spec!.paths["/v1/rpc"].post.requestBody?.content["application/json"].schema?.properties
+          ?.params.description,
+      ).toContain("limit");
     });
 
-    it("uses only the venue and private-payment paths the server lists", () => {
-      const listed = (template: string, method: string) =>
-        spec!.paths[template][method].description;
-      for (const path of [
-        "swap/v2/order",
-        "swap/v2/execute",
-        "lend/v1/earn/earnings",
+    it("uses exactly the venue and private-payment paths the server lists", () => {
+      expect(pathsOf("/v1/jupiter/{path}", "post").sort()).toEqual([
         "lend/v1/earn/deposit",
-        "lend/v1/earn/withdraw",
         "lend/v1/earn/deposit-instructions",
+        "lend/v1/earn/earnings",
+        "lend/v1/earn/withdraw",
         "lend/v1/earn/withdraw-instructions",
-      ]) {
-        expect(listed("/v1/jupiter/{path}", "post")).toContain(`\`${path}\``);
-      }
-      expect(listed("/v1/jupiter/{path}", "get")).toContain("`lend/v1/earn/tokens`");
-      for (const path of [
+        "swap/v2/execute",
+        "swap/v2/order",
+      ]);
+      expect(pathsOf("/v1/jupiter/{path}", "get")).toEqual(["lend/v1/earn/tokens"]);
+      expect(pathsOf("/v1/private-payments/{path}", "post").sort()).toEqual([
         "v1/spl/transfer",
-        "v1/transaction/send",
         "v1/spl/transfer-queue/ensure-crank",
-      ]) {
-        expect(listed("/v1/private-payments/{path}", "post")).toContain(`\`${path}\``);
+        "v1/transaction/send",
+      ]);
+    });
+
+    it("has a test here for every operation the file documents, and no other", () => {
+      const documentedHere = Object.entries(spec!.paths)
+        .flatMap(([template, operations]) =>
+          Object.keys(operations).map((method) => `${method.toUpperCase()} ${template}`),
+        )
+        .sort();
+      expect(documentedHere).toEqual([
+        "GET /health",
+        "GET /v1/history/{symbol}/{range}",
+        "GET /v1/jupiter/{path}",
+        "GET /v1/prices",
+        "GET /v1/relayer",
+        "POST /v1/events",
+        "POST /v1/jupiter/{path}",
+        "POST /v1/private-payments/{path}",
+        "POST /v1/relayer",
+        "POST /v1/rpc",
+        "POST /v1/session",
+        "POST /v1/session/refresh",
+      ]);
+    });
+  });
+
+  describe("every documented success", () => {
+    it("has a schema its own examples fit, so a client can be held to it", () => {
+      for (const [template, operations] of Object.entries(spec!.paths)) {
+        for (const [method, operation] of Object.entries(operations)) {
+          for (const [status, response] of Object.entries(operation.responses)) {
+            if (Number(status) >= 300 || !response.content) continue;
+            const { schema, examples } = jsonOf(response.content)!;
+            const where = `${method} ${template} ${status}`;
+            expect(schema?.type ?? schema?.oneOf, `${where} has no schema`).toBeDefined();
+            for (const example of Object.values(examples ?? {})) {
+              expect(problems(example.value, schema!), where).toEqual([]);
+            }
+          }
+        }
       }
+    });
+
+    it("names every field this package reads from an answer the server writes itself", () => {
+      const fields = (template: string, method: string) =>
+        jsonOf(spec!.paths[template][method].responses["200"].content)!.schema!;
+      const session = fields("/v1/session", "post");
+      expect(session.required?.slice().sort()).toEqual([
+        "accessToken",
+        "expiresAt",
+        "refreshToken",
+      ]);
+      expect(fields("/v1/session/refresh", "post").required?.slice().sort()).toEqual(
+        session.required?.slice().sort(),
+      );
+      const price = fields("/v1/prices", "get").properties!.prices.additionalProperties as Schema;
+      expect(price.required?.slice().sort()).toEqual(["change24h", "usd"]);
+      expect(fields("/v1/history/{symbol}/{range}", "get").properties!.points.items?.type).toBe(
+        "number",
+      );
+      expect(Object.keys(fields("/v1/relayer", "get").properties!).sort()).toEqual([
+        "accountCreation",
+        "available",
+        "feePayers",
+        "paymentWallet",
+      ]);
+      const answers = fields("/v1/relayer", "post").oneOf!;
+      const read = (wanted: string[]) =>
+        answers.some((answer) => {
+          const result = answer.properties?.result?.properties ?? answer.properties ?? {};
+          return wanted.every((name) => name in result);
+        });
+      expect(read(["signer_address", "payment_address"])).toBe(true);
+      expect(read(["fee_in_token"])).toBe(true);
+      expect(read(["transaction", "signature"])).toBe(true);
+      const order = fields("/v1/jupiter/{path}", "post").properties!;
+      for (const name of [
+        "transaction",
+        "requestId",
+        "inAmount",
+        "outAmount",
+        "status",
+        "signature",
+      ]) {
+        expect(order, name).toHaveProperty(name);
+      }
+    });
+
+    it("is read by its client as the file gives it: a session, prices, a chart, the relayer's keys", async () => {
+      const example = (template: string, method: string) =>
+        documented(template, method).find((answer) => answer.status === 200)!.body;
+      const session = example("/v1/session", "post") as { accessToken: string; expiresAt: number };
+      api = fakeApi({
+        "POST /v1/session": () => session,
+        "/v1/history/*": () => answering(200, example("/v1/history/{symbol}/{range}", "get")),
+        "/v1/relayer": () => answering(200, example("/v1/relayer", "get")),
+      });
+      const { sessionRoutes } = await import("../../src/infrastructure/apiSession.js");
+      expect(await sessionRoutes.start()).toMatchObject({
+        accessToken: session.accessToken,
+        expiresAt: session.expiresAt * 1000,
+      });
+      const points = (example("/v1/history/{symbol}/{range}", "get") as { points: number[] })
+        .points;
+      expect(await priceHistory("EXAMPLE", "1M")).toEqual(points);
+      const keys = example("/v1/relayer", "get") as { feePayers: string[]; paymentWallet: string };
+      const pins = await relayerPins();
+      expect(pins?.feePayers.map((key) => key.toBase58())).toEqual(keys.feePayers);
+      expect(pins?.paymentWallet.toBase58()).toBe(keys.paymentWallet);
     });
   });
 
@@ -474,15 +641,16 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
       async ({ status, body }) => {
         api = fakeApi({ "/v1/relayer": () => answering(status, body) });
         const outcome = await ended(relayerPins());
-        // The file's example keys are dummies that are not addresses, so even its 200 reads as none.
-        expect(outcome).toEqual({ value: null });
-        resetRelayerPins();
-        api.restore();
-        api = fakeApi({ "/v1/relayer": () => answering(200, PINS) });
-        expect(Object.keys(PINS).sort()).toEqual(
-          Object.keys(documented("/v1/relayer", "get")[0].body as object).sort(),
-        );
-        expect((await relayerPins())?.feePayers[0].equals(FEE_PAYER)).toBe(true);
+        expect(outcome).toHaveProperty("value");
+        const pins = (outcome as { value: Awaited<ReturnType<typeof relayerPins>> }).value;
+        const available = status === 200 && (body as { available: boolean }).available;
+        if (available) {
+          expect(pins?.feePayers.map((key) => key.toBase58())).toEqual(
+            (body as { feePayers: string[] }).feePayers,
+          );
+        } else {
+          expect(pins).toBeNull();
+        }
       },
     );
 

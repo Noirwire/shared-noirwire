@@ -396,6 +396,19 @@ async function lendInstruction(
   });
 }
 
+/**
+ * The instruction that takes a whole position back: Jupiter's own withdrawal
+ * for `owner`, of about what the position is worth, turned into a redemption
+ * of `shares`. Built and nothing more: it is signed and sent by nobody here.
+ */
+export async function redemptionInstruction(
+  owner: PublicKey,
+  shares: bigint,
+  worthRaw: bigint,
+): Promise<TransactionInstruction> {
+  return asRedemption(await lendInstruction("withdraw", owner, worthRaw), shares);
+}
+
 const TRANSFER_CHECKED = 12;
 
 /** What a relayer-paid Earn transaction may call directly: the account it opens, Lend, and the payment. */
@@ -446,8 +459,9 @@ export async function relayedEarnDraft(
   const paidInto = action === "deposit" ? RECEIPT_MINT : usdcMintKey();
   const exists = action === "deposit" ? receiptInfo : cashInfo;
   const opens = exists ? null : { owner, mint: paidInto, programId: TOKEN_PROGRAM_ID };
-  const built = await lendInstruction(action, owner, amountRaw);
-  const lend = withdrawal?.all ? asRedemption(built, shares) : built;
+  const lend = withdrawal?.all
+    ? await redemptionInstruction(owner, shares, amountRaw)
+    : await lendInstruction(action, owner, amountRaw);
 
   return {
     instructions: [
