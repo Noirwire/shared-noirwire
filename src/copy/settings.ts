@@ -1,4 +1,3 @@
-import { privateMoveTiming } from "./funding.js";
 import { walletCopy } from "./wallet.js";
 
 /** `where` is where the wallet is kept, `lost` is when unsaved changes go: "after a reload" or "when the app closes". */
@@ -94,8 +93,7 @@ export const settingsCopy = {
     /** Said where the app charges no trading fee of its own. */
     tradeNoFee: "Buying or selling a tracker: no NoirWire fee.",
     /** `cost` is what a private move costs, from the fee constants: "0.1% + $0.20". */
-    move: (cost: string) =>
-      `Moving money into a portfolio privately: ${cost}. ${privateMoveTiming}`,
+    move: (cost: string) => `Moving money into a portfolio privately: ${cost}.`,
     network: "Network cost: a few cents, paid automatically from your USDC.",
     gettingUsdc: "Getting USDC from another service: that service may charge its own fee.",
     exact: "The exact amount is always shown before you confirm.",
@@ -132,7 +130,7 @@ export const settingsCopy = {
 
   risks: {
     title: "Risks",
-    description: "What can go wrong, stated once",
+    description: "What can go wrong",
     value: "Read details",
     paragraphs: [
       "A tracker is a certificate that follows the price of a stock or fund. It is not a share: it carries no voting rights and no claim on the company.",

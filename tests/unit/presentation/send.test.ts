@@ -6,6 +6,7 @@ import {
   type SendFormState,
   type SendReviewState,
 } from "../../../src/presentation/send.js";
+import { READ } from "../support/screens.js";
 
 const OWN = "OwnAddress1111111111111111111111111111111111";
 const TO = "Recipient1111111111111111111111111111111WXYZ";
@@ -38,6 +39,7 @@ const form = (overrides: Partial<SendFormState> = {}, draftInput: Partial<SendIn
     submitting: false,
     preparing: false,
     network: "Solana",
+    balances: READ,
     ...overrides,
   });
 };

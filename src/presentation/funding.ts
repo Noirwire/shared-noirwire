@@ -4,7 +4,14 @@ import { fundingCopy as copy, mobileFundingCopy as mobileCopy } from "../copy/fu
 import { smallestAmount } from "../domain/amount.js";
 import type { AppPlatform } from "../domain/appPlatform.js";
 import { symbolAmount } from "../domain/format.js";
+import type { ReadFreshness } from "../domain/freshness.js";
 import { PRIVACY_FEE_BPS, SETTLEMENT_DELAY_MS } from "../domain/privateTransfer.js";
+import {
+  balancesUnavailable,
+  balancesView,
+  type Figure,
+  type UnavailableView,
+} from "./freshness.js";
 
 /** A fee down to the token's last decimal: the review states what leaves exactly, not rounded to cents. */
 function exactAmount(asset: string, amount: number): string {
@@ -68,6 +75,8 @@ export type FundingAmountState = {
   privateRoute: boolean;
   /** Null until the funding wallet has been read on opening. */
   fundingBalance: number | null;
+  /** The read on opening did not come back: with no balance, that is said, with a retry. */
+  readFailed: boolean;
   amountText: string;
   /**
    * Whether the person has typed in the amount field yet. False shows no
@@ -97,7 +106,9 @@ export type FundingAmountView = {
   empty: { before: string; link: string; after: string } | null;
   costs: string | null;
   /** What the funding wallet holds; its value is null until it has been read. */
-  available: { label: string; value: string | null };
+  available: { label: string; value: Figure };
+  /** The funding wallet has never been read and the read failed: the one line, with its retry. */
+  unavailable: UnavailableView | null;
   amountLabel: string;
   placeholder: string;
   /** The typed amount, its fees and what leaves the funding wallet. */
@@ -117,7 +128,9 @@ export function fundingAmountView(state: FundingAmountState): FundingAmountView 
   const mobile = platform === "mobile";
   const read = state.fundingBalance !== null;
   const fundingBalance = state.fundingBalance ?? 0;
-  const available = symbolAmount(asset, fundingBalance);
+  const available = read ? symbolAmount(asset, fundingBalance) : null;
+  // "More than you have" is a claim about the balance: said only once it has been read.
+  const affordable = (amount: number) => !read || draft.affordable(amount);
   const portfolioLabel = state.portfolioLabel ?? "";
   const typed = Number.isFinite(draft.customAmount) && draft.customAmount > 0;
   const shown = (state.touched ?? true) && state.amountText.trim() !== "";
@@ -129,7 +142,7 @@ export function fundingAmountView(state: FundingAmountState): FundingAmountView 
         ? copy.invalidAmount
         : null;
   const unaffordable =
-    shown && draft.amountValid && !draft.affordable(draft.customAmount)
+    shown && draft.amountValid && !affordable(draft.customAmount)
       ? draft.customAmount < draft.minimum
         ? copy.belowMinimum(symbolAmount(asset, draft.minimum))
         : copy.overBalance(exactAmount(asset, draft.leaving(draft.customAmount)))
@@ -176,10 +189,8 @@ export function fundingAmountView(state: FundingAmountState): FundingAmountView 
             asset,
             symbolAmount(asset, draft.minimum),
           ),
-    available: {
-      label: mobileCopy.available,
-      value: read ? available : null,
-    },
+    available: { label: mobileCopy.available, value: available },
+    unavailable: !read && state.readFailed ? balancesUnavailable() : null,
     amountLabel: mobile ? mobileCopy.amountLabel : copy.otherAmount(asset),
     placeholder: commonCopy.amountPlaceholder,
     terms,
@@ -371,7 +382,8 @@ export function fundingFooter(privateRoute: boolean): string {
 
 export type ChoosePortfolioView = {
   title: string;
-  rows: readonly { id: string; label: string; cash: string }[];
+  /** `cash` is null until balances have been read once. */
+  rows: readonly { id: string; label: string; cash: Figure }[];
   next: { label: string; disabled: boolean };
 };
 
@@ -379,14 +391,17 @@ export type ChoosePortfolioView = {
 export function choosePortfolioView(state: {
   portfolios: readonly { id: string; label: string; cash: number }[];
   chosen: string | null;
+  /** How current the app's balance read is: a portfolio's cash is a figure only once it has been read. */
+  balances: ReadFreshness;
 }): ChoosePortfolioView {
+  const { known } = balancesView(state.balances);
   const chosen = state.portfolios.find((portfolio) => portfolio.id === state.chosen);
   return {
     title: mobileCopy.chooseTitle,
     rows: state.portfolios.map((portfolio) => ({
       id: portfolio.id,
       label: portfolio.label,
-      cash: commonCopy.readyToInvest(symbolAmount("USDC", portfolio.cash)),
+      cash: known ? commonCopy.readyToInvest(symbolAmount("USDC", portfolio.cash)) : null,
     })),
     next: {
       label: chosen ? mobileCopy.continueWith(chosen.label) : commonCopy.continue,

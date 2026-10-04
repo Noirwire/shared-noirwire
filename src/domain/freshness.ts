@@ -18,6 +18,15 @@ export type ReadFreshness = {
 /** A read that has not been attempted yet. */
 export const NEVER_READ: ReadFreshness = { succeededAt: null, lastAttemptFailed: false };
 
+/**
+ * Whether the read has ever come back. Until it has, nothing is known of
+ * what it reads: a figure worked out from it would be a guess, and a zero
+ * would be read as a real zero.
+ */
+export function hasLoaded(read: ReadFreshness): boolean {
+  return read.succeededAt !== null;
+}
+
 /** How often a screen asks again for what it shows: live prices, and the balances beside them. */
 export const REFRESH_INTERVAL_MS = 30_000;
 

@@ -9,11 +9,13 @@ import { mobileTradeCopy, tradeCopy as copy } from "../copy/trade.js";
 import { smallestAmount } from "../domain/amount.js";
 import type { AppPlatform } from "../domain/appPlatform.js";
 import { shares, symbolAmount, usd } from "../domain/format.js";
+import type { ReadFreshness } from "../domain/freshness.js";
 import type { NetworkCost } from "../domain/networkCost.js";
 import type { PricedOrder, Side } from "../domain/order.js";
 import { resolvePortfolioIcon, type PortfolioIcon } from "../domain/portfolioIcon.js";
 import type { Portfolio, Wallet } from "../domain/wallet.js";
 import { describeFailure } from "./actionResult.js";
+import { balancesView, type Figure } from "./freshness.js";
 import type { HomeTarget } from "./home.js";
 import { networkCostView, type NetworkCostView } from "./networkCost.js";
 import type { ProgressStep } from "./progress.js";
@@ -27,6 +29,8 @@ export type TradeFormState = {
   /** Whether a live display price is there to estimate with. */
   displayLive: boolean;
   quoting: boolean;
+  /** How current the app's balance read is: nothing is bought or sold against a balance never read. */
+  balances: ReadFreshness;
 };
 
 type TradeFormView = {
@@ -35,13 +39,18 @@ type TradeFormView = {
   amountLabel: string;
   maxLabel: string;
   estimate: string;
-  available: string;
+  /** The cash to buy with, or what is held to sell. Null until balances have been read once. */
+  available: Figure;
   estimateBasis: string;
   overCap: string | null;
   /** The amount was typed with more decimals than what it is typed in has. */
   tooPrecise: string | null;
+  /** Why nothing can be reviewed: the token's balance cannot be shown, or balances never loaded. */
   balanceUnavailable: string | null;
-  /** Buying with no cash at all leads to adding money instead of a review. */
+  /**
+   * Buying with no cash at all leads to adding money instead of a review.
+   * "No cash" is only said of cash that has been read.
+   */
   action:
     { kind: "addMoney"; label: string } | { kind: "review"; label: string; disabled: boolean };
 };
@@ -52,6 +61,8 @@ const DENOMINATIONS: readonly Denomination[] = ["cash", "units"];
 export function tradeFormView(state: TradeFormState): TradeFormView {
   const { draft, side, denom, symbol, cash, displayLive } = state;
   const buying = side === "buy";
+  const balances = balancesView(state.balances);
+  const { known } = balances;
   return {
     portfolioLabel: copy.portfolioLabel(side),
     denominations: DENOMINATIONS.map((option) => ({
@@ -65,23 +76,30 @@ export function tradeFormView(state: TradeFormState): TradeFormView {
     estimate: copy.estimate(
       displayLive ? (buying ? `${shares(draft.units)} ${symbol}` : usd(draft.value)) : null,
     ),
-    available: copy.available(buying ? usd(cash) : `${shares(draft.held)} ${symbol}`),
+    available: known
+      ? copy.available(buying ? usd(cash) : `${shares(draft.held)} ${symbol}`)
+      : null,
     estimateBasis: copy.estimateBasis(displayLive),
-    overCap: draft.overCap ? (buying ? copy.moreThanReady : copy.moreThanHeld) : null,
+    overCap: known && draft.overCap ? (buying ? copy.moreThanReady : copy.moreThanHeld) : null,
     tooPrecise:
       draft.tooPrecise && draft.decimals !== undefined
         ? commonCopy.tooPrecise(
             `${smallestAmount(draft.decimals)} ${denom === "cash" ? "USDC" : symbol}`,
           )
         : null,
-    balanceUnavailable: draft.multiplierKnown ? null : commonCopy.balanceUnavailable,
+    balanceUnavailable: !known
+      ? balances.reason
+      : draft.multiplierKnown
+        ? null
+        : commonCopy.balanceUnavailable,
     action:
-      buying && cash <= 0
+      known && buying && cash <= 0
         ? { kind: "addMoney", label: copy.addMoney }
         : {
             kind: "review",
             label: state.quoting ? copy.gettingPrice : copy.review(side),
-            disabled: !draft.valid || draft.overCap || state.quoting || !draft.multiplierKnown,
+            disabled:
+              !known || !draft.valid || draft.overCap || state.quoting || !draft.multiplierKnown,
           },
   };
 }
@@ -287,7 +305,8 @@ export type PortfolioChoice = {
   id: string;
   label: string;
   icon: PortfolioIcon;
-  caption: string;
+  /** Its cash, or what it holds of the tracker. Null until balances have been read once. */
+  caption: Figure;
 };
 
 function shownHeld(reads: Pick<ScreenReads, "shownUnits">, portfolio: Portfolio, symbol: string) {
@@ -302,7 +321,9 @@ export function portfolioChoices(
   wallet: Wallet,
   side: Side,
   symbol: string | null,
+  balances: ReadFreshness,
 ): PortfolioChoice[] {
+  const { known } = balancesView(balances);
   return reads
     .activePortfolios(wallet)
     .filter(
@@ -314,8 +335,9 @@ export function portfolioChoices(
       id: portfolio.id,
       label: portfolio.label,
       icon: resolvePortfolioIcon(portfolio.icon),
-      caption:
-        side === "buy" || symbol === null
+      caption: !known
+        ? null
+        : side === "buy" || symbol === null
           ? copy.cashAvailable(symbolAmount("USDC", reads.cashOf(portfolio)))
           : copy.held(shownHeld(reads, portfolio, symbol)),
     }));
@@ -333,13 +355,16 @@ export type NoMoneyView = {
  * starts from a tracker's page with none chosen yet: then it is said only
  * when no active portfolio has anything to invest. Null when there is money
  * to buy with. With USDC waiting in the funding wallet the way on is to move
- * it in; with none, to add money.
+ * it in; with none, to add money. Null too while balances have never been
+ * read: "nothing to invest" is said only of money that is known.
  */
 export function noMoneyView(
   reads: ScreenReads,
   wallet: Wallet,
   portfolioId: string | null,
+  balances: ReadFreshness,
 ): NoMoneyView | null {
+  if (!balancesView(balances).known) return null;
   const active = reads.activePortfolios(wallet);
   const chosen = active.find((portfolio) => portfolio.id === portfolioId);
   if ((chosen ? [chosen] : active).some((portfolio) => reads.cashOf(portfolio) > 0)) return null;

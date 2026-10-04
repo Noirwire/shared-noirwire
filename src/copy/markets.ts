@@ -126,7 +126,10 @@ export const marketsCopy = {
     readRisks: "Read the risks",
     holdingRow: (label: string, quantity: string) => `${label} · ${quantity}`,
     /** One line under the chart: how to read its price and date at a point. */
-    chartHint: "Hover to see the price and date.",
+    chartHint: {
+      touch: "Press and hold to see the price and date.",
+      mouse: "Hover to see the price and date.",
+    },
   },
 } as const;
 
@@ -139,6 +142,5 @@ export const mobileMarketsCopy = {
   detail: {
     createPortfolio: "Create a portfolio",
     offline: "You're offline. Nothing can be bought or sold until you're back online.",
-    chartHint: "Press and hold to see the price and date.",
   },
 } as const;

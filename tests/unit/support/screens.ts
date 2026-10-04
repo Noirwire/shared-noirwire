@@ -16,6 +16,12 @@ export const UPDATED_AT = 1_750_000_000_000;
 /** A read that came back whole at `UPDATED_AT`. */
 export const READ = { succeededAt: UPDATED_AT, lastAttemptFailed: false };
 
+/** A first read that did not come back: nothing is known of what it reads. */
+export const FIRST_READ_FAILED = { succeededAt: null, lastAttemptFailed: true };
+
+/** A first read still under way. */
+export const FIRST_READ_PENDING = { succeededAt: null, lastAttemptFailed: false };
+
 /** Everything a screen shows was read just now. */
 export const FRESH = { now: UPDATED_AT, balances: READ, prices: READ, chart: READ };
 

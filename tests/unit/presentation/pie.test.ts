@@ -9,6 +9,7 @@ import {
   type PieOrder,
   type PieReviewState,
 } from "../../../src/presentation/pie.js";
+import { READ } from "../support/screens.js";
 
 const shownUnits = (_symbol: string, held: number) => held;
 const nameOf = (symbol: string) => `${symbol} Inc`;
@@ -57,11 +58,14 @@ describe("legTerms", () => {
 
 describe("pieInvestView", () => {
   const preview = [{ symbol: "NVDAx", usd: 30 }];
+  const invest = (state: { amount: number; preview: typeof preview; priced: boolean }) =>
+    pieInvestView({ ...state, cash: 50, nameOf, balances: READ });
 
   it("shows how an amount splits and lets it be reviewed", () => {
-    expect(pieInvestView({ amount: 30, cash: 50, preview, priced: true, nameOf })).toEqual({
+    expect(invest({ amount: 30, preview, priced: true })).toEqual({
       label: "Invest $",
       available: "$50.00 ready to invest",
+      balanceUnavailable: null,
       overCash: null,
       split: {
         title: "How it splits, toward your targets",
@@ -73,18 +77,19 @@ describe("pieInvestView", () => {
   });
 
   it("refuses more than the cash, and waits for prices", () => {
-    const over = pieInvestView({ amount: 80, cash: 50, preview, priced: true, nameOf });
+    const over = invest({ amount: 80, preview, priced: true });
     expect(over.overCash).toBe("More than this pie has to invest.");
     expect(over.split).toBeNull();
     expect(over.review.disabled).toBe(true);
-    const unpriced = pieInvestView({ amount: 30, cash: 50, preview, priced: false, nameOf });
+    const unpriced = invest({ amount: 30, preview, priced: false });
     expect(unpriced.waiting).toBe(
       "Waiting for live prices, so the split can account for what the pie already holds.",
     );
     expect(unpriced.review.disabled).toBe(true);
-    expect(
-      pieInvestView({ amount: 0, cash: 50, preview: [], priced: true, nameOf }).review,
-    ).toEqual({ label: "Review orders", disabled: true });
+    expect(invest({ amount: 0, preview: [], priced: true }).review).toEqual({
+      label: "Review orders",
+      disabled: true,
+    });
   });
 });
 

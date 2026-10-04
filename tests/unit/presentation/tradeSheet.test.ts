@@ -8,7 +8,14 @@ import {
   tradeReviewView,
   type TradeReviewState,
 } from "../../../src/presentation/trade.js";
-import { holding, testReads, testWallet, withFirst, withHolding } from "../support/screens.js";
+import {
+  READ,
+  holding,
+  testReads,
+  testWallet,
+  withFirst,
+  withHolding,
+} from "../support/screens.js";
 
 const reads = testReads();
 
@@ -98,13 +105,13 @@ describe("portfolioChoices", () => {
     const wallet = withFirst((p) =>
       withHolding(withHolding(p, holding("USDC", 12)), holding("NVDAx", 2)),
     );
-    expect(portfolioChoices(reads, wallet, "buy", null)).toMatchObject([
+    expect(portfolioChoices(reads, wallet, "buy", null, READ)).toMatchObject([
       { id: "acc_1", caption: "12.00 USDC available" },
     ]);
-    expect(portfolioChoices(reads, wallet, "sell", "NVDAx")).toMatchObject([
+    expect(portfolioChoices(reads, wallet, "sell", "NVDAx", READ)).toMatchObject([
       { id: "acc_1", caption: "2.0000 NVDAx held" },
     ]);
-    expect(portfolioChoices(reads, testWallet(), "sell", "NVDAx")).toEqual([]);
+    expect(portfolioChoices(reads, testWallet(), "sell", "NVDAx", READ)).toEqual([]);
   });
 });
 

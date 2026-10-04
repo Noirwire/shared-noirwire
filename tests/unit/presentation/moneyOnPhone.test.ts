@@ -28,6 +28,7 @@ import {
   sendResultView,
   sendReviewView,
 } from "../../../src/presentation/send.js";
+import { READ } from "../support/screens.js";
 
 const RECIPIENT = "7xKp4tRmQ9wZ2b8nV3cL5dF6gH1jK2mN3pQ4rS5tU6v";
 
@@ -40,6 +41,7 @@ describe("moving money in, on the phone", () => {
       asset: "USDC",
       privateRoute: true,
       fundingBalance,
+      readFailed: false,
       amountText,
       presets: FUND_PRESETS,
       pending: { blocked: false },
@@ -141,11 +143,11 @@ describe("moving money in, on the phone", () => {
       { id: "a", label: "Investing", cash: 5 },
       { id: "b", label: "Trips", cash: 0 },
     ];
-    expect(choosePortfolioView({ portfolios, chosen: null }).next).toEqual({
+    expect(choosePortfolioView({ portfolios, chosen: null, balances: READ }).next).toEqual({
       label: "Continue",
       disabled: true,
     });
-    expect(choosePortfolioView({ portfolios, chosen: "b" })).toMatchObject({
+    expect(choosePortfolioView({ portfolios, chosen: "b", balances: READ })).toMatchObject({
       rows: [{ cash: "5.00 USDC ready to invest" }, { cash: "0.00 USDC ready to invest" }],
       next: { label: "Continue with Trips", disabled: false },
     });
@@ -214,6 +216,7 @@ describe("sending, on the phone", () => {
         preparing: false,
         network: "",
         platform: "mobile",
+        balances: READ,
         ...over,
       });
     expect(form()).toMatchObject({
@@ -305,6 +308,7 @@ describe("Earn", () => {
       rate,
       portfolios,
       platform: "mobile",
+      balances: READ,
       ...over,
     });
 

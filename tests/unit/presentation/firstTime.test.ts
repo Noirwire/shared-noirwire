@@ -8,8 +8,8 @@ import {
   RELAY_FEE_RAW,
   SETTLEMENT_DELAY_MS,
 } from "../../../src/domain/privateTransfer.js";
-import { MIN_PASSWORD_LENGTH } from "../../../src/domain/wallet.js";
-import { aboutView } from "../../../src/presentation/about.js";
+import { MIN_PASSWORD_LENGTH, type Wallet } from "../../../src/domain/wallet.js";
+import { aboutView, betaView } from "../../../src/presentation/about.js";
 import { addMoneyView } from "../../../src/presentation/addMoney.js";
 import { costsView, privateMoveCostText } from "../../../src/presentation/costs.js";
 import { discardPromptView } from "../../../src/presentation/discard.js";
@@ -20,7 +20,10 @@ import { unreachableView } from "../../../src/presentation/unreachable.js";
 import { welcomeView } from "../../../src/presentation/welcome.js";
 import { assessPasswordWith } from "../../../src/wallet/passwordStrength.js";
 import {
+  FIRST_READ_FAILED,
+  FIRST_READ_PENDING,
   FUNDING_ADDRESS,
+  READ,
   holding,
   testReads,
   testWallet,
@@ -62,14 +65,22 @@ describe("what a private move costs", () => {
 });
 
 describe("how long a private move takes", () => {
-  it("is one sentence, the same in the add-money step, in Costs and on the funding sheet", () => {
+  it("is one sentence, the same in the add-money step and on the funding sheet", () => {
     const said = [
       addMoneyView(testWallet(), { tradeFeeBps: 50 }).steps[2].detail,
-      costsView({ tradeFeeBps: 50 }).lines[1],
       fundingCopy.privateCosts(0.1, "0.20 USDC", "USDC", "0.50 USDC"),
       mobileFundingCopy.costs("0.50 USDC"),
     ];
     for (const text of said) expect(text.endsWith(privateMoveTiming)).toBe(true);
+  });
+
+  it("is not said among the costs, which state prices only", () => {
+    const sheet = addMoneyView(testWallet(), { tradeFeeBps: 50 });
+    for (const line of [...costsView({ tradeFeeBps: 50 }).lines, ...sheet.costs.lines]) {
+      expect(line).not.toContain(privateMoveTiming);
+    }
+    const timed = sheet.steps.filter((step) => step.detail.includes(privateMoveTiming));
+    expect(timed).toHaveLength(1);
   });
 
   it("promises no more than the app itself waits for an arrival", () => {
@@ -210,17 +221,19 @@ describe("discardPromptView", () => {
 });
 
 describe("noMoneyView", () => {
+  const noMoney = (wallet: Wallet, portfolioId: string | null) =>
+    noMoneyView(reads, wallet, portfolioId, READ);
   const funded = (usdc: number) =>
     testWallet((wallet) => ({ ...wallet, funding: { ...wallet.funding, tokens: { USDC: usdc } } }));
 
   it("says nothing when the portfolio has money to buy with", () => {
     const wallet = withFirst((first) => withHolding(first, holding("USDC", 25)));
-    expect(noMoneyView(reads, wallet, "acc_1")).toBeNull();
-    expect(noMoneyView(reads, wallet, null)).toBeNull();
+    expect(noMoney(wallet, "acc_1")).toBeNull();
+    expect(noMoney(wallet, null)).toBeNull();
   });
 
   it("says it on the first tap and leads to adding money when none has arrived", () => {
-    expect(noMoneyView(reads, testWallet(), "acc_1")).toEqual({
+    expect(noMoney(testWallet(), "acc_1")).toEqual({
       title: "No money in this portfolio yet",
       detail: "Your money arrives in your funding wallet. Then you move it into a portfolio.",
       action: { label: "Add money", target: { to: "addMoney" } },
@@ -228,7 +241,7 @@ describe("noMoneyView", () => {
   });
 
   it("leads to moving it in when USDC is waiting in the funding wallet", () => {
-    expect(noMoneyView(reads, funded(40), "acc_1")).toEqual({
+    expect(noMoney(funded(40), "acc_1")).toEqual({
       title: "No money in this portfolio yet",
       detail: "Move money into this portfolio first.",
       action: { label: "Move to portfolio", target: { to: "fund", portfolioId: "acc_1" } },
@@ -236,11 +249,11 @@ describe("noMoneyView", () => {
   });
 
   it("speaks of every portfolio when none is chosen yet", () => {
-    expect(noMoneyView(reads, testWallet(), null)).toMatchObject({
+    expect(noMoney(testWallet(), null)).toMatchObject({
       title: "No money in your portfolios yet",
       action: { label: "Add money", target: { to: "addMoney" } },
     });
-    expect(noMoneyView(reads, funded(40), null)?.action.target).toEqual({ to: "fund" });
+    expect(noMoney(funded(40), null)?.action.target).toEqual({ to: "fund" });
   });
 
   it("looks only at the chosen portfolio when another one has money", () => {
@@ -251,8 +264,25 @@ describe("noMoneyView", () => {
         { ...withHolding(w.portfolios[0], holding("USDC", 9)), id: "acc_2", label: "Trips" },
       ],
     }));
-    expect(noMoneyView(reads, wallet, "acc_1")?.title).toBe("No money in this portfolio yet");
-    expect(noMoneyView(reads, wallet, "acc_2")).toBeNull();
-    expect(noMoneyView(reads, wallet, null)).toBeNull();
+    expect(noMoney(wallet, "acc_1")?.title).toBe("No money in this portfolio yet");
+    expect(noMoney(wallet, "acc_2")).toBeNull();
+    expect(noMoney(wallet, null)).toBeNull();
+  });
+
+  it("does not say there is no money while balances have never been read", () => {
+    for (const balances of [FIRST_READ_FAILED, FIRST_READ_PENDING]) {
+      expect(noMoneyView(reads, testWallet(), "acc_1", balances)).toBeNull();
+    }
+  });
+});
+
+describe("betaView", () => {
+  it("is a short tag for the header and a line for About, said on every network", () => {
+    const view = betaView();
+    expect(view.tag.length).toBeGreaterThan(0);
+    expect(view.tag.length).toBeLessThan(view.line.length);
+    expect(aboutView().beta).toBe(view.line);
+    expect(betaView.length).toBe(0);
+    expect(`${view.tag} ${view.line}`).not.toMatch(/network|mainnet|devnet/i);
   });
 });

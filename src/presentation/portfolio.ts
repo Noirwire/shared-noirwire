@@ -15,7 +15,9 @@ import {
 import { REBALANCE_DRIFT, needsRebalance } from "../domain/pie.js";
 import { resolvePortfolioIcon, type PortfolioIcon } from "../domain/portfolioIcon.js";
 import type { Portfolio, Wallet } from "../domain/wallet.js";
+import type { ReadFreshness } from "../domain/freshness.js";
 import { entryAmount, recentActivity, type ActivityRowView } from "./activity.js";
+import { balancesView, type Figure, type UnavailableView } from "./freshness.js";
 import { pendingActionNote } from "./pendingAction.js";
 
 const USDC = "USDC";
@@ -37,18 +39,36 @@ export type PortfolioRowView = {
   id: string;
   name: string;
   icon: PortfolioIcon;
-  line: string;
-  value: string;
+  /** What it holds, in a line. Null until balances have been read once. */
+  line: Figure;
+  /** Its value. Null until balances have been read once: nothing is drawn, never a zero. */
+  value: Figure;
   change: { text: string; tone: ChangeTone } | null;
   spoken: string;
 };
 
-/** One portfolio as a row of a list: its mark, name, one useful line, value and day. */
+/**
+ * One portfolio as a row of a list: its mark, name, one useful line, value
+ * and day. `balances` is how current the app's balance read is; until it has
+ * come back once the row is its mark and its name, and says nothing of money.
+ */
 export function portfolioRowView(
   reads: ScreenReads,
   portfolio: Portfolio,
   updatedAt: number | null,
+  balances: ReadFreshness,
 ): PortfolioRowView {
+  if (!balancesView(balances).known) {
+    return {
+      id: portfolio.id,
+      name: portfolio.label,
+      icon: resolvePortfolioIcon(portfolio.icon),
+      line: null,
+      value: null,
+      change: null,
+      spoken: portfolio.label,
+    };
+  }
   const cash = usd(reads.cashOf(portfolio));
   const positions = reads.heldPositions(portfolio).length;
   const home = portfolioCopy.home;
@@ -85,7 +105,13 @@ export type PortfolioAction =
   | { to: "editMix" }
   | { to: "tracker"; symbol: string };
 
-export type ActionButton = { label: string; action: PortfolioAction; disabled?: boolean };
+export type ActionButton = {
+  label: string;
+  action: PortfolioAction;
+  disabled?: boolean;
+  /** Why it cannot be pressed, where the screen says so beside it. */
+  reason?: string | null;
+};
 
 export type HoldingRowView = {
   key: string;
@@ -106,7 +132,8 @@ export type MixSliceView = {
   line: string;
   /** Two points or more from target: said in words as well as colour. */
   drift: "over" | "under" | null;
-  trailing: string;
+  /** What is held of it, in dollars or in words. Null until balances have been read once. */
+  trailing: Figure;
   sell: string | null;
   /** The bar under the row: the current share, and where the target sits. */
   current: number;
@@ -130,12 +157,20 @@ export type PortfolioDetailView = {
   icon: PortfolioIcon;
   kindLine: string;
   valueLabel: string;
-  /** Everything the portfolio is worth: what it holds, and what it has in Earn when that was read. */
-  value: string;
+  /**
+   * Everything the portfolio is worth: what it holds, and what it has in Earn
+   * when that was read. Null until balances have been read once.
+   */
+  value: Figure;
   valueUnavailable: boolean;
+  /** Balances have never been read, and nothing has failed: the screen waits. */
+  loading: boolean;
+  /** Balances have never been read and the read failed: the one line, with its retry. */
+  unavailable: UnavailableView | null;
   /** What it has in Earn, or null where Earn is not offered or was not passed in. */
   inEarn: { label: string; value: string } | null;
-  cashLine: string;
+  /** What is ready to invest. Null until balances have been read once. */
+  cashLine: Figure;
   archived: { title: string; lead: string; restore: string; settings: string } | null;
   pending: string | null;
   primary: ActionButton | null;
@@ -237,19 +272,26 @@ function mixView(
   portfolio: Portfolio,
   updatedAt: number | null,
   archived: boolean,
+  known: boolean,
 ): MixView {
   const words = portfolioCopy.mix;
   const slices = reads.pieSlices(portfolio);
   const invested = slices.some((slice) => slice.amount > 0);
-  const live = reads.piePriced(portfolio, updatedAt);
+  // Before balances are read the mix is its targets only: nothing is priced, and nothing is "not bought".
+  const live = known && reads.piePriced(portfolio, updatedAt);
   const measured = invested && live;
   const sliceViews: MixSliceView[] = slices.map((slice) => {
     const gap = slice.actual - slice.weight;
     const drift =
       measured && Math.abs(gap) >= REBALANCE_DRIFT ? (gap > 0 ? "over" : "under") : null;
     const now = measured ? percent(slice.actual) : null;
-    const trailing =
-      slice.amount <= 0 ? pieCopy.mix.notBought : live ? usd(slice.value) : pieCopy.mix.unpriced;
+    const trailing = !known
+      ? null
+      : slice.amount <= 0
+        ? pieCopy.mix.notBought
+        : live
+          ? usd(slice.value)
+          : pieCopy.mix.unpriced;
     const name = trackerName(reads, slice.symbol);
     return {
       symbol: slice.symbol,
@@ -275,11 +317,13 @@ function mixView(
     title: pieCopy.mix.title,
     edit: archived ? null : pieCopy.mix.edit,
     target: slices.map((slice) => slice.weight),
-    current: !invested
-      ? slices.map(() => 0)
-      : live
-        ? slices.map((slice) => slice.actual)
-        : undefined,
+    current: !known
+      ? undefined
+      : !invested
+        ? slices.map(() => 0)
+        : live
+          ? slices.map((slice) => slice.actual)
+          : undefined,
     centre,
     ringLabel: words.ringLabel(
       slices.map((slice, index) =>
@@ -330,6 +374,12 @@ export function portfolioView(
   id: string,
   updatedAt: number | null,
   /**
+   * How current the app's balance read is. Until it has come back once the
+   * page shows no figure, no holdings and no "nothing here yet", and every
+   * action that needs a balance is held back.
+   */
+  balances: ReadFreshness,
+  /**
    * What this portfolio has in Earn: a number, null while it could not be
    * read, undefined where Earn is not offered. It is part of the value on
    * both platforms, so one portfolio is worth the same wherever it is shown.
@@ -350,6 +400,10 @@ export function portfolioView(
   const pieSymbols = new Set((portfolio.pie ?? []).map((slice) => slice.symbol));
   const rows = holdingRows(reads, portfolio, updatedAt, pieSymbols, archived);
   const kind = isPie ? detail.pie : detail.portfolio;
+  const read = balancesView(balances);
+  const { known } = read;
+  const held = (button: ActionButton): ActionButton =>
+    button.action.to === "receive" ? button : { ...button, disabled: true, reason: read.reason };
 
   return {
     kind: "found",
@@ -358,7 +412,13 @@ export function portfolioView(
     icon: resolvePortfolioIcon(portfolio.icon),
     kindLine: detail.kindLine(kind, sinceDate(portfolio.createdAt)),
     valueLabel: detail.value,
-    value: valued ? usd(reads.portfolioValue(portfolio) + (inEarn ?? 0)) : detail.valueUnavailable,
+    value: !known
+      ? null
+      : valued
+        ? usd(reads.portfolioValue(portfolio) + (inEarn ?? 0))
+        : detail.valueUnavailable,
+    loading: read.loading,
+    unavailable: read.unavailable,
     inEarn:
       inEarn === undefined
         ? null
@@ -366,8 +426,8 @@ export function portfolioView(
             label: portfolioCopy.home.earning,
             value: inEarn === null ? commonCopy.unavailable : usd(inEarn),
           },
-    valueUnavailable: !valued,
-    cashLine: detail.readyToInvest(tokenAmount(cash)),
+    valueUnavailable: !known || !valued,
+    cashLine: known ? detail.readyToInvest(tokenAmount(cash)) : null,
     archived: archived
       ? {
           title: detail.archivedTitle,
@@ -379,20 +439,21 @@ export function portfolioView(
     pending: portfolio.pendingAction
       ? pendingActionNote("portfolio", portfolio.pendingAction.what, "waiting")
       : null,
-    primary: archived || empty ? null : block.primary,
-    rebalance: archived ? null : block.rebalance,
-    quiet: archived ? [] : block.quiet,
-    sendReason: archived ? null : block.sendReason,
-    mix: isPie ? mixView(reads, portfolio, updatedAt, archived) : null,
+    // Which action leads depends on the cash, so before balances are read there is none.
+    primary: archived || empty || !known ? null : block.primary,
+    rebalance: archived || !known ? null : block.rebalance,
+    quiet: archived ? [] : known ? block.quiet : block.quiet.map(held),
+    sendReason: archived ? null : known ? block.sendReason : read.reason,
+    mix: isPie ? mixView(reads, portfolio, updatedAt, archived, known) : null,
     holdings:
-      empty || rows.length === 0
+      !known || empty || rows.length === 0
         ? null
         : {
             title: isPie ? portfolioCopy.holdings.titleInPie : portfolioCopy.holdings.title,
             rows,
           },
     empty:
-      empty && !archived
+      known && empty && !archived
         ? {
             title: detail.emptyTitle,
             button:

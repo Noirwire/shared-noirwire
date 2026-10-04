@@ -8,6 +8,7 @@ import { ALL_STOCKS } from "../../../src/infrastructure/solana/tokenRegistry.js"
 import {
   changeView,
   chartHighLow,
+  chartHint,
   chartReadout,
   marketsView,
   trackerRowView,
@@ -15,6 +16,7 @@ import {
   type TrackerState,
 } from "../../../src/presentation/markets.js";
 import {
+  FIRST_READ_FAILED,
   FRESH,
   READ,
   TEST_PRICES,
@@ -281,14 +283,11 @@ describe("trackerView", () => {
     const later = UPDATED_AT + STALE_AFTER_MS + 1;
     const pricesRefreshed = { succeededAt: later, lastAttemptFailed: false };
     expect(
-      trackerView(
-        reads,
-        state({ freshness: { now: later, prices: pricesRefreshed, chart: READ } }),
-      ),
+      trackerView(reads, state({ freshness: { ...FRESH, now: later, prices: pricesRefreshed } })),
     ).toMatchObject({ stale: null });
-    expect(
-      trackerView(reads, state({ freshness: { now: later, prices: READ, chart: READ } })),
-    ).toMatchObject({ stale: marketsCopy.stale });
+    expect(trackerView(reads, state({ freshness: { ...FRESH, now: later } }))).toMatchObject({
+      stale: marketsCopy.stale,
+    });
   });
 
   it("waits, without the notice, while the price or the chart was never loaded", () => {
@@ -299,10 +298,44 @@ describe("trackerView", () => {
         state({
           updatedAt: null,
           history: { status: "loading" },
-          freshness: { now: UPDATED_AT, prices: never, chart: never },
+          freshness: { ...FRESH, prices: never, chart: never },
         }),
       ),
     ).toMatchObject({ stale: null, loading: true });
+  });
+
+  describe("with balances that have never loaded", () => {
+    const wallet = withFirst((p) => withHolding(p, holding("NVDAx", 2)));
+    const tracker = (balances: typeof READ | typeof FIRST_READ_FAILED) => {
+      const view = trackerView(reads, state({ wallet, freshness: { ...FRESH, balances } }));
+      if (view.kind !== "tracker") throw new Error("expected a tracker");
+      return view;
+    };
+
+    it("says neither what is held nor that nothing is, and holds Buy back", () => {
+      const view = tracker(FIRST_READ_FAILED);
+      expect(view.holding).toMatchObject({ quantity: null, value: null, rows: [], none: null });
+      expect(view.unavailable).not.toBeNull();
+      expect(view.actions).toEqual([expect.objectContaining({ kind: "buy", disabled: true })]);
+    });
+
+    it("still shows the price, which is not read from balances", () => {
+      expect(tracker(FIRST_READ_FAILED).price).toMatchObject({ live: true, figure: "$100.00" });
+    });
+
+    it("shows the holding again once they have loaded", () => {
+      const view = tracker(READ);
+      expect(view.holding?.quantity).not.toBeNull();
+      expect(view.unavailable).toBeNull();
+    });
+
+    it("has nothing to say about balances to a visitor", () => {
+      const view = trackerView(
+        reads,
+        state({ wallet: null, freshness: { ...FRESH, balances: FIRST_READ_FAILED } }),
+      );
+      expect(view).toMatchObject({ unavailable: null, actions: [{ kind: "createWallet" }] });
+    });
   });
 });
 
@@ -351,5 +384,12 @@ describe("reading a chart", () => {
 
   it("has nothing to read on a series too short to draw", () => {
     expect(chartReadout([100], 0.5, { range: "1W", readAt })).toBeNull();
+  });
+
+  it("tells a finger to press and a mouse to hover, whatever the platform", () => {
+    expect(chartHint("touch")).toMatch(/press/i);
+    expect(chartHint("touch")).not.toMatch(/hover/i);
+    expect(chartHint("mouse")).toMatch(/hover/i);
+    expect(chartHint("mouse")).not.toMatch(/press/i);
   });
 });

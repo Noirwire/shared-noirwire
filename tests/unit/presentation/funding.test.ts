@@ -28,6 +28,7 @@ const amountView = (
     asset: "USDC",
     privateRoute: true,
     fundingBalance: 20,
+    readFailed: false,
     amountText: input.amountText ?? "",
     presets: [10, 25],
     pending: { blocked: false },

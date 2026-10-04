@@ -4,8 +4,10 @@ import { mobileSendCopy as mobileCopy, sendCopy as copy } from "../copy/send.js"
 import { smallestAmount } from "../domain/amount.js";
 import type { AppPlatform } from "../domain/appPlatform.js";
 import { symbolAmount, usd } from "../domain/format.js";
+import type { ReadFreshness } from "../domain/freshness.js";
 import type { NetworkCost } from "../domain/networkCost.js";
 import type { RecipientClass, Unsendable } from "../domain/recipients.js";
+import { balancesView, type Figure } from "./freshness.js";
 import { groupsOfFour } from "./importFindings.js";
 import { networkCostView, type NetworkCostView } from "./networkCost.js";
 import { addressSegments } from "./receive.js";
@@ -47,11 +49,15 @@ export type SendFormState = {
   unsendable?: Unsendable | null;
   /** The recipient could not be checked with the network. */
   recipientUnreadable?: boolean;
+  /** How current the app's balance read is: nothing is sent from a balance never read. */
+  balances: ReadFreshness;
 };
 
 type SendFormView = {
   recipientError: string | null;
-  amountLine: string;
+  /** The amount typed against what is held. Null until balances have been read once. */
+  amountLine: Figure;
+  /** Why nothing can be reviewed: the token's balance cannot be shown, or balances never loaded. */
   balanceUnavailable: string | null;
   amountError: string | null;
   canReview: boolean;
@@ -64,7 +70,8 @@ type SendFormView = {
   refusal: string | null;
   amountLabel: string;
   amountPlaceholder: string;
-  available: { label: string; value: string };
+  /** What is held. Its value is null until balances have been read once. */
+  available: { label: string; value: Figure };
   review: { label: string; disabled: boolean };
 };
 
@@ -82,7 +89,9 @@ export function sendFormView(state: SendFormState): SendFormView {
   const mobile = state.platform === "mobile";
   const words = mobile ? { ...copy, ...mobileCopy } : copy;
   const amountWrong = state.amountTouched && (!draft.validAmount || draft.amount > draft.held);
+  const balances = balancesView(state.balances);
   const canReview =
+    balances.known &&
     draft.validRecipient &&
     draft.validAmount &&
     draft.amount <= draft.held &&
@@ -93,13 +102,20 @@ export function sendFormView(state: SendFormState): SendFormView {
   const reviewLabel = state.preparing ? commonCopy.checking : copy.review;
   return {
     recipientError,
-    amountLine: copy.amountLine(
-      amountOf(symbol, unitsPerHeld, draft.rawAmount),
-      amountOf(symbol, unitsPerHeld, state.heldRaw),
-    ),
-    balanceUnavailable: draft.multiplierKnown ? null : commonCopy.balanceUnavailable,
+    amountLine: balances.known
+      ? copy.amountLine(
+          amountOf(symbol, unitsPerHeld, draft.rawAmount),
+          amountOf(symbol, unitsPerHeld, state.heldRaw),
+        )
+      : null,
+    balanceUnavailable: !balances.known
+      ? balances.reason
+      : draft.multiplierKnown
+        ? null
+        : commonCopy.balanceUnavailable,
+    // "More than you hold" is a claim about the balance: said only once it is known.
     amountError:
-      draft.multiplierKnown && amountWrong
+      balances.known && draft.multiplierKnown && amountWrong
         ? draft.tooPrecise && state.decimals !== undefined
           ? commonCopy.tooPrecise(`${smallestAmount(state.decimals)} ${symbol}`)
           : draft.amount > draft.held
@@ -121,7 +137,7 @@ export function sendFormView(state: SendFormState): SendFormView {
     amountPlaceholder: commonCopy.amountPlaceholder,
     available: {
       label: mobileCopy.available,
-      value: amountOf(symbol, unitsPerHeld, state.heldRaw),
+      value: balances.known ? amountOf(symbol, unitsPerHeld, state.heldRaw) : null,
     },
     review: { label: reviewLabel, disabled: !canReview || !(state.online ?? true) },
   };

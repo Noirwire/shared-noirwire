@@ -7,7 +7,9 @@ import { portfolioCopy } from "../copy/portfolio.js";
 import { smallestAmount } from "../domain/amount.js";
 import type { AppPlatform } from "../domain/appPlatform.js";
 import { symbolAmount, usd } from "../domain/format.js";
+import type { ReadFreshness } from "../domain/freshness.js";
 import type { NetworkCost } from "../domain/networkCost.js";
+import { balancesView, type Figure, type UnavailableView } from "./freshness.js";
 import { networkCostView, type NetworkCostView } from "./networkCost.js";
 
 export type EarnRateRead = { apy: number; supplyApy: number; rewardsApy: number };
@@ -31,13 +33,18 @@ export type EarnSheetState = {
   cost: NetworkCost | null;
   pending: { blocked: boolean };
   busy: boolean;
+  /** How current the app's balance read is: nothing is confirmed against a balance never read. */
+  balances: ReadFreshness;
 };
 
 type EarnSheetView = {
   title: string;
   lead: string;
   amountLabel: string;
-  available: string;
+  /** The most that can move. Null until balances have been read once. */
+  available: Figure;
+  /** Why nothing can be confirmed while balances have never loaded. */
+  balanceUnavailable: string | null;
   estimate: string | null;
   mainnetOnly: string | null;
   networkCostLine: string | null;
@@ -57,11 +64,13 @@ export function earnSheetView(state: EarnSheetState): EarnSheetView {
     withdrawing: !depositing,
   });
   const showsCost = state.available && cost !== null;
+  const balances = balancesView(state.balances);
   return {
     title: copy.sheetTitle(action, state.portfolioLabel),
     lead: copy.sheetLead(action),
     amountLabel: copy.amountLabel,
-    available: commonCopy.available(usd(draft.max)),
+    available: balances.known ? commonCopy.available(usd(draft.max)) : null,
+    balanceUnavailable: balances.reason,
     estimate:
       depositing && draft.valid && apy !== undefined
         ? copy.yearEstimate(usd((draft.amount * apy) / 100), apy.toFixed(2))
@@ -78,14 +87,16 @@ export function earnSheetView(state: EarnSheetState): EarnSheetView {
         !state.available ||
         !state.positionKnown ||
         !state.needsKnown ||
+        !balances.known ||
         networkCost.confirmDisabled,
     },
   };
 }
 
 type EarnPortfolioView = {
-  cash: string;
-  cashAvailable: string;
+  /** Null until balances have been read once. */
+  cash: Figure;
+  cashAvailable: Figure;
   inEarn: string;
   earned: string;
   /** Only once the venue has reported it. */
@@ -102,20 +113,23 @@ export function earnPortfolioView(state: {
   available: boolean;
   cash: number;
   position: Position | null;
+  /** How current the app's balance read is: the cash is a figure only once it has been read. */
+  balances: ReadFreshness;
 }): EarnPortfolioView {
   const { archived, available, cash, position } = state;
   const earned = position?.earnedSinceDeposit;
   const hasEarned = earned !== null && earned !== undefined;
+  const { known } = balancesView(state.balances);
   return {
-    cash: usd(cash),
-    cashAvailable: commonCopy.readyToInvest(usd(cash)),
+    cash: known ? usd(cash) : null,
+    cashAvailable: known ? commonCopy.readyToInvest(usd(cash)) : null,
     inEarn: position ? usd(position.deposited) : commonCopy.unavailable,
     earned: hasEarned ? usd(earned) : commonCopy.unavailable,
     earnedLine: hasEarned ? copy.earnedSinceDeposit(usd(earned)) : null,
     archived: archived ? commonCopy.archived : null,
     restore: archived ? copy.restoreToMove : null,
-    canDeposit: !archived && available && position !== null && cash > 0,
-    canWithdraw: !archived && available && !!position?.deposited,
+    canDeposit: known && !archived && available && position !== null && cash > 0,
+    canWithdraw: known && !archived && available && !!position?.deposited,
   };
 }
 
@@ -165,7 +179,8 @@ export type EarnPortfolio = {
 export type EarnRowView = {
   id: string;
   label: string;
-  cash: string;
+  /** What is ready to invest. Null until balances have been read once. */
+  cash: Figure;
   inEarn: string | null;
   earned: string | null;
   archived: string | null;
@@ -183,6 +198,13 @@ export type EarnScreenView = {
    * the top; the rate, the actions, the total and the rows are all left out.
    */
   notHere: string | null;
+  /** Balances have never been read, and nothing has failed: the screen waits. */
+  loading: boolean;
+  /**
+   * Balances have never been read and the read failed: the one line, with
+   * its retry. Nothing can be added or withdrawn until they load.
+   */
+  unavailable: UnavailableView | null;
   rateLabel: string;
   /** Null while the rate is read, and where Earn does not run. */
   rate: { value: string; unavailable: boolean; announcement: string } | null;
@@ -220,8 +242,11 @@ export function earnScreenView(state: {
   rate: EarnRateRead | null | undefined;
   portfolios: readonly EarnPortfolio[];
   platform: AppPlatform;
+  /** How current the app's balance read is. */
+  balances: ReadFreshness;
 }): EarnScreenView {
   const { available, online, rate, portfolios } = state;
+  const balances = balancesView(state.balances);
   const mobile = state.platform === "mobile";
   const summary = earnSummaryView({
     available,
@@ -232,7 +257,7 @@ export function earnScreenView(state: {
   const reading = rate === undefined && available;
   const anyCash = portfolios.some((portfolio) => earnQualifies(portfolio, "deposit"));
   const anyLent = portfolios.some((portfolio) => lent(portfolio) > 0);
-  const inert = !online || !available;
+  const inert = !online || !available || !balances.known;
   const restore = mobile ? mobileEarnCopy.restore : copy.restoreToMove;
   const rateLabel = mobile ? mobileEarnCopy.rateLabel : copy.currentApy;
   const risks = {
@@ -243,6 +268,8 @@ export function earnScreenView(state: {
     return {
       title: copy.title,
       notHere: copy.mainnetOnly,
+      loading: false,
+      unavailable: null,
       rateLabel,
       rate: null,
       couldEarn: null,
@@ -262,6 +289,8 @@ export function earnScreenView(state: {
   return {
     title: copy.title,
     notHere: null,
+    loading: balances.loading,
+    unavailable: balances.unavailable,
     rateLabel,
     rate: reading
       ? null
@@ -275,7 +304,8 @@ export function earnScreenView(state: {
     deposit: {
       label: copy.deposit,
       disabled: inert || !anyCash,
-      reason: anyCash ? null : copy.noMoney,
+      // "Move money in first" is a claim about the cash: said only once the cash is known.
+      reason: !balances.known ? balances.reason : anyCash ? null : copy.noMoney,
     },
     withdraw: anyLent ? { label: copy.withdraw, disabled: inert } : null,
     portfoliosTitle: copy.portfolios,
@@ -287,6 +317,7 @@ export function earnScreenView(state: {
         available,
         cash: portfolio.cash,
         position: portfolio.position ?? null,
+        balances: state.balances,
       });
       const inEarn = portfolio.position === undefined ? null : row.inEarn;
       const opens = earnQualifies(portfolio, "deposit")
@@ -302,7 +333,11 @@ export function earnScreenView(state: {
         earned: row.earnedLine,
         archived: portfolio.archived ? commonCopy.archived : null,
         restore: portfolio.archived ? restore : null,
-        announcement: `${portfolio.label}, ${row.cashAvailable}, ${inEarn ?? commonCopy.checking} ${copy.inEarn}`,
+        announcement: [
+          portfolio.label,
+          ...(row.cashAvailable === null ? [] : [row.cashAvailable]),
+          `${inEarn ?? commonCopy.checking} ${copy.inEarn}`,
+        ].join(", "),
         opens: inert ? null : opens,
       };
     }),

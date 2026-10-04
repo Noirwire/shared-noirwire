@@ -34,10 +34,11 @@ export const fundingCopy = {
     },
   },
 
-  leadPrivate: (asset: string, available: string) =>
-    `Move ${asset} into this portfolio without publishing a transfer between your funding wallet and it. Available ${available}.`,
-  leadPublic: (asset: string, available: string) =>
-    `Move ${asset} into this portfolio. Available ${available}.`,
+  /** `available` is null until the funding wallet has been read: then no amount is named. */
+  leadPrivate: (asset: string, available: string | null) =>
+    `Move ${asset} into this portfolio without publishing a transfer between your funding wallet and it.${available === null ? "" : ` Available ${available}.`}`,
+  leadPublic: (asset: string, available: string | null) =>
+    `Move ${asset} into this portfolio.${available === null ? "" : ` Available ${available}.`}`,
   noPrivateMove: (asset: string) =>
     `${asset} cannot be moved privately. This is a direct, public transfer from your funding wallet to this portfolio, and it links the two addresses publicly. Keep it small - enough to cover fees is usually plenty.`,
   otherAmount: (asset: string) => `Other amount in ${asset}`,

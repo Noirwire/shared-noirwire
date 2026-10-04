@@ -214,7 +214,10 @@ export const portfolioCopy = {
   /** The state of the balances on screen, beside them. */
   balances: {
     updating: "Updating balances...",
+    /** Said only over balances that did load once. */
     stale: "We couldn't update your balances. What you see may be out of date.",
+    /** Said where they never loaded: there is nothing on screen to be out of date. */
+    unavailable: "We couldn't load your balances. Check your connection and try again.",
   },
 
   /** What archived portfolios still hold, and archiving one that holds something. */

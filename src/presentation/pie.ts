@@ -7,9 +7,11 @@ import type { LegOutcome } from "../application/actions/pieOrder.js";
 import { networkCostCopy } from "../copy/networkCost.js";
 import { pieCopy } from "../copy/pie.js";
 import { usd } from "../domain/format.js";
+import type { ReadFreshness } from "../domain/freshness.js";
 import type { NetworkCost } from "../domain/networkCost.js";
 import { cashLeg, type PricedOrder, type Side } from "../domain/order.js";
 import { shownAmountWith, type ShownUnits } from "./amount.js";
+import { balancesView, type Figure } from "./freshness.js";
 import { networkCostView, type NetworkCostView } from "./networkCost.js";
 
 const copy = pieCopy.order;
@@ -72,7 +74,10 @@ export function legTerms(order: PieOrder, shownUnits: ShownUnits): string {
 
 type PieInvestView = {
   label: string;
-  available: string;
+  /** What is ready to invest. Null until balances have been read once. */
+  available: Figure;
+  /** Why nothing can be reviewed while balances have never loaded. */
+  balanceUnavailable: string | null;
   overCash: string | null;
   split: {
     title: string;
@@ -89,14 +94,19 @@ export function pieInvestView(state: {
   preview: readonly { symbol: string; usd: number }[];
   priced: boolean;
   nameOf: NameOf;
+  /** How current the app's balance read is: nothing is invested from cash never read. */
+  balances: ReadFreshness;
 }): PieInvestView {
   const { amount, cash, preview } = state;
+  const balances = balancesView(state.balances);
+  const { known } = balances;
   return {
     label: copy.investLabel,
-    available: commonCopy.readyToInvest(usd(cash)),
-    overCash: amount > cash ? copy.moreThanReady : null,
+    available: known ? commonCopy.readyToInvest(usd(cash)) : null,
+    balanceUnavailable: balances.reason,
+    overCash: known && amount > cash ? copy.moreThanReady : null,
     split:
-      preview.length > 0 && amount <= cash
+      known && preview.length > 0 && amount <= cash
         ? {
             title: copy.howItSplits,
             legs: preview.map((leg) => ({
@@ -109,7 +119,7 @@ export function pieInvestView(state: {
     waiting: state.priced ? null : copy.waitingForPrices,
     review: {
       label: copy.reviewOrders,
-      disabled: !state.priced || amount <= 0 || amount > cash || preview.length === 0,
+      disabled: !known || !state.priced || amount <= 0 || amount > cash || preview.length === 0,
     },
   };
 }

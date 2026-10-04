@@ -5,6 +5,8 @@ import { portfolioCopy } from "../../../src/copy/portfolio.js";
 import { STALE_AFTER_MS, recordRead } from "../../../src/domain/freshness.js";
 import { homeView } from "../../../src/presentation/home.js";
 import {
+  FIRST_READ_FAILED,
+  FIRST_READ_PENDING,
   FRESH,
   READ,
   UPDATED_AT,
@@ -32,10 +34,10 @@ describe("homeView", () => {
     const unread = homeView(reads, wallet, UPDATED_AT, null, NOTHING_ARCHIVED, FRESH);
     expect(without.total.value).toBe("$100.00");
     expect(lending.total.value).toBe("$124.99");
-    expect(lending.earning).toEqual({ label: "Earning", value: "$24.99" });
+    expect(lending.earn).toEqual({ label: "Earning", value: "$24.99" });
     // Not read: the total is of everything else, and the Earn line says it could not be shown.
     expect(unread.total.value).toBe("$100.00");
-    expect(unread.earning?.value).toBe("Unavailable");
+    expect(unread.earn?.value).toBe("Unavailable");
   });
 
   it("leads an empty wallet with one button, Add money, one line under it and no arc", () => {
@@ -56,7 +58,14 @@ describe("homeView", () => {
       "Your money arrives in your funding wallet. Then you move it into a portfolio.",
     );
     expect(view.portfolios[0]).toMatchObject({ name: "Investing", line: "No investments yet" });
-    expect(view.earning).toBeNull();
+  });
+
+  it("has no Earn to show where Earn does not run, so Home draws no tile and no card for it", () => {
+    const home = (earn: number | null | undefined) =>
+      homeView(reads, testWallet(), UPDATED_AT, earn, NOTHING_ARCHIVED, FRESH).earn;
+    expect(home(undefined)).toBeNull();
+    expect(home(0)).not.toBeNull();
+    expect(home(null)).not.toBeNull();
   });
 
   it("adds up every active portfolio, with the day's move of held trackers", () => {
@@ -163,13 +172,13 @@ describe("homeView", () => {
   it("shows the Earn total, and counts money in Earn as not empty", () => {
     expect(homeView(reads, testWallet(), UPDATED_AT, 120.5, NOTHING_ARCHIVED, FRESH)).toMatchObject(
       {
-        earning: { label: "Earning", value: "$120.50" },
+        earn: { label: "Earning", value: "$120.50" },
         empty: false,
       },
     );
     // Not confirmed as zero: Home must not assume the wallet is empty.
     expect(homeView(reads, testWallet(), UPDATED_AT, null, NOTHING_ARCHIVED, FRESH)).toMatchObject({
-      earning: { label: "Earning", value: "Unavailable" },
+      earn: { label: "Earning", value: "Unavailable" },
       empty: false,
     });
     expect(homeView(reads, testWallet(), UPDATED_AT, 0, NOTHING_ARCHIVED, FRESH).empty).toBe(true);
@@ -233,12 +242,76 @@ describe("homeView", () => {
       expect(home({ ...FRESH, prices: NEVER })).toMatchObject({ stale: null, loading: true });
     });
 
-    it("shows the notice, not the waiting state, when the very first read fails", () => {
+    it("says prices may be out of date, not that it is waiting, when their very first read fails", () => {
       const failedFirst = recordRead(NEVER, false, UPDATED_AT);
-      expect(home({ ...FRESH, balances: failedFirst })).toMatchObject({
-        stale: portfolioCopy.balances.stale,
+      expect(home({ ...FRESH, prices: failedFirst })).toMatchObject({
+        stale: marketsCopy.stale,
         loading: false,
+        unavailable: null,
       });
+    });
+  });
+
+  describe("balances that have never loaded", () => {
+    const funded = withFirst(
+      (first) => withHolding(withHolding(first, holding("USDC", 40)), holding("NVDAx", 1, 90)),
+      { funding: { address: "Fund", sol: 0, tokens: { USDC: 5 } } },
+    );
+    const home = (balances: Parameters<typeof homeView>[5]["balances"], wallet = testWallet()) =>
+      homeView(reads, wallet, UPDATED_AT, undefined, NOTHING_ARCHIVED, { ...FRESH, balances });
+    const figures = (view: ReturnType<typeof homeView>) => [
+      view.total.value,
+      view.cash.value,
+      ...view.portfolios.flatMap((row) => [row.value, row.line]),
+    ];
+
+    it("shows no figure at all after a failed first read, and one unavailable state with its retry", () => {
+      const view = home(FIRST_READ_FAILED);
+      expect(figures(view)).toEqual([null, null, null, null]);
+      expect(view.unavailable).not.toBeNull();
+      expect(view.unavailable?.retry).toBe(commonCopy.tryAgain);
+      expect(view.stale).toBeNull();
+      expect(view.loading).toBe(false);
+      expect(JSON.stringify(view)).not.toContain("$0.00");
+    });
+
+    it("does not call the wallet empty, or offer to move money, on what it has not read", () => {
+      const view = home(FIRST_READ_FAILED);
+      expect(view).toMatchObject({
+        empty: false,
+        showArc: false,
+        waiting: null,
+        explanation: null,
+      });
+      expect(view.investments).toEqual([]);
+    });
+
+    it("keeps the out-of-date wording for balances that did load once", () => {
+      const view = home(FIRST_READ_FAILED);
+      expect(view.unavailable?.text).not.toBe(portfolioCopy.balances.stale);
+    });
+
+    it("waits, with no figure and nothing said, while the first read is still under way", () => {
+      const view = home(FIRST_READ_PENDING);
+      expect(figures(view)).toEqual([null, null, null, null]);
+      expect(view).toMatchObject({ loading: true, unavailable: null, stale: null, empty: false });
+    });
+
+    it("keeps the last figures, with the stale notice, when a later refresh fails", () => {
+      const view = home(recordRead(READ, false, UPDATED_AT + 1_000), funded);
+      expect(view.total.value).toBe("$140.00");
+      expect(view.cash.value).toBe("$40.00");
+      expect(view.portfolios[0].value).toBe("$140.00");
+      expect(view.waiting).not.toBeNull();
+      expect(view.unavailable).toBeNull();
+      expect(view.stale).toBe(portfolioCopy.balances.stale);
+    });
+
+    it("shows a zero that was really read as $0.00", () => {
+      const view = home(READ);
+      expect(view.total.value).toBe("$0.00");
+      expect(view.cash.value).toBe("$0.00");
+      expect(view.unavailable).toBeNull();
     });
   });
 });

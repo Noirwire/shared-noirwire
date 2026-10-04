@@ -7,6 +7,7 @@ import {
   earnSummaryView,
   type EarnSheetState,
 } from "../../../src/presentation/earn.js";
+import { READ } from "../support/screens.js";
 
 const relayer: NetworkCost = { kind: "relayer", fee: 0.03, feeRaw: 30_000n, opens: null, count: 1 };
 
@@ -29,6 +30,7 @@ const sheet = (overrides: Partial<EarnSheetState> = {}, amountText = "10") =>
     cost: { kind: "covered" },
     pending: { blocked: false },
     busy: false,
+    balances: READ,
     ...overrides,
   });
 
@@ -112,9 +114,11 @@ describe("earnSheetView", () => {
 
 describe("earnPortfolioView", () => {
   const position = { deposited: 20, earnedSinceDeposit: 0.5 };
+  const row = (state: Omit<Parameters<typeof earnPortfolioView>[0], "balances">) =>
+    earnPortfolioView({ ...state, balances: READ });
 
   it("shows what a portfolio has in Earn and what it earned", () => {
-    expect(earnPortfolioView({ archived: false, available: true, cash: 10, position })).toEqual({
+    expect(row({ archived: false, available: true, cash: 10, position })).toEqual({
       cash: "$10.00",
       cashAvailable: "$10.00 ready to invest",
       inEarn: "$20.00",
@@ -128,7 +132,7 @@ describe("earnPortfolioView", () => {
   });
 
   it("says what could not be read, and allows nothing for an archived portfolio", () => {
-    const unread = earnPortfolioView({ archived: false, available: true, cash: 0, position: null });
+    const unread = row({ archived: false, available: true, cash: 0, position: null });
     expect(unread).toMatchObject({
       inEarn: "Unavailable",
       earned: "Unavailable",
@@ -137,16 +141,14 @@ describe("earnPortfolioView", () => {
       canWithdraw: false,
     });
     expect(
-      earnPortfolioView({
+      row({
         archived: false,
         available: true,
         cash: 1,
         position: { deposited: 0, earnedSinceDeposit: null },
       }),
     ).toMatchObject({ canDeposit: true, canWithdraw: false, earned: "Unavailable" });
-    expect(
-      earnPortfolioView({ archived: true, available: true, cash: 10, position }),
-    ).toMatchObject({
+    expect(row({ archived: true, available: true, cash: 10, position })).toMatchObject({
       archived: "Archived",
       restore: "Restore this portfolio to move funds",
       canDeposit: false,

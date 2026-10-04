@@ -4,6 +4,71 @@ All notable changes to this package are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The apps pin an exact tag; see [README.md](README.md#releasing) for how a tag becomes a release.
 
+## [0.6.0] - 2026-10-04
+
+An unknown balance is never shown as a zero. A wallet unlocked while NoirWire could not be reached showed "$0.00" for its total, its cash and every portfolio, beside a notice that the figures "may be out of date": a person reads that as a real zero balance. Until balances have loaded once, every figure worked out from them is now null, the types say so, and the screen carries one line with a retry. Also here: Costs states prices only, the chart hint follows the pointer and not the platform, Home says when Earn does not run, and a testing note for the header, Welcome and About.
+
+### Breaking
+
+The types changed on purpose, so an app cannot print a zero by accident: a figure from balances is `Figure` (`string | null`), and a component draws nothing for null. Each app keeps one `ReadFreshness` for its balance read already (0.5.3, for `homeView`); pass that same value everywhere below.
+
+For both apps:
+
+- [ ] **Home**: `view.total.value` and `view.cash.value` are `string | null`, and so are `value` and `line` on each row of `view.portfolios` and `view.archived.rows`. Draw nothing for null (the waiting placeholder while `view.loading`), never "$0.00". New `view.unavailable: { text, retry } | null`: when it is not null, show `text` once, with a button labelled `retry` that runs the balance refresh, in place of the stale notice (`view.stale` is null then). `view.empty` is false and `view.waiting` is null until balances load, so the empty wallet's "Add money" lead and the "has arrived" notice are not drawn over an unread wallet.
+- [ ] **Home, Earn**: `view.earning` is renamed `view.earn`. It is null where Earn does not run (the app passes `undefined` as the Earn total off the main network, as now). When `view.earn` is null, hide the Home Earn tile and the "could be earning" card (`portfolioCopy.earnPromo`); do not decide that from the network in the app.
+- [ ] **Portfolio list**: `portfolioRowView(reads, portfolio, updatedAt, balances)` takes the balance read as a fourth argument. `value` and `line` are `string | null`.
+- [ ] **Portfolio and pie pages**: `portfolioView(reads, wallet, id, updatedAt, balances, inEarn?)`: `balances` is the fifth argument and `inEarn` moves to sixth. `value` and `cashLine` are `string | null`; a pie's `mix.slices[].trailing` is `string | null`. New `view.loading` and `view.unavailable` (draw as on Home). Until balances load, `primary`, `rebalance`, `holdings` and `empty` are null, and every button in `quiet` but Receive has `disabled: true` and a `reason`: show the reason where the screen shows `sendReason`.
+- [ ] **Tracker page**: `TrackerState.freshness` takes `balances` as well (a visitor passes `NEVER_READ`). `holding.quantity` and `.value` were already nullable; until balances load they are null, `holding.rows` is empty and `holding.none` is null, so draw neither a quantity nor "You do not own this tracker yet". New `view.unavailable`. Buy is disabled and Sell is not offered until balances load.
+- [ ] **Send**: `SendFormState` takes `balances`. `amountLine` and `available.value` are `string | null`. `balanceUnavailable` now also carries the reason while balances have never loaded: keep drawing it where it is drawn.
+- [ ] **Buy and sell**: `TradeFormState` takes `balances`; `available` is `string | null`, and `balanceUnavailable` carries the reason. `portfolioChoices(reads, wallet, side, symbol, balances)` and `noMoneyView(reads, wallet, portfolioId, balances)` take it last; a choice's `caption` is `string | null`, and `noMoneyView` answers null until balances load.
+- [ ] **Invest in a pie**: `pieInvestView` takes `balances`; `available` is `string | null`, and new `balanceUnavailable` is the reason to show under the amount.
+- [ ] **Move to portfolio**: `FundingAmountState` takes a required `readFailed: boolean` (whether the funding wallet's read on opening failed) beside `fundingBalance`. New `view.unavailable`: show its line and retry when not null. The web's `lead` no longer says "Available 0.00 USDC" before the read: it names no amount. `choosePortfolioView` takes `balances`, and each row's `cash` is `string | null`.
+- [ ] **Earn**: `earnScreenView`, `earnPortfolioView` and `earnSheetView` take `balances`. A row's `cash` (and `cash`, `cashAvailable` on `earnPortfolioView`) is `string | null`; the sheet's `available` is `string | null` and it has a new `balanceUnavailable`. The screen has new `loading` and `unavailable`; until balances load, `deposit` and `withdraw` are disabled, `deposit.reason` is the unavailable line and no row `opens` anything. The Earn total was already "Unavailable", never a zero, until every position is read, and is unchanged. `earnChoiceView` and `earnAmountView` are unchanged: they are reached only through the actions the screen now holds back.
+- [ ] **Chart hint**: `marketsCopy.detail.chartHint` is now `{ touch, mouse }` and `mobileMarketsCopy.detail.chartHint` is gone. Draw `chartHint(pointer)` from `@noirwire/shared/presentation`.
+- [ ] **Testing note**: draw `betaView().tag` ("Beta") as a small label beside the NoirWire mark in the app header and on Welcome. Draw `aboutView().beta` ("NoirWire is in testing. Start with small amounts.") as a line on Settings' About page. Both are shown on every network, the main network included: they are about the product, not the network. `networkLabel()` and the test-network banner keep their rule.
+
+For the web app:
+
+- [ ] `app/portfolio/page.tsx` (`homeView`, `portfolioView`), `PortfolioDetail`, `TradeDialog` (`tradeFormView`, `noMoneyView`), `SendDialog`, `FundPrivatelyFlow`, `PieOrderDialog`, `app/earn/page.tsx` and `app/markets/[symbol]/page.tsx` are the call sites above.
+- [ ] `DesktopHome` draws the "could be earning" card from `portfolioCopy.earnPromo`: draw it only when `home.earn` is not null.
+- [ ] `app/markets/[symbol]/page.tsx` draws `copy.chartHint`: draw `chartHint(pointer)`, where `pointer` is "touch" when the device reports a coarse pointer (`matchMedia("(pointer: coarse)")`) and "mouse" otherwise.
+- [ ] The Risks row in Settings reads `settingsCopy.risks.description`, which changed: nothing to do.
+
+For the mobile app:
+
+- [ ] `HomeScreen` (`view.earning` becomes `view.earn`), `PortfolioScreen`, `TrackerScreen`, `TradeSheet` (`portfolioChoices`, `tradeFormView`, `noMoneyView`), `SendScreen`, `FundScreen` (`fundingAmountView`, `choosePortfolioView`), `PieOrderSheet` (`pieInvestView`, `noMoneyView`) and `EarnScreen` are the call sites above.
+- [ ] `TrackerScreen` draws `mobileMarketsCopy.detail.chartHint`: draw `chartHint("touch")`.
+- [ ] The Settings row for Risks and its sublabel are drawn from the app's own strings if they are not read from `settingsCopy.risks.description`: make the sublabel "What can go wrong".
+
+### Added
+
+- `hasLoaded(read)` in `@noirwire/shared/domain`: whether a read has ever come back.
+- `balancesView(read)`, `balancesUnavailable()`, `BalancesView`, `UnavailableView` and `Figure` in `@noirwire/shared/presentation`: the one rule for balances that have never loaded.
+- `chartHint(pointer)` and `ChartPointer` in `@noirwire/shared/presentation`.
+- `betaView()`, `BetaView` and `AboutView.beta`; `appCopy.beta`.
+- `portfolioCopy.balances.unavailable`.
+
+### Fixed
+
+- A wallet whose balances had never loaded showed a total of "$0.00", "Ready to invest $0.00" and "$0.00" on each portfolio, and Home led with "Add money" as if the wallet were empty. Every figure is now null until the first read succeeds, and the wallet is not called empty.
+- The notice over those zeros said "What you see may be out of date." That wording is now only for balances that did load once; where they never loaded the line is "We couldn't load your balances. Check your connection and try again.", with a retry.
+- Send, Move to portfolio, Buy, Sell, a pie's Invest and Earn could be started against a balance that had never been read. They are held back until it has, with the same reason.
+- The web's Move to portfolio sheet said "Available 0.00 USDC" before the funding wallet had been read.
+- The chart hint told a phone's browser or a tablet to hover.
+
+### Changed
+
+| Where                                         | Was                                                                                                     | Is                                                                                                  |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `settingsCopy.costs.move`                     | "Moving money into a portfolio privately: 0.1% + $0.20. It usually arrives within a minute and can ..." | "Moving money into a portfolio privately: 0.1% + $0.20."                                            |
+| `settingsCopy.risks.description`              | "What can go wrong, stated once"                                                                        | "What can go wrong"                                                                                 |
+| `marketsCopy.detail.chartHint`                | "Hover to see the price and date." (and the phone's "Press and hold ...")                               | `{ touch: "Press and hold to see the price and date.", mouse: "Hover to see the price and date." }` |
+| `portfolioCopy.balances.unavailable` (new)    |                                                                                                         | "We couldn't load your balances. Check your connection and try again."                              |
+| `fundingCopy.leadPrivate`, `.leadPublic`      | "... Available {amount}."                                                                               | the same, and without the "Available" sentence when `available` is null                             |
+| `appCopy.beta.tag`, `appCopy.beta.line` (new) |                                                                                                         | "Beta", "NoirWire is in testing. Start with small amounts."                                         |
+
+The arrival time of a private move is still said once in step 3 of the add-money sheet, and on the funding sheet. The costs lines state prices only; their numbers still come from the fee constants.
+
 ## [0.5.3] - 2026-10-04
 
 The fixes from a second first-time-user walkthrough. Costs states the trading fee or says there is none; the add-money sheet opens its costs in place, so the address stays on screen; Home, Markets and a tracker's page say their data may be out of date the moment a refresh fails; a missing price is said one way; bringing a wallet back is "Restore" everywhere; the everyday screens use plain words; Earn off the main network is one line; and a cold open with no connection is answered within eight seconds. The test suite lost the cases that only pinned prose and gained rule checks in their place.

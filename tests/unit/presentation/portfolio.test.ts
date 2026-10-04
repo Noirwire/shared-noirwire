@@ -9,6 +9,7 @@ import {
   type PortfolioDetailView,
 } from "../../../src/presentation/portfolio.js";
 import {
+  READ,
   UPDATED_AT,
   activity,
   holding,
@@ -21,7 +22,7 @@ import {
 const reads = testReads();
 
 function found(wallet: Wallet, at: number | null = UPDATED_AT): PortfolioDetailView {
-  const view = portfolioView(reads, wallet, wallet.portfolios[0].id, at);
+  const view = portfolioView(reads, wallet, wallet.portfolios[0].id, at, READ);
   if (view.kind !== "found") throw new Error("expected a portfolio");
   return view;
 }
@@ -31,7 +32,7 @@ describe("portfolioView", () => {
     const wallet = withFirst((entry) => withHolding(entry, holding("USDC", 396.12)));
     const id = wallet.portfolios[0].id;
     const value = (inEarn?: number | null) => {
-      const view = portfolioView(reads, wallet, id, UPDATED_AT, inEarn);
+      const view = portfolioView(reads, wallet, id, UPDATED_AT, READ, inEarn);
       if (view.kind !== "found") throw new Error("expected a portfolio");
       return { value: view.value, inEarn: view.inEarn };
     };
@@ -47,7 +48,7 @@ describe("portfolioView", () => {
   });
 
   it("says a stale route's portfolio does not exist", () => {
-    expect(portfolioView(reads, testWallet(), "gone", UPDATED_AT)).toEqual({
+    expect(portfolioView(reads, testWallet(), "gone", UPDATED_AT, READ)).toEqual({
       kind: "missing",
       message: "That portfolio does not exist.",
       back: "Back to Home",

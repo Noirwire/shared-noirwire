@@ -7,6 +7,7 @@ import {
   type TradeFormState,
   type TradeReviewState,
 } from "../../../src/presentation/trade.js";
+import { READ } from "../support/screens.js";
 
 const input = (overrides: Partial<TradeInput> = {}): TradeInput => ({
   side: "buy",
@@ -28,6 +29,7 @@ const form = (overrides: Partial<TradeFormState> = {}, draft: Partial<TradeInput
     cash: 100,
     displayLive: true,
     quoting: false,
+    balances: READ,
     ...overrides,
   });
 

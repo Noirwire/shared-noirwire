@@ -22,6 +22,17 @@ export const appCopy = {
     weakPassword: "Your password is easy to guess. Change it to protect this wallet.",
   },
 
+  /**
+   * That the product itself is still being tested. About NoirWire, not about
+   * a network, so it is said on the main network as on any other.
+   */
+  beta: {
+    /** A small label beside the NoirWire mark, in the header and on Welcome. */
+    tag: "Beta",
+    /** The line in Settings, on its About page. */
+    line: "NoirWire is in testing. Start with small amounts.",
+  },
+
   networkBanner: "Test network · never send main network funds",
 
   networkGate: {

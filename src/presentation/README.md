@@ -82,15 +82,16 @@ What a first-time user meets is decided here too, so both apps open the same way
 | `homeView(...)`                              | Home. While the wallet is empty: one button, "Add money", `explanation` under it, no `secondary`, and `showArc` false                                                                                                                                                                                                   |
 | `addMoneyView(wallet, { tradeFeeBps })`      | The add-money sheet: three steps, the person's own funding wallet address inside the second (already shown, and `captureAllowed`), "Network: Solana", and `costs`: "What does it cost?" opened in place, closed at first, so the sheet and its address stay on screen                                                   |
 | `costsView({ tradeFeeBps })`                 | Costs, in Settings and inside the add-money sheet. Its numbers are read from the fee constants and the app's own trading fee; with no fee set it says "no NoirWire fee"                                                                                                                                                 |
-| `aboutView()`                                | About: the help contact and the website, each with an `action` (a `mailto:` or an `https:` URL) to open on a tap                                                                                                                                                                                                        |
+| `aboutView()`                                | About: the help contact and the website, each with an `action` (a `mailto:` or an `https:` URL) to open on a tap, and `beta`, the line saying NoirWire is in testing                                                                                                                                                    |
+| `betaView()`                                 | That NoirWire is in testing: `tag` ("Beta") for a small label beside the NoirWire mark in the header and on Welcome, `line` for Settings' About page. It is about the product, so it is shown on every network, the main one included                                                                                   |
 | `discardPromptView()`                        | Asked before leaving a sheet with something typed into it: a title, a body saying what is lost, and the two buttons                                                                                                                                                                                                     |
 | `unreachableView({ hasWallet, locked })`     | NoirWire could not be reached as the app opened: `checkNetwork` (in `application/`) answered `unreachable`, which it does within `NETWORK_CHECK_LIMIT_MS` (8 s) however long the read hangs. With a stored, locked wallet `unlockOffered` is true: unlocking reads only the device, so the unlock screen is still shown |
 | `earnScreenView(...)`                        | Earn, titled "Earn". Off the main network `notHere` is the one line shown, and the rate, the actions, the total and the rows are left out. Who the USDC is lent through is in `risks.lines`, behind "Read the risks"                                                                                                    |
 | `trackerView(...)`                           | A tracker's page. What kind of certificate it is, what its issuer can do and where it is not offered are in `risks`, behind "Read the risks"; a missing price is `commonCopy.priceUnavailable` and nothing else                                                                                                         |
 | `unlockProblemView(problem, platform)`       | A failed unlock. The typed password is never cleared; after a wrong one it is kept and selected                                                                                                                                                                                                                         |
 | `newPasswordView(platform)`                  | Choosing a password: the rule, with its minimum length, before anything is typed                                                                                                                                                                                                                                        |
-| `noMoneyView(reads, wallet, portfolioId)`    | Buying with nothing to invest, said at the first tap, with the way on: "Add money", or "Move to portfolio" when USDC is waiting                                                                                                                                                                                         |
-| `chartReadout(points, x, { range, readAt })` | The price and date under a finger held on a chart. `chartHighLow(points)` is the range's high and low                                                                                                                                                                                                                   |
+| `noMoneyView(reads, wallet, id, balances)`   | Buying with nothing to invest, said at the first tap, with the way on: "Add money", or "Move to portfolio" when USDC is waiting. Null while balances have never been read                                                                                                                                               |
+| `chartReadout(points, x, { range, readAt })` | The price and date under a finger held on a chart. `chartHighLow(points)` is the range's high and low. `chartHint(pointer)` is the line under the chart: "touch" says to press and hold, "mouse" to hover. A phone always passes "touch"; the web passes what the device reports                                        |
 
 An import says what it is doing under its button (`importWaitingView(...).note`), says why Continue is held while it looks further (`lookFurtherView(...).continuePaused`), and skips the choice of addresses when nothing was found (`importSourceView(...).skipped`).
 
@@ -112,6 +113,31 @@ const freshness = { now: Date.now(), prices: livePricesFreshness(), balances };
 const view = homeView(screenReads, wallet, updatedAt, earnTotal, archivedHeld, freshness);
 // draw view.stale as the quiet notice when it is not null; draw the waiting state while view.loading
 ```
+
+## Balances that have never loaded
+
+An unknown balance is never shown as a zero. Until the app's balance read has come back once (`hasLoaded(read)`: its `succeededAt` is not null), every figure worked out from balances is null in the view model, and its type says so: a `Figure` is `string | null`, and a component draws nothing for null. `balancesView(read)` is the one rule:
+
+| The balance read                 | `known` | The screen                                                                                               |
+| -------------------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| never came back, and it failed   | false   | figures null, and `unavailable`: one line and its `retry`. No stale notice: nothing is on screen to age  |
+| never came back, still under way | false   | figures null, and `loading`                                                                              |
+| came back at least once          | true    | figures shown. If the latest refresh failed, `stale` says they may be out of date, over the last figures |
+
+A zero that was really read is shown as "$0.00".
+
+The same read gates what can be done. An action that needs a known balance (send, move to portfolio, buy, sell, invest in a pie, add to or withdraw from Earn) is disabled until balances load, and where the screen gives a reason it is the same line as `unavailable.text`. Nothing is concluded from what was not read: a wallet is not called empty, a portfolio is not "Nothing here yet", a tracker is not "not owned", and "no money" is not said.
+
+| View model                                             | Takes                                            | Null until loaded                                                                    |
+| ------------------------------------------------------ | ------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `homeView`                                             | `freshness.balances`                             | `total.value`, `cash.value`, each row's `value` and `line`; `investments` is empty   |
+| `portfolioRowView`                                     | a fourth argument, `balances`                    | `value`, `line`                                                                      |
+| `portfolioView`                                        | a fifth argument, `balances` (before `inEarn`)   | `value`, `cashLine`, `holdings`, `empty`, `primary`; a pie's `mix.slices[].trailing` |
+| `trackerView`                                          | `freshness.balances`                             | `holding.quantity`, `.value`, `.none`; `holding.rows` is empty                       |
+| `sendFormView`, `tradeFormView`, `pieInvestView`       | `balances` in the state                          | `amountLine`, `available` (`available.value` on a send)                              |
+| `portfolioChoices`, `noMoneyView`                      | a last argument, `balances`                      | each `caption`; `noMoneyView` answers null                                           |
+| `earnScreenView`, `earnPortfolioView`, `earnSheetView` | `balances` in the state                          | each row's `cash`; the sheet's `available`                                           |
+| `fundingAmountView`, `choosePortfolioView`             | `readFailed` beside `fundingBalance`; `balances` | `available.value`, and the lead names no amount; each row's `cash`                   |
 
 ## Route parameters
 

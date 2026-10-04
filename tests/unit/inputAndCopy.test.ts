@@ -29,6 +29,7 @@ import { sendFormView } from "../../src/presentation/send.js";
 import { privacySectionHelp } from "../../src/presentation/settings.js";
 import { tradeFormView } from "../../src/presentation/trade.js";
 import { harness } from "./support/actions.js";
+import { READ } from "./support/screens.js";
 
 describe("counted nouns", () => {
   it("go through one helper, which says one of a thing in the singular", () => {
@@ -118,6 +119,7 @@ describe("an amount with more decimals than the asset has", () => {
       pastedForeign: false,
       unsendable: null,
       network: "Solana",
+      balances: READ,
     } as Parameters<typeof sendFormView>[0]);
   };
 
@@ -185,6 +187,7 @@ describe("an amount with more decimals than the asset has", () => {
         cash: 100,
         displayLive: true,
         quoting: false,
+        balances: READ,
       });
     };
     expect(trade("cash", "10.1234567")).toMatchObject({
@@ -219,6 +222,7 @@ describe("the funding amount field", () => {
       asset: "USDC",
       privateRoute: true,
       fundingBalance: 20,
+      readFailed: false,
       amountText,
       decimals: 6,
       presets: [10, 25],
@@ -321,5 +325,11 @@ describe("the Privacy heading in Settings", () => {
     );
     expect(privacySectionHelp({ analyticsControl: false })).toBe("Understand what is public.");
     expect(settingsCopy.sections.privacy.helpWithoutAnalytics).not.toMatch(/analytics/);
+  });
+});
+
+describe("the Risks row in Settings", () => {
+  it("says what the page is about, without a word on how often it is said", () => {
+    expect(settingsCopy.risks.description).not.toMatch(/\bonce\b|stated/i);
   });
 });

@@ -20,6 +20,7 @@ export {
   type ReadFreshness,
   STALE_AFTER_MS,
   freshnessOf,
+  hasLoaded,
   recordRead,
 } from "./freshness.js";
 export {

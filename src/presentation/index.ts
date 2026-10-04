@@ -68,15 +68,20 @@ export {
   fundingWalletRow,
   fundingWalletView,
 } from "./funding.js";
-export { type AboutLink, type AboutView, aboutView } from "./about.js";
+export { type AboutLink, type AboutView, type BetaView, aboutView, betaView } from "./about.js";
 export { type AddMoneyAddress, type AddMoneyView, addMoneyView } from "./addMoney.js";
 export { type CostsState, type CostsView, costsView, privateMoveCostText } from "./costs.js";
 export { type DiscardPromptView, discardPromptView } from "./discard.js";
 export {
+  type BalancesView,
+  type Figure,
   type FreshnessView,
   type HomeFreshness,
   type ScreenFreshness,
   type TrackerFreshness,
+  type UnavailableView,
+  balancesUnavailable,
+  balancesView,
   freshnessView,
 } from "./freshness.js";
 export {
@@ -103,6 +108,7 @@ export {
 } from "./importFindings.js";
 export {
   type ChangeView,
+  type ChartPointer,
   type MarketsState,
   type MarketsView,
   type PriceHistory,
@@ -113,6 +119,7 @@ export {
   type TrackerView,
   changeView,
   chartHighLow,
+  chartHint,
   chartReadout,
   marketsView,
   trackerRowView,

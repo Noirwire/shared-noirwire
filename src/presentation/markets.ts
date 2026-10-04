@@ -8,7 +8,14 @@ import type { AppPlatform } from "../domain/appPlatform.js";
 import { dateAndTime, shares, sinceDate, usd } from "../domain/format.js";
 import { RANGE_SPAN_MS, type PriceRange } from "../domain/priceRanges.js";
 import type { Wallet } from "../domain/wallet.js";
-import { freshnessView, type ScreenFreshness, type TrackerFreshness } from "./freshness.js";
+import {
+  balancesView,
+  freshnessView,
+  type Figure,
+  type ScreenFreshness,
+  type TrackerFreshness,
+  type UnavailableView,
+} from "./freshness.js";
 
 type Listed = { symbol: string; name: string; issuer?: string };
 
@@ -239,13 +246,23 @@ export type TrackerView =
             low: { label: string; value: string };
           };
       ranges: { value: PriceRange; label: string };
+      /**
+       * What the person holds of it. Until balances have been read once
+       * `quantity`, `value` and `none` are all null and `rows` is empty: it is
+       * not known whether anything is held, so nothing is said either way.
+       */
       holding: {
         title: string;
-        quantity: string | null;
-        value: string | null;
+        quantity: Figure;
+        value: Figure;
         rows: { id: string; label: string }[];
         none: string | null;
       } | null;
+      /**
+       * A wallet's balances have never been read and the read failed: the
+       * one line, with its retry. Buy and Sell are held back. Null for a visitor.
+       */
+      unavailable: UnavailableView | null;
       about: { title: string; lines: string[]; retired: string | null };
       /**
        * Behind "Read the risks": what kind of certificate the tracker is, what
@@ -303,6 +320,19 @@ export function chartReadout(
   return { index, price, date, text: `${price} · ${date}` };
 }
 
+/** What the chart is read with: a finger, or a pointer that can hover. */
+export type ChartPointer = "touch" | "mouse";
+
+/**
+ * The line under a chart saying how to read a point on it, in the words of
+ * what the person is pointing with and not of the platform: a phone always
+ * passes "touch", and the web passes what the device reports, so a tablet's
+ * browser is told to press and hold.
+ */
+export function chartHint(pointer: ChartPointer): string {
+  return marketsCopy.detail.chartHint[pointer];
+}
+
 function spokenDollars(amount: number) {
   const [whole, cents] = amount.toFixed(2).split(".");
   return `${whole} dollars ${Number(cents)} cents`;
@@ -353,7 +383,9 @@ export function trackerView(reads: ScreenReads, state: TrackerState): TrackerVie
   const holders = portfolios.filter((portfolio) =>
     portfolio.holdings.some((holding) => holding.symbol === symbol && holding.amount > 0),
   );
-  const position = wallet ? reads.positionAcross(wallet, symbol) : null;
+  const balances = balancesView(state.freshness.balances);
+  const known = balances.known;
+  const position = wallet && known ? reads.positionAcross(wallet, symbol) : null;
   const held = position !== null && position.amount > 0;
   const quantity = (amount: number) => {
     const shown = reads.shownUnits(symbol, amount);
@@ -367,8 +399,8 @@ export function trackerView(reads: ScreenReads, state: TrackerState): TrackerVie
       : [
           ...(entry.retired
             ? []
-            : [{ kind: "buy" as const, label: detail.buy, disabled: !online }]),
-          ...(holders.length > 0
+            : [{ kind: "buy" as const, label: detail.buy, disabled: !online || !known }]),
+          ...(known && holders.length > 0
             ? [{ kind: "sell" as const, label: detail.sell, disabled: !online }]
             : []),
         ];
@@ -409,7 +441,7 @@ export function trackerView(reads: ScreenReads, state: TrackerState): TrackerVie
               ? detail.holdingValue(usd(position.value))
               : detail.valueWaiting
             : null,
-          rows: holders.map((portfolio) => ({
+          rows: (known ? holders : []).map((portfolio) => ({
             id: portfolio.id,
             label: detail.holdingRow(
               portfolio.label,
@@ -418,8 +450,9 @@ export function trackerView(reads: ScreenReads, state: TrackerState): TrackerVie
               ),
             ),
           })),
-          none: held ? null : detail.notOwned,
+          none: held || !known ? null : detail.notOwned,
         },
+    unavailable: visitor ? null : balances.unavailable,
     about: {
       title: detail.about,
       lines: [detail.publicTrades, detail.dividends],
@@ -436,7 +469,7 @@ export function trackerView(reads: ScreenReads, state: TrackerState): TrackerVie
     },
     actions,
     bottomNote:
-      !visitor && portfolios.length > 0 && entry.retired && holders.length === 0
+      !visitor && known && portfolios.length > 0 && entry.retired && holders.length === 0
         ? detail.retiredMobile
         : null,
     offline: mobile && !visitor && !online ? mobileMarketsCopy.detail.offline : null,
