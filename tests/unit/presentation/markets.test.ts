@@ -254,16 +254,19 @@ describe("reading a chart", () => {
       index: 0,
       price: "$100.00",
       date: "14 Jul 2026, 12:00",
+      text: "$100.00 · 14 Jul 2026, 12:00",
     });
     expect(chartReadout(points, 0.5, series)).toEqual({
       index: 2,
       price: "$98.00",
       date: "15 Jul 2026, 00:00",
+      text: "$98.00 · 15 Jul 2026, 00:00",
     });
     expect(chartReadout(points, 1, series)).toEqual({
       index: 4,
       price: "$107.00",
       date: "15 Jul 2026, 12:00",
+      text: "$107.00 · 15 Jul 2026, 12:00",
     });
   });
 

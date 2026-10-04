@@ -68,7 +68,7 @@ export const pieCopy = {
     investTitle: (portfolio: string) => `Invest in ${portfolio}`,
     rebalanceTitle: (portfolio: string) => `Rebalance ${portfolio}`,
     tradingUnavailable: (network: string) =>
-      `Live tracker trading is unavailable on ${network}. The pie is saved, and can be invested on mainnet.`,
+      `The pie is saved. Live tracker trading runs on mainnet; switch from ${network} to invest it.`,
     investLabel: "Invest $",
     moreThanReady: "More than this pie has to invest.",
     howItSplits: "How it splits, toward your targets",

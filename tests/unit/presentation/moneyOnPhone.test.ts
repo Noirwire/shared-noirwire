@@ -328,7 +328,7 @@ describe("Earn", () => {
   it("waits for the rate, says Earn is mainnet only, and asks for a portfolio first", () => {
     expect(screen({ rate: undefined }).rate).toBeNull();
     expect(screen({ available: false })).toMatchObject({
-      mainnetOnly: "Earn is available on Solana mainnet only.",
+      mainnetOnly: "Earn runs on Solana mainnet.",
       deposit: { disabled: true },
     });
     expect(screen({ portfolios: [] }).empty).toEqual({

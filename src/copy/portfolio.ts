@@ -376,7 +376,7 @@ export const portfolioCopy = {
       get: {
         title: "Get USDC",
         detail: (network: string) =>
-          `USDC is a digital dollar: 1 USDC = $1. NoirWire cannot take card payments yet. Buy USDC in any app or service that can send it on the ${network} network. No account with us is needed.`,
+          `USDC is a digital dollar: 1 USDC = $1. Send it from any app or wallet that supports USDC on the ${network} network. You do not need an account with us.`,
       },
       send: {
         title: "Send it to your funding wallet",

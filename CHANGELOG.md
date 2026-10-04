@@ -4,6 +4,45 @@ All notable changes to this package are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The apps pin an exact tag; see [README.md](README.md#releasing) for how a tag becomes a release.
 
+## [0.5.2] - 2026-10-04
+
+The product talks about what a person can do, never about what it lacks or cannot do in the main path: a copy-wide audit rewrote the sentences that led with a limitation, and a test now refuses their return. Alongside it, a round of small pieces both apps had quietly written twice (a step's status word, the chart's price-and-date join, a dialog's close label, a phrase-copy warning) now have one shared home, and Home's emptiness check no longer leads with "Add money" over a wallet that still has money in an archived portfolio or in Earn, unread.
+
+### Breaking
+
+For both apps:
+
+- [ ] **Home's emptiness rule**: `homeView` takes a fifth, required argument, `archivedHeld: ArchivedHeldState` (`{ holds: boolean; earnUnknown: boolean }`). Pass `holds: true` while any archived portfolio holds a tracker or money moved into it, and `earnUnknown: true` while any archived portfolio's Earn position has not been confirmed as zero (still loading, or its read failed). Either one now keeps Home from leading with "Add money" over a wallet that is not really empty. The web app can delete its own `homeOverHeldMoney` wrapper and `walletIsEmpty` in `src/components/portfolio/homeState.ts` and call `homeView` directly with the two booleans it already computes for them. Separately, `homeView` no longer treats an unread Earn total (`earn === null`) as confirmed zero: a wallet whose active-portfolio Earn figure has not come back yet now keeps both buttons instead of assuming there is nothing to show.
+- [ ] **`chartReadout(...)` answers `text`**, the price and date already joined ("$100.00 · 14 Jul 2026, 12:00"). The web app's `PriceChart` built this join itself (`` `${readout.price} · ${readout.date}` ``); read `.text` and delete the local join.
+- [ ] **Removed from the add-money explainer**: the card-payments sentence is gone from `portfolioCopy.addMoney.steps.get.detail` (see Changed).
+
+### Added
+
+Pieces reported by both apps as written twice, now with one shared home (a phone variant only where the wording truly differs):
+
+- `commonCopy.showLabel`, `.hideLabel` (a reveal control's accessible name), `.increaseLabel`, `.decreaseLabel` (a stepper's accessible name), `.percentSpoken` (a stepper's spoken value), `.closeLabel` (a close control's accessible name where plain "Close" is ambiguous), `.nothingHereYet`, `.discardThis`, `.keepEditing`, `.discard` (a sheet's unsaved-changes prompt), `.stepStatus` (a progress step's status word: waiting, in progress, done, failed, not done), `.andList` (joins a list the way a sentence does: "SOL", "SOL and USDC", "SOL, USDC and SPYx"). `commonCopy.back` and `.close` already covered the plain labels; apps reading a local "Back" or "Close" string should read those instead.
+- `marketsCopy.detail.chartHint` ("Hover to see the price and date.") and `mobileMarketsCopy.detail.chartHint` ("Press and hold to see the price and date."): the one-line hint under a tracker's chart.
+- `mobileOnboardingCopy.phrase.wordLabel(position, word)`, the accessible name for one word of the recovery-phrase grid, and `.phrase.copy`, the phrase-copy warning (`confirmTitle`, `confirmBody`, `copyAnyway`, `copied`, `copiedNote`, `failed`) a phone warns with before copying a recovery phrase to the clipboard. `onboardingCopy.phrase.reveal` and `.hidden` already covered the reveal button and the concealed word; the mobile app's own `PhraseGrid.tsx` duplicates both verbatim today and should read them instead.
+- `mobileWalletCopy.protection.refused`: what stands in place of a secret (an address, a recovery phrase) the phone could not confirm is kept out of screenshots and recordings.
+- `mobileSendCopy.camera`: the camera-permission screen that stands in for the scanner (`purpose`, `allow`, `off`, `offDetail`, `openSettings`).
+- `mobileAppCopy.runtimeFailure`: what the phone says when its own security checks fail on startup, before anything else opens (`title`, `detail`, `configFailure`, `closing`).
+
+### Changed
+
+The owner's rule on copy: the product states the working route as steps, and never volunteers a limitation in the main path (onboarding, Welcome, Home, add money, funding, markets, trade, Earn, send). A network a feature does not reach now says where it does run, the way `errorsCopy.trade.mainnetOnly` already did for Live trading's own refusal message. Every string that changed:
+
+| Where                                     | Was                                                                                                                                                                                      | Is                                                                                                                                                       |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `portfolioCopy.addMoney.steps.get.detail` | "USDC is a digital dollar: 1 USDC = $1. NoirWire cannot take card payments yet. Buy USDC in any app or service that can send it on the {network} network. No account with us is needed." | "USDC is a digital dollar: 1 USDC = $1. Send it from any app or wallet that supports USDC on the {network} network. You do not need an account with us." |
+| `commonCopy.tradingUnavailableOn`         | "Live trading is unavailable on {network}. You can explore trackers, but cannot place an order here."                                                                                    | "Live trading runs on Solana mainnet. You can explore trackers on {network}."                                                                            |
+| `errorsCopy.trade.mainnetOnly`            | "Live trading is only available on mainnet."                                                                                                                                             | "Live trading runs on mainnet."                                                                                                                          |
+| `errorsCopy.earn.mainnetOnly`             | "Earning is only available on Solana mainnet."                                                                                                                                           | "Earning runs on Solana mainnet."                                                                                                                        |
+| `earnCopy.mainnetOnly`                    | "Earn is available on Solana mainnet only."                                                                                                                                              | "Earn runs on Solana mainnet."                                                                                                                           |
+| `earnCopy.notHere`                        | "Earn is available on Solana mainnet only. Nothing can be lent or withdrawn on {network}."                                                                                               | "Earn runs on Solana mainnet. Switch from {network} to lend or withdraw."                                                                                |
+| `pieCopy.order.tradingUnavailable`        | "Live tracker trading is unavailable on {network}. The pie is saved, and can be invested on mainnet."                                                                                    | "The pie is saved. Live tracker trading runs on mainnet; switch from {network} to invest it."                                                            |
+
+`tests/unit/copyVariants.test.ts` gained `PRODUCT_LIMITATION_PHRASES` and `productLimitationsIn`, alongside the existing `REPLACED_NAMES`: a test refuses the card-payments sentence and the "unavailable on" / "mainnet only" / "only available on" / "not supported" phrasings wherever they reappear in the everyday copy (the Privacy and Risks pages are excluded, same as the existing name check).
+
 ## [0.5.1] - 2026-10-04
 
 The wording a first-time user meets, and the view models that carry it, so both apps draw the same Welcome, empty Home, add-money sheet, Costs, tracker page and import. One name for each thing on both platforms. Both apps have rendering work to do: see Breaking.

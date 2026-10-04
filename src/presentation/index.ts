@@ -71,6 +71,7 @@ export {
 export { type AddMoneyAddress, type AddMoneyView, addMoneyView } from "./addMoney.js";
 export { type CostsView, costsView, privateMoveCostText } from "./costs.js";
 export {
+  type ArchivedHeldState,
   type EarnTotal,
   type HomeAction,
   type HomeTarget,

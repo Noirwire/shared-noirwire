@@ -40,8 +40,8 @@ describe("what a refused action says", () => {
       "This send can't be made. Nothing was sent. Check the amount and the recipient's address.",
     ],
     ["moreThanOnchain", "More than this portfolio holds onchain."],
-    ["tradingMainnetOnly", "Live trading is only available on mainnet."],
-    ["earnMainnetOnly", "Earning is only available on Solana mainnet."],
+    ["tradingMainnetOnly", "Live trading runs on mainnet."],
+    ["earnMainnetOnly", "Earning runs on Solana mainnet."],
   ];
 
   it.each(said)("%s", (reason, words) => {

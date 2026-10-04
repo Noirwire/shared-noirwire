@@ -48,7 +48,7 @@ export const errorsCopy = {
   },
 
   trade: {
-    mainnetOnly: "Live trading is only available on mainnet.",
+    mainnetOnly: "Live trading runs on mainnet.",
     notTradable: (symbol: string) => `${symbol} is not a tradable asset.`,
     noPrice: "We couldn't get a price for this trade. Nothing was traded. Try again.",
     priceMoved: "The price moved before this order could be placed. Nothing was traded.",
@@ -60,7 +60,7 @@ export const errorsCopy = {
   },
 
   earn: {
-    mainnetOnly: "Earning is only available on Solana mainnet.",
+    mainnetOnly: "Earning runs on Solana mainnet.",
     failed: "This did not go through. Nothing was moved. Try again.",
   },
 } as const;

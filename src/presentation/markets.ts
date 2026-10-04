@@ -301,16 +301,14 @@ export function chartReadout(
   points: readonly number[],
   x: number,
   series: { range: PriceRange; readAt: number },
-): { index: number; price: string; date: string } | null {
+): { index: number; price: string; date: string; text: string } | null {
   if (points.length < 2) return null;
   const last = points.length - 1;
   const index = Math.round(Math.min(Math.max(x, 0), 1) * last);
   const at = series.readAt - ((last - index) * RANGE_SPAN_MS[series.range]) / last;
-  return {
-    index,
-    price: usd(points[index]),
-    date: series.range === "1M" ? sinceDate(at) : dateAndTime(at),
-  };
+  const price = usd(points[index]);
+  const date = series.range === "1M" ? sinceDate(at) : dateAndTime(at);
+  return { index, price, date, text: `${price} · ${date}` };
 }
 
 function spokenDollars(amount: number) {

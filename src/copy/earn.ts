@@ -42,9 +42,9 @@ export const earnCopy = {
   amountLabel: "Amount in USDC",
   yearEstimate: (dollars: string, rate: string) =>
     `About ${dollars} in a year at today's ${rate}% variable rate. This is an estimate, not a promise.`,
-  mainnetOnly: "Earn is available on Solana mainnet only.",
+  mainnetOnly: "Earn runs on Solana mainnet.",
   notHere: (network: string) =>
-    `Earn is available on Solana mainnet only. Nothing can be lent or withdrawn on ${network}.`,
+    `Earn runs on Solana mainnet. Switch from ${network} to lend or withdraw.`,
   unread: "What is in Earn can't be shown right now.",
   beforeDepositTitle: "Before you deposit",
   beforeDeposit: (venue: string) =>

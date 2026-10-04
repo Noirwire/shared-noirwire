@@ -12,6 +12,20 @@ export type HomeTarget =
 
 export type HomeAction = { label: string; target: HomeTarget };
 
+/**
+ * What an archived portfolio still holds, which Home's emptiness check must
+ * count even though archived portfolios are left out of the total: `holds`
+ * is true while any archived portfolio has a tracker or money moved into it,
+ * and `earnUnknown` is true while any archived portfolio's Earn position has
+ * not been confirmed as zero (still being read, or the read failed). Either
+ * one keeps Home from leading with "Add money" over a wallet that is not
+ * really empty.
+ */
+export type ArchivedHeldState = {
+  holds: boolean;
+  earnUnknown: boolean;
+};
+
 export type InvestmentRowView = {
   symbol: string;
   name: string;
@@ -145,16 +159,21 @@ export function homeView(
   wallet: Wallet,
   updatedAt: number | null,
   earn: EarnTotal,
+  archivedHeld: ArchivedHeldState,
 ): HomeView {
   const home = portfolioCopy.home;
   const addMoneyCopy = portfolioCopy.addMoney;
   const overview = reads.portfolioOverview(wallet, updatedAt);
+  const earnUnconfirmed = earn === null || archivedHeld.earnUnknown;
+  const earnHeld = typeof earn === "number" && earn > 0;
   const empty =
     overview.valued &&
     overview.total === 0 &&
     !overview.hasInvestments &&
     !fundingHoldsAnything(wallet) &&
-    !earn;
+    !archivedHeld.holds &&
+    !earnUnconfirmed &&
+    !earnHeld;
   const usdc = wallet.funding.tokens.USDC ?? 0;
   const first = reads.activePortfolios(wallet)[0];
   const waiting =

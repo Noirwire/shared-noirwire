@@ -136,7 +136,7 @@ describe("addMoneyView", () => {
       "Move it into a portfolio",
     ]);
     expect(view.steps[0].detail).toBe(
-      "USDC is a digital dollar: 1 USDC = $1. NoirWire cannot take card payments yet. Buy USDC in any app or service that can send it on the Solana network. No account with us is needed.",
+      "USDC is a digital dollar: 1 USDC = $1. Send it from any app or wallet that supports USDC on the Solana network. You do not need an account with us.",
     );
     expect(view.steps[2].detail).toBe(
       `When it arrives, choose a portfolio and tap Move to portfolio. A private move is not linked to your funding wallet in the public record. It costs ${privateMoveCostText()}. It usually arrives within a minute and can take a few.`,

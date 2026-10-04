@@ -181,6 +181,19 @@ export const mobileOnboardingCopy = {
   phrase: {
     intro: onlyWayBack("phone"),
     continueReason: "Reveal the words and confirm you have saved them.",
+    /** A hidden word's accessible name, read out for each numbered tile. */
+    wordLabel: (position: number, word: string) => `Word ${position}, ${word}`,
+    /** Offering to copy the phrase, which only the phone warns about: a phone's clipboard is readable by its own keyboards and other apps, and can sync to other devices. */
+    copy: {
+      confirmTitle: "Copy the recovery phrase?",
+      confirmBody: (clearSeconds: number) =>
+        `Other apps and keyboards on this phone can read the clipboard, and it may sync to your other devices. It is cleared after ${clearSeconds} seconds.`,
+      copyAnyway: "Copy anyway",
+      copied: "Copied",
+      copiedNote: (clearSeconds: number) =>
+        `Copied. The clipboard is cleared in ${clearSeconds} seconds; copy something else to be sure.`,
+      failed: "Copy failed. Write the words down instead.",
+    },
   },
   confirm: {
     intro: "Pick the word at each position from the list you wrote down.",

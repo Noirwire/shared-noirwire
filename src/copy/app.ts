@@ -62,4 +62,15 @@ export const mobileAppCopy = {
     offline:
       "You're offline. Balances and prices may be out of date, and nothing can be sent until you're back online.",
   },
+
+  /** The phone checks its security features on every start; a failure stops the app before it opens anything. */
+  runtimeFailure: {
+    title: "NoirWire cannot run safely on this device",
+    detail:
+      "The app checks its security features every time it starts. These did not work as expected, so nothing was opened and no keys were read:",
+    /** What a failed setup check (not a security check) is listed as. */
+    configFailure: "App configuration",
+    closing:
+      "Update the app and try again. Your wallet is not affected: it can always be restored with its recovery phrase.",
+  },
 } as const;

@@ -102,6 +102,32 @@ function replacedNamesIn(copy: unknown): string[] {
   );
 }
 
+/**
+ * Phrasing the product led with before: what NoirWire lacks or cannot do in
+ * the main path, instead of the working route stated as steps. Each entry is
+ * a sentence that was once in the everyday copy and the positive form that
+ * replaced it.
+ */
+const PRODUCT_LIMITATION_PHRASES: [RegExp, string][] = [
+  [
+    /cannot take card payments/i,
+    "the add-money step says how to get USDC, not what NoirWire cannot take",
+  ],
+  [/\bunavailable on\b/i, "a network that does not run a feature says where it does run"],
+  [/\bmainnet only\b/i, "a network that does not run a feature says where it does run"],
+  [/\bonly available on\b/i, "a network that does not run a feature says where it does run"],
+  [/\bnot supported\b/i, "say what to do instead of naming what isn't supported"],
+];
+
+/** Every use of a limitation-first phrase in `copy`, as "why: the string". */
+function productLimitationsIn(copy: unknown): string[] {
+  return strings(copy).flatMap((text) =>
+    PRODUCT_LIMITATION_PHRASES.filter(([term]) => term.test(text)).map(
+      ([, why]) => `${why}: ${text}`,
+    ),
+  );
+}
+
 /** A copy object without the named sections. */
 function without<T extends object>(copy: T, ...sections: (keyof T)[]): Partial<T> {
   return Object.fromEntries(
@@ -389,7 +415,7 @@ describe("per-platform copy", () => {
       [earnCopy.unread, "What is in Earn can't be shown right now."],
       [
         earnCopy.notHere("Solana devnet"),
-        "Earn is available on Solana mainnet only. Nothing can be lent or withdrawn on Solana devnet.",
+        "Earn runs on Solana mainnet. Switch from Solana devnet to lend or withdraw.",
       ],
       [mobileWalletCopy.newPassword.checkFailed, "Could not check this password. Type it again."],
       [mobilePortfolioCopy.create.forExample("Investing"), "For example: Investing"],
@@ -517,6 +543,29 @@ describe("per-platform copy", () => {
     expect(replacedNamesIn({ label: "Cash", button: "Move to portfolio" })).toEqual([]);
   });
 
+  it("never leads with what NoirWire lacks or cannot do in the main path", () => {
+    expect(productLimitationsIn(EVERYDAY)).toEqual([]);
+  });
+
+  it("refuses a limitation-first sentence wherever it is put back", () => {
+    expect(productLimitationsIn({ step: "NoirWire cannot take card payments yet." })).toHaveLength(
+      1,
+    );
+    expect(
+      productLimitationsIn({
+        line: (network: string) => `Live trading is unavailable on ${network}.`,
+      }),
+    ).toHaveLength(1);
+    expect(
+      productLimitationsIn({ line: "Earn is available on Solana mainnet only." }),
+    ).toHaveLength(1);
+    expect(
+      productLimitationsIn({ line: "Live trading is only available on mainnet." }),
+    ).toHaveLength(1);
+    expect(productLimitationsIn({ line: "That payment method is not supported." })).toHaveLength(1);
+    expect(productLimitationsIn({ line: "Earn runs on Solana mainnet." })).toEqual([]);
+  });
+
   it("says each first-time-user decision in its exact words", () => {
     expect(onboardingCopy.welcome.title).toBe("Invest in US stock trackers. Privately.");
     expect(onboardingCopy.welcome.lines).toEqual([
@@ -539,7 +588,7 @@ describe("per-platform copy", () => {
     );
     expect(portfolioCopy.addMoney.title).toBe("Add digital dollars");
     expect(portfolioCopy.addMoney.steps.get.detail("Solana")).toBe(
-      "USDC is a digital dollar: 1 USDC = $1. NoirWire cannot take card payments yet. Buy USDC in any app or service that can send it on the Solana network. No account with us is needed.",
+      "USDC is a digital dollar: 1 USDC = $1. Send it from any app or wallet that supports USDC on the Solana network. You do not need an account with us.",
     );
     expect(portfolioCopy.addMoney.steps.send.detail("Solana")).toBe(
       "Copy the address below. In the other app choose USDC and the Solana network, and check the address before sending. This transfer is public.",
@@ -593,6 +642,58 @@ describe("per-platform copy", () => {
       helpContact: "ph1l1ph@proton.me",
       websiteValue: "noirwire.com",
     });
+  });
+
+  it("gives each app leftover a shared home, with web and phone variants only where they differ", () => {
+    expect(commonCopy.showLabel("the recovery phrase")).toBe("Show the recovery phrase");
+    expect(commonCopy.hideLabel("the recovery phrase")).toBe("Hide the recovery phrase");
+    expect(commonCopy.increaseLabel("the weight")).toBe("Increase the weight");
+    expect(commonCopy.decreaseLabel("the weight")).toBe("Decrease the weight");
+    expect(commonCopy.percentSpoken(42)).toBe("42 percent");
+    expect(commonCopy.closeLabel("Add digital dollars")).toBe("Close Add digital dollars");
+    expect(commonCopy.nothingHereYet).toBe("Nothing here yet");
+    expect(commonCopy.discardThis).toBe("Discard this?");
+    expect(commonCopy.keepEditing).toBe("Keep editing");
+    expect(commonCopy.discard).toBe("Discard");
+    expect(commonCopy.stepStatus).toEqual({
+      waiting: "Waiting",
+      current: "In progress",
+      done: "Done",
+      failed: "Failed",
+      skipped: "Not done",
+    });
+    expect(commonCopy.andList(["SOL"])).toBe("SOL");
+    expect(commonCopy.andList(["SOL", "USDC"])).toBe("SOL and USDC");
+    expect(commonCopy.andList(["SOL", "USDC", "SPYx"])).toBe("SOL, USDC and SPYx");
+    expect(commonCopy.andList([])).toBe("");
+
+    expect(marketsCopy.detail.chartHint).toBe("Hover to see the price and date.");
+    expect(mobileMarketsCopy.detail.chartHint).toBe("Press and hold to see the price and date.");
+
+    expect(mobileOnboardingCopy.phrase.wordLabel(1, "abandon")).toBe("Word 1, abandon");
+    expect(mobileOnboardingCopy.phrase.copy.confirmTitle).toBe("Copy the recovery phrase?");
+    expect(mobileOnboardingCopy.phrase.copy.confirmBody(30)).toBe(
+      "Other apps and keyboards on this phone can read the clipboard, and it may sync to your other devices. It is cleared after 30 seconds.",
+    );
+    expect(mobileOnboardingCopy.phrase.copy.copiedNote(30)).toBe(
+      "Copied. The clipboard is cleared in 30 seconds; copy something else to be sure.",
+    );
+
+    expect(mobileWalletCopy.protection.refused).toBe(
+      "This can't be shown safely right now, so it is kept hidden. Try again.",
+    );
+
+    expect(mobileSendCopy.camera).toEqual({
+      purpose: "NoirWire uses the camera only to scan a QR code you point it at.",
+      allow: "Allow camera",
+      off: "Camera access is off.",
+      offDetail:
+        "Allow the camera in system settings to scan a code, or paste the address instead.",
+      openSettings: "Open settings",
+    });
+
+    expect(mobileAppCopy.runtimeFailure.title).toBe("NoirWire cannot run safely on this device");
+    expect(mobileAppCopy.runtimeFailure.configFailure).toBe("App configuration");
   });
 
   it("leaves what was already good as it was", () => {

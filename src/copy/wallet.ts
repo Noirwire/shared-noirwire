@@ -141,4 +141,9 @@ export const mobileWalletCopy = {
     damaged: damaged("on this phone"),
     noWallet: noWallet("on this phone"),
   },
+
+  /** Where a secret (an address, a recovery phrase) is held back because the phone could not confirm it is kept out of screenshots and recordings. */
+  protection: {
+    refused: "This can't be shown safely right now, so it is kept hidden. Try again.",
+  },
 } as const;

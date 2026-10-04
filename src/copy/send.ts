@@ -103,6 +103,15 @@ export const mobileSendCopy = {
   notAnAddress: "That code is not a Solana address.",
   addressOnly: "Only the address was taken from this code. Enter the amount yourself.",
 
+  /** The camera permission screen that stands in place of the scanner. */
+  camera: {
+    purpose: "NoirWire uses the camera only to scan a QR code you point it at.",
+    allow: "Allow camera",
+    off: "Camera access is off.",
+    offDetail: "Allow the camera in system settings to scan a code, or paste the address instead.",
+    openSettings: "Open settings",
+  },
+
   pasteWarning:
     "Pasted text contains characters that cannot be part of an address. Check the address before continuing.",
   invalidAmount: "Enter an amount, like 12.50.",

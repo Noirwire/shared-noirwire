@@ -87,7 +87,7 @@ describe("earnSheetView", () => {
 
   it("says Earn is mainnet only, and shows no cost there", () => {
     const view = sheet({ available: false });
-    expect(view.mainnetOnly).toBe("Earn is available on Solana mainnet only.");
+    expect(view.mainnetOnly).toBe("Earn runs on Solana mainnet.");
     expect(view.networkCost).toBeNull();
     expect(view.networkCostLine).toBeNull();
     expect(view.confirm.disabled).toBe(true);

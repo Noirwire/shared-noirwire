@@ -11,6 +11,7 @@ import {
 } from "../support/screens.js";
 
 const reads = testReads();
+const NOTHING_ARCHIVED = { holds: false, earnUnknown: false };
 
 describe("homeView", () => {
   it("counts what is in Earn in the total, and says what is there", () => {
@@ -20,9 +21,9 @@ describe("homeView", () => {
         index === 0 ? withHolding(entry, holding("USDC", 100)) : entry,
       ),
     }));
-    const without = homeView(reads, wallet, UPDATED_AT, undefined);
-    const lending = homeView(reads, wallet, UPDATED_AT, 24.99);
-    const unread = homeView(reads, wallet, UPDATED_AT, null);
+    const without = homeView(reads, wallet, UPDATED_AT, undefined, NOTHING_ARCHIVED);
+    const lending = homeView(reads, wallet, UPDATED_AT, 24.99, NOTHING_ARCHIVED);
+    const unread = homeView(reads, wallet, UPDATED_AT, null, NOTHING_ARCHIVED);
     expect(without.total.value).toBe("$100.00");
     expect(lending.total.value).toBe("$124.99");
     expect(lending.earning).toEqual({ label: "Earning", value: "$24.99" });
@@ -32,7 +33,7 @@ describe("homeView", () => {
   });
 
   it("leads an empty wallet with one button, Add money, one line under it and no arc", () => {
-    const view = homeView(reads, testWallet(), UPDATED_AT, undefined);
+    const view = homeView(reads, testWallet(), UPDATED_AT, undefined, NOTHING_ARCHIVED);
     expect(view.empty).toBe(true);
     expect(view.total).toMatchObject({
       label: "Total value",
@@ -56,7 +57,7 @@ describe("homeView", () => {
     const wallet = withFirst((first) =>
       withHolding(withHolding(first, holding("USDC", 457.33)), holding("NVDAx", 5.1075, 400)),
     );
-    const view = homeView(reads, wallet, UPDATED_AT, undefined);
+    const view = homeView(reads, wallet, UPDATED_AT, undefined, NOTHING_ARCHIVED);
     expect(view.empty).toBe(false);
     expect(view.showArc).toBe(true);
     expect(view.explanation).toBeNull();
@@ -86,7 +87,7 @@ describe("homeView", () => {
     const wallet = withFirst((first) =>
       withHolding(withHolding(first, holding("USDC", 20)), holding("NVDAx", 1, 90)),
     );
-    const view = homeView(reads, wallet, null, undefined);
+    const view = homeView(reads, wallet, null, undefined, NOTHING_ARCHIVED);
     expect(view.total).toMatchObject({
       value: "Value unavailable",
       unavailable: true,
@@ -101,7 +102,7 @@ describe("homeView", () => {
 
   it("puts USDC waiting in the funding wallet first, with the one primary button", () => {
     const wallet = testWallet((w) => ({ ...w, funding: { ...w.funding, tokens: { USDC: 250 } } }));
-    const view = homeView(reads, wallet, UPDATED_AT, undefined);
+    const view = homeView(reads, wallet, UPDATED_AT, undefined, NOTHING_ARCHIVED);
     expect(view.empty).toBe(false);
     expect(view.waiting?.text).toBe(
       "250.00 USDC has arrived in your funding wallet. Move it to a portfolio before buying.",
@@ -125,7 +126,7 @@ describe("homeView", () => {
       };
       return { ...w, portfolios: [first, archived] };
     });
-    const view = homeView(reads, wallet, UPDATED_AT, undefined);
+    const view = homeView(reads, wallet, UPDATED_AT, undefined, NOTHING_ARCHIVED);
     expect(view.portfolios.map((row) => row.name)).toEqual(["Investing"]);
     expect(view.archived.heading).toBe("Archived portfolios (1)");
     expect(view.archived.rows.map((row) => row.name)).toEqual(["Old"]);
@@ -148,20 +149,32 @@ describe("homeView", () => {
         ),
       },
     );
-    const view = homeView(reads, wallet, UPDATED_AT, undefined);
+    const view = homeView(reads, wallet, UPDATED_AT, undefined, NOTHING_ARCHIVED);
     expect(view.portfolios[0].line).toBe("Pie · 2 trackers · $96.18 to invest");
     expect(view.recent.map((row) => row.value.text)).toEqual(["+$4.00", "+$3.00", "+$2.00"]);
   });
 
   it("shows the Earn total, and counts money in Earn as not empty", () => {
-    expect(homeView(reads, testWallet(), UPDATED_AT, 120.5)).toMatchObject({
+    expect(homeView(reads, testWallet(), UPDATED_AT, 120.5, NOTHING_ARCHIVED)).toMatchObject({
       earning: { label: "Earning", value: "$120.50" },
       empty: false,
     });
-    expect(homeView(reads, testWallet(), UPDATED_AT, null)).toMatchObject({
+    // Not confirmed as zero: Home must not assume the wallet is empty.
+    expect(homeView(reads, testWallet(), UPDATED_AT, null, NOTHING_ARCHIVED)).toMatchObject({
       earning: { label: "Earning", value: "Unavailable" },
-      empty: true,
+      empty: false,
     });
-    expect(homeView(reads, testWallet(), UPDATED_AT, 0).empty).toBe(true);
+    expect(homeView(reads, testWallet(), UPDATED_AT, 0, NOTHING_ARCHIVED).empty).toBe(true);
+  });
+
+  it("does not lead with Add money while an archived portfolio holds value or its Earn is unknown", () => {
+    expect(
+      homeView(reads, testWallet(), UPDATED_AT, undefined, { holds: true, earnUnknown: false })
+        .empty,
+    ).toBe(false);
+    expect(
+      homeView(reads, testWallet(), UPDATED_AT, undefined, { holds: false, earnUnknown: true })
+        .empty,
+    ).toBe(false);
   });
 });
