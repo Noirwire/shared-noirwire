@@ -116,8 +116,7 @@ export const tradeCopy = {
   alreadyPaid: "Already paid",
   alreadyPaidReason: "The holding is open. The network cost for that is already paid.",
   whatIsCost: "What is the network cost?",
-  trackerLine: (symbol: string) =>
-    `${symbol} is a tracker, not a share, and its issuer keeps control over it.`,
+  trackerLine: (symbol: string) => `${symbol} is a tracker, not a share.`,
   readRisks: "Read the risks",
   risksTitle: "Risks",
   publicLine: "This portfolio's trades and holdings are public.",

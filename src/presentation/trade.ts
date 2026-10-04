@@ -142,6 +142,8 @@ type TradeReviewView = {
   /** What a buy says about the tracker it buys, or null for a sale. */
   trackerLine: string | null;
   readRisks: string;
+  /** Behind "Read the risks" on a buy: what kind of certificate the tracker is and where it is not offered. */
+  risks: { title: string; lines: string[] };
   publicLine: string;
   offline: string | null;
 };
@@ -272,6 +274,10 @@ export function tradeReviewView(state: TradeReviewState): TradeReviewView {
     feeUnverified: feeBps === undefined ? copy.feeUnverified : null,
     trackerLine: buying ? copy.trackerLine(symbol) : null,
     readRisks: copy.readRisks,
+    risks: {
+      title: copy.readRisks,
+      lines: buying ? [copy.tracker.what([symbol]), copy.tracker.notOffered] : [],
+    },
     publicLine: copy.publicLine,
     offline: online ? null : mobileTradeCopy.offline,
   };

@@ -10,7 +10,7 @@ const resetWarning = (platformNoun: string) =>
 
 /** The stored wallet cannot be read. `where` is "in this browser" or "on this phone". */
 const damaged = (where: string) =>
-  `The wallet stored ${where} cannot be read. Reset it and import it again from your recovery phrase.`;
+  `The wallet stored ${where} cannot be read. Reset it and restore it from your recovery phrase.`;
 
 /** `where` is "in this browser" or "on this phone". */
 const noWallet = (where: string) => `There is no wallet ${where}.`;
@@ -26,13 +26,13 @@ export const walletCopy = {
     unlocking: "Unlocking...",
     unlock: "Unlock",
     forgotten:
-      "Forgotten the password? It cannot be recovered - it never left this device. Reset the wallet and import it again from your recovery phrase.",
+      "Forgotten the password? It cannot be recovered - it never left this device. Reset the wallet and restore it from your recovery phrase.",
     reset: "Reset this wallet",
   },
 
   newPassword: {
     label: "New password",
-    suggest: "Suggest a passphrase",
+    suggest: "Suggest a password",
     checkFailed: "Could not check this password. Check your connection and type again.",
     checking: "Checking strength...",
     strong: "Strong password.",
@@ -86,7 +86,7 @@ export const walletCopy = {
     interrupted: "The wallet was locked or changed while it was being unlocked. Try again.",
     damaged: damaged("in this browser"),
     addressMismatch:
-      "The addresses stored for this wallet do not match its recovery phrase, so it was not opened. Reset the wallet and import it again from your recovery phrase.",
+      "The addresses stored for this wallet do not match its recovery phrase, so it was not opened. Reset the wallet and restore it from your recovery phrase.",
     noWallet: noWallet("in this browser"),
     noWalletToChange: "There is no wallet to change.",
     currentPasswordWrong: "Your current password is not right.",
@@ -113,7 +113,7 @@ export const mobileWalletCopy = {
   unlock: {
     lead: "Your wallet is stored encrypted on this phone, so it has to be unlocked each time the app opens.",
     forgotten:
-      "Forgotten the password? It cannot be recovered. It never left this phone. Reset the wallet and import it again from your recovery phrase.",
+      "Forgotten the password? It cannot be recovered. It never left this phone. Reset the wallet and restore it from your recovery phrase.",
     use: (method: string) => `Use ${method}`,
     lockedOut: (method: string) =>
       `${sentence(method)} is unavailable right now. Enter your password.`,

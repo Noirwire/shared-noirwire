@@ -214,7 +214,7 @@ export async function withdrawToken(
   const held = readTokenAmount(sourceInfo?.data);
   const rawAmount = amount === Number(held) / 10 ** decimals ? held : toRawUnits(amount, decimals);
   if (rawAmount === 0n || rawAmount > held) {
-    throw new Error("More than this address holds onchain.");
+    throw new Error("More than this address holds.");
   }
 
   const rent = destinationInfo ? 0 : await ataRentFor(mint, programId);

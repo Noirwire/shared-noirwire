@@ -25,7 +25,7 @@ const importLead = (keepOpen: string) => `${keepOpen} ${importTiming}`;
 
 /** `where` is where nothing was saved: "in this browser" or "on this phone". */
 const importFailed = (where: string) =>
-  `We couldn't finish importing your wallet. Nothing was saved ${where}. Try again.`;
+  `We couldn't finish restoring your wallet. Nothing was saved ${where}. Try again.`;
 
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
@@ -92,7 +92,7 @@ export const onboardingCopy = {
   },
 
   import: {
-    title: "Import an existing wallet.",
+    title: "Restore your wallet",
     intro:
       "Paste the 12- or 24-word recovery phrase from another wallet. It stays in this browser and is checked against the Solana network only to find its real balance.",
     phraseLabel: "Recovery phrase",
@@ -101,7 +101,7 @@ export const onboardingCopy = {
     networkFailed: importFailed("in this browser"),
     /** The chain cannot be read at all, so an import cannot start. */
     notNow:
-      "We can't look for your wallet right now, so nothing was imported. Nothing was saved in this browser.",
+      "We can't look for your wallet right now, so nothing was restored. Nothing was saved in this browser.",
     checking: "Finding your portfolios...",
     /** The one quiet line under the button while an import runs. */
     waitingNote: `Checking what this phrase holds. ${importTiming}`,
@@ -109,7 +109,7 @@ export const onboardingCopy = {
     newEmptyWallet,
     /** The import while it works: a title, a lead, the three steps, the slow line and the failure. */
     progress: {
-      title: "Importing your wallet",
+      title: "Restoring your wallet",
       lead: importLead("Keep this tab open."),
       steps: [
         "Reading your recovery phrase",
@@ -119,10 +119,10 @@ export const onboardingCopy = {
       slow: "Still working. A wallet with many portfolios takes a little longer.",
       failed: importFailed("in this browser"),
     },
-    submit: "Import wallet",
-    testNetworkOnly: "Devnet SOL only. ",
+    submit: "Restore wallet",
+    testNetworkOnly: "Test network SOL only. ",
     twoSets:
-      "A phrase can open two different sets of addresses. Both are checked for SOL, tokens and portfolios, and you choose when the chain cannot tell which one you mean.",
+      "A phrase can open two different sets of addresses. Both are checked for SOL, tokens and portfolios, and you choose when it is not clear which one you mean.",
     schemes: {
       app: "NoirWire addresses",
       walletDefault: "Addresses most other wallets use",
@@ -132,20 +132,19 @@ export const onboardingCopy = {
       `This phrase can open two different sets of addresses, because wallet apps do not all turn a phrase into addresses the same way. ${
         bothActive
           ? "Both sets have been used, so choose the one you mean to open here."
-          : "Neither set shows anything onchain yet. If this phrase comes from another wallet app, such as Phantom or Solflare, choose the second. If it was created in NoirWire, choose the first."
+          : "Neither set has been used yet. If this phrase comes from another wallet app, such as Phantom or Solflare, choose the second. If it was created in NoirWire, choose the first."
       }`,
     schemeFunding: (address: string, found: string) => `Funding wallet ${address} · ${found}`,
-    nothingFound: "Nothing found onchain",
+    nothingFound: "Nothing found yet",
     tokenBalances: "Token balances",
     portfolios: (count: number) => plural(count, "portfolio"),
-    reunitedTitle: "Wallet reunited with its funds.",
-    importedTitle: "Wallet imported.",
+    reunitedTitle: "Wallet restored",
+    importedTitle: "Wallet restored",
     reunitedIntro: (address: string, found: string) =>
       `Opened the funding wallet at ${address}. Found: ${found}.`,
     importedIntro: (address: string) =>
-      `Nothing was found onchain for these addresses yet. The funding wallet is at ${address}. Add money whenever you're ready.`,
-    discovered: (count: number) =>
-      `Found ${plural(count, "portfolio")} this phrase already had onchain.`,
+      `Nothing was found for these addresses yet. The funding wallet is at ${address}. Add money whenever you're ready.`,
+    discovered: (count: number) => `Found ${plural(count, "portfolio")} this phrase already had.`,
     otherSet: "Open the other set instead",
     /** Asked for from the result of an import, when a portfolio the person expects is not there. */
     lookFurther: {
@@ -165,9 +164,9 @@ export const onboardingCopy = {
     intro: passwordRule("in this browser"),
     forgotten:
       "If you forget this password, your recovery phrase still opens your wallet. Without the phrase, nobody can.",
-    encryptFailed: "We couldn't encrypt your wallet, so nothing was saved. Try again.",
-    encrypting: "Encrypting...",
-    finish: "Encrypt and finish",
+    encryptFailed: "We couldn't save your wallet. Nothing was saved. Try again.",
+    encrypting: "Saving...",
+    finish: "Save and finish",
   },
 } as const;
 
@@ -210,7 +209,7 @@ export const mobileOnboardingCopy = {
     slow: "Looking for portfolios this phrase already has. This can take a moment.",
     networkFailed: importFailed("on this phone"),
     offline:
-      "You're offline. Nothing was saved on this phone. Go back online to import your wallet.",
+      "You're offline. Nothing was saved on this phone. Go back online to restore your wallet.",
     progress: {
       lead: importLead("Keep the app open."),
       failed: importFailed("on this phone"),
@@ -227,16 +226,15 @@ export const mobileOnboardingCopy = {
     used: "This one has been used.",
     opensMostWallets: "Opens the addresses most other wallets use. You can switch afterwards.",
     opensUsed: "Opens the set that has been used.",
-    nothingFound: "Nothing found on chain yet",
+    nothingFound: "Nothing found yet",
     tokenBalances: "Token balances",
     portfolios: (count: number) => plural(count, "portfolio"),
     portfoliosAndTokens: (count: number) => `${plural(count, "portfolio")} and token balances`,
     open: "Open this wallet",
   },
   result: {
-    found: (count: number) =>
-      `Found ${plural(count, "portfolio")} this phrase already had on chain.`,
-    foundBalances: "Found token balances this phrase already had on chain.",
+    found: (count: number) => `Found ${plural(count, "portfolio")} this phrase already had.`,
+    foundBalances: "Found token balances this phrase already had.",
     nothing: newEmptyWallet,
     showAddress: "Show my funding wallet address",
     hideAddress: "Hide",

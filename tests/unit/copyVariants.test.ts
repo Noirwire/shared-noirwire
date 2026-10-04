@@ -128,10 +128,18 @@ function productLimitationsIn(copy: unknown): string[] {
   );
 }
 
-/** A copy object without the named sections. */
-function without<T extends object>(copy: T, ...sections: (keyof T)[]): Partial<T> {
+/** A copy object without the named sections. A dotted name reaches into a nested one. */
+function without<T extends object>(copy: T, ...sections: string[]): Partial<T> {
+  const nested = (prefix: string) =>
+    sections
+      .filter((section) => section.startsWith(`${prefix}.`))
+      .map((section) => section.slice(prefix.length + 1));
   return Object.fromEntries(
-    Object.entries(copy).filter(([key]) => !sections.includes(key as keyof T)),
+    Object.entries(copy)
+      .filter(([key]) => !sections.includes(key))
+      .map(([key, value]) =>
+        nested(key).length > 0 ? [key, without(value as object, ...nested(key))] : [key, value],
+      ),
   ) as Partial<T>;
 }
 
@@ -148,296 +156,132 @@ const EVERYDAY = [
 ];
 
 /**
- * The web's strings are built from the same templates as the phone's. These
- * pin the web's wording byte for byte, so a template change cannot move it.
+ * The main path: the everyday copy without what sits behind "Read the
+ * risks" (what kind of certificate a tracker is, what its issuer can do,
+ * who the USDC in Earn is lent through) and without a portfolio's own
+ * privacy panel, which says who sees its address.
  */
-describe("per-platform copy", () => {
-  it("keeps the web's wording exactly", () => {
-    expect(onboardingCopy.password.intro(12)).toBe(
-      "Choose a password of at least 12 characters. It locks the wallet in this browser. We never see it.",
-    );
-    expect(onboardingCopy.phrase.intro).toBe(
-      "These words are the only way back into your money if this device is lost. Write them on paper. Anyone who sees them can take everything.",
-    );
-    expect(walletCopy.store.notSaved).toBe(
-      "This browser would not save the wallet (storage is full or blocked). Nothing was changed.",
-    );
-  });
+const MAIN_PATH = [
+  WEB.filter(
+    (copy) =>
+      copy !== settingsCopy && copy !== marketsCopy && copy !== tradeCopy && copy !== portfolioCopy,
+  ),
+  PHONE.filter((copy) => copy !== mobileSettingsCopy && copy !== mobilePortfolioCopy),
+  without(settingsCopy, "protection", "risks"),
+  without(mobileSettingsCopy, "privacy", "risks"),
+  without(marketsCopy, "detail.aboutTracker", "detail.issuerPowers", "detail.issuerDetails"),
+  without(tradeCopy, "tracker"),
+  without(portfolioCopy, "observer"),
+  without(mobilePortfolioCopy, "publicView"),
+];
 
-  it("says the same on the phone with the phone's words", () => {
-    expect(mobileOnboardingCopy.password.intro(12)).toBe(
-      "Choose a password of at least 12 characters. It locks the wallet on this phone. We never see it.",
-    );
-    expect(mobileOnboardingCopy.phrase.intro).toBe(
-      "These words are the only way back into your money if this phone is lost. Write them on paper. Anyone who sees them can take everything.",
-    );
-    expect(mobileOnboardingCopy.password.notSaved).toBe(
-      "This phone would not save the wallet (storage is full or blocked). Nothing was changed.",
-    );
+/**
+ * Plain words. Each entry is a word the everyday screens stopped using, the
+ * word that took its place, and where the rule holds: `everywhere` (every
+ * string on both platforms), `everyday` (all but the Privacy and Risks
+ * pages) or `mainPath` (the everyday copy without what is behind "Read the
+ * risks").
+ */
+const PLAIN_WORDS: [RegExp, string, "everywhere" | "everyday" | "mainPath"][] = [
+  [/\bon[- ]?chain\b/i, 'say "in public" or "publicly"', "everyday"],
+  [/\bderiv\w*/i, 'say "comes from"', "everyday"],
+  [/\bpassphrase\b/i, 'say "password"', "everyday"],
+  [/\bencrypt(ing)? and\b|^(re-)?encrypting\b/i, 'the button is "Save and finish"', "everyday"],
+  [/\bimport(s|ed|ing)?\b/i, 'bringing a wallet back is "Restore"', "everywhere"],
+  [/\b(devnet|mainnet)\b/i, 'say "test network" or "main network"', "everywhere"],
+  [/(?<!bank )\bdeposit(s|ed|ing)?\b/i, 'putting USDC into Earn is "Add to Earn"', "everyday"],
+  [/^at review$|^no live price$/i, 'a missing price is "Price unavailable right now."', "everyday"],
+  [
+    /\bJupiter\b/i,
+    'Earn is titled "Earn"; who it lends through is under "Read the risks"',
+    "mainPath",
+  ],
+  [/\bxStocks\b|\bissuers?\b|\bcertificates?\b/i, 'behind "Read the risks"', "mainPath"],
+];
+
+const SCOPES = { everywhere: [WEB, PHONE], everyday: EVERYDAY, mainPath: MAIN_PATH };
+
+/** Every use of a retired word in `copy` under the rules of `scope`, as "why: the string". */
+function plainWordsBrokenIn(copy: unknown, scope: keyof typeof SCOPES): string[] {
+  const rules = PLAIN_WORDS.filter(([, , where]) => where === scope);
+  return strings(copy).flatMap((text) =>
+    rules.filter(([term]) => term.test(text)).map(([, why]) => `${why}: ${text}`),
+  );
+}
+
+/** `web` with the platform's words swapped for the phone's. */
+const onPhone = (web: string) =>
+  web
+    .replaceAll("in this browser", "on this phone")
+    .replaceAll("this browser", "this phone")
+    .replaceAll("This browser", "This phone")
+    .replaceAll("this device", "this phone");
+
+describe("per-platform copy", () => {
+  it("says the same on the web and on the phone, but for the platform's own words", () => {
+    const pairs: [string, string][] = [
+      [onboardingCopy.password.intro(12), mobileOnboardingCopy.password.intro(12)],
+      [onboardingCopy.phrase.intro, mobileOnboardingCopy.phrase.intro],
+      [walletCopy.store.notSaved, mobileOnboardingCopy.password.notSaved],
+      [walletCopy.store.damaged, mobileWalletCopy.store.damaged],
+      [walletCopy.store.noWallet, mobileWalletCopy.store.noWallet],
+      [walletCopy.resetConfirm.warning, mobileWalletCopy.resetConfirm.warning],
+      [settingsCopy.password.changed, mobileSettingsCopy.password.changed],
+      [portfolioCopy.create.lead, mobilePortfolioCopy.create.lead],
+      [portfolioCopy.create.notSaved, mobilePortfolioCopy.create.notSaved],
+      [portfolioCopy.observer.relayed, mobilePortfolioCopy.publicView.relayed],
+      [portfolioCopy.home.togetherExplained, mobilePortfolioCopy.home.togetherExplained],
+      [pendingActionCopy.notRecorded, mobilePendingActionCopy.notRecorded],
+      [onboardingCopy.import.networkFailed, mobileOnboardingCopy.import.networkFailed],
+      [activityCopy.importedNote, mobileActivityCopy.importedNote],
+      [activityCopy.detail.recorded, mobileActivityCopy.detail.recorded],
+      [activityCopy.olderNotKept(3), mobileActivityCopy.olderNotKept(3)],
+      [pieCopy.edit.saveFailed, mobilePieCopy.builder.saveFailed],
+      [fundingCopy.footerPrivate, mobileFundingCopy.footer],
+    ];
+    for (const [web, phone] of pairs) {
+      expect(phone).toBe(onPhone(web));
+    }
   });
 
   it("puts a method name at the start of a sentence with a capital", () => {
-    expect(mobileOnboardingCopy.biometric.notTurnedOn("fingerprint")).toBe(
-      "Fingerprint was not turned on. You can turn it on later in Settings.",
-    );
+    expect(mobileOnboardingCopy.biometric.notTurnedOn("fingerprint")).toMatch(/^Fingerprint /);
+    expect(mobileSettingsCopy.biometric.changed("face ID")).toMatch(/^Face ID /);
+    expect(mobileWalletCopy.unlock.lockedOut("fingerprint")).toMatch(/^Fingerprint /);
   });
 
-  it("keeps the web's wording exactly where a string became a platform template", () => {
-    expect(portfolioCopy.create.lead).toBe(
-      "Give it a name only you see. The name never leaves this browser.",
-    );
-    expect(portfolioCopy.observer.relayed).toBe(
-      "These stay in this browser. Balance reads and trades go through NoirWire's own server, so the network provider, Jupiter and MagicBlock see this address but never your IP address. The server keeps only a basic record that a request was made, not your address or what's in it, but you have to trust it keeps nothing more.",
-    );
-    expect(pendingActionCopy.notRecorded).toBe(
-      "This could not be saved in this browser, so nothing was sent.",
-    );
-    expect(errorsCopy.portfolioNotSaved).toBe(
-      "The new portfolio could not be saved in this browser.",
-    );
-    expect(fundingCopy.noSolNeeded).toBe(
-      "No SOL is needed. If the transfer would take more than this total, it is not signed.",
-    );
-    expect(fundingCopy.privateCosts(0.1, "0.20 USDC", "USDC", "0.50 USDC")).toContain(
-      "your funding wallet needs no SOL",
-    );
-  });
-
-  it("keeps the web's wording exactly where settings, unlock and reset became templates", () => {
-    expect(settingsCopy.saveFailing).toBe(
-      "Changes are not being saved in this browser (storage is full or blocked). What you see here will be gone after a reload. Your funds are not affected.",
-    );
-    expect(settingsCopy.password.changed).toBe(
-      "Password changed. Use the new one next time you unlock. This protects the copy in this browser only: if you think someone already copied this wallet, move your funds to a new recovery phrase.",
-    );
-    expect(walletCopy.resetConfirm.warning).toBe(
-      "This deletes the wallet from this browser. Your recovery phrase is the only way back in. Without it, everything in your funding wallet and in every portfolio is gone for good, and nobody can restore it.",
-    );
-    expect(walletCopy.store.damaged).toBe(
-      "The wallet stored in this browser cannot be read. Reset it and import it again from your recovery phrase.",
-    );
-    expect(walletCopy.store.noWallet).toBe("There is no wallet in this browser.");
-  });
-
-  it("carries the words the web app used to keep for itself", () => {
-    expect(walletCopy.reset.notRemoved).toBe(
-      "This browser would not delete the wallet. It is still on this device, locked. Try again.",
-    );
-    expect(walletCopy.crossTab.notice).toBe(
-      "This browser cannot keep your wallet safe across tabs, so nothing can be changed or sent from here. You can still look. To use your wallet, open it in a current browser.",
-    );
-    expect(walletCopy.crossTab.refused).toBe(
-      "This browser cannot keep your wallet safe across tabs, so nothing was changed or sent. Open your wallet in a current browser.",
-    );
-  });
-
-  it("says settings, unlock and reset in the phone's words", () => {
-    expect(mobileSettingsCopy.saveFailing).toBe(
-      "Changes are not being saved on this phone (storage is full or blocked). What you see here will be gone when the app closes. Your funds are not affected.",
-    );
-    expect(mobileSettingsCopy.password.changed).toMatch(/protects the copy on this phone only/);
-    expect(mobileSettingsCopy.biometric.changed("face ID")).toBe(
-      "Face ID settings changed on this phone, so this was turned off. Turn it on again to keep using it.",
-    );
-    expect(mobileWalletCopy.unlock.lead).toBe(
-      "Your wallet is stored encrypted on this phone, so it has to be unlocked each time the app opens.",
-    );
-    expect(mobileWalletCopy.unlock.lockedOut("fingerprint")).toBe(
-      "Fingerprint is unavailable right now. Enter your password.",
-    );
-    expect(mobileWalletCopy.resetConfirm.warning).toMatch(
-      /^This deletes the wallet from this phone\./,
-    );
-    expect(mobileWalletCopy.reset).toEqual({
-      notRemoved:
-        "The wallet could not be deleted from this phone (storage is blocked). It is still stored here, locked. Try again.",
-      deleting: "Deleting...",
-    });
-  });
-
-  it("says what happened, what it means for the money and what to do, never how the app asked", () => {
-    const changed: [string, string][] = [
-      [
-        onboardingCopy.import.networkFailed,
-        "We couldn't finish importing your wallet. Nothing was saved in this browser. Try again.",
-      ],
-      [onboardingCopy.import.checking, "Finding your portfolios..."],
-      [
-        mobileOnboardingCopy.import.networkFailed,
-        "We couldn't finish importing your wallet. Nothing was saved on this phone. Try again.",
-      ],
-      [
-        mobileOnboardingCopy.import.offline,
-        "You're offline. Nothing was saved on this phone. Go back online to import your wallet.",
-      ],
-      [
-        onboardingCopy.password.encryptFailed,
-        "We couldn't encrypt your wallet, so nothing was saved. Try again.",
-      ],
-      [
-        appCopy.networkGate.wrongNetwork("Solana mainnet"),
-        "NoirWire is not connected to Solana mainnet as it should be. Your money has not moved, and nothing can be sent until this is fixed. Try again later.",
-      ],
-      [
-        appCopy.networkGate.unreachable,
-        "We can't show your balances right now. Your money has not moved. Try again.",
-      ],
-      [mobileAppCopy.network.checking, "Getting things ready..."],
-      [
-        errorsCopy.chain.noQuote,
-        "There is no price for this order right now. Nothing was traded. Try again in a moment.",
-      ],
-      [
-        errorsCopy.chain.wrongNetwork,
-        "NoirWire is not connected to Solana as it should be, so this was stopped. Nothing was signed or sent. Try again later.",
-      ],
-      [errorsCopy.funding.failed, "We couldn't move this money. Nothing was moved. Try again."],
-      [
-        errorsCopy.funding.privateNotStarted,
-        "The private move could not be started. Nothing left your funding wallet. Try again.",
-      ],
-      [
-        errorsCopy.send.notCompleted,
-        "This send can't be made. Nothing was sent. Check the amount and the recipient's address.",
-      ],
-      [errorsCopy.send.failed, "We couldn't complete this send. Nothing was sent. Try again."],
-      [
-        errorsCopy.trade.noPrice,
-        "We couldn't get a price for this trade. Nothing was traded. Try again.",
-      ],
-      [errorsCopy.earn.failed, "This did not go through. Nothing was moved. Try again."],
-      [sendCopy.sending, "Sending..."],
-      [
-        tradeCopy.costCheckFailed,
-        "We couldn't work out the network cost of this order. Nothing was charged. Get a new price.",
-      ],
-      [
-        pieCopy.order.costCheckFailed,
-        "We couldn't work out the network cost of these orders. Nothing was charged. Try again.",
-      ],
-      [
-        mobilePortfolioCopy.home.refreshFailed,
-        "We couldn't update your balances. What you see may be out of date. Pull down to try again.",
-      ],
-      [
-        mobilePortfolioCopy.detail.refreshFailed,
-        "We couldn't update your balances. What you see may be out of date. Pull down to try again.",
-      ],
-      [
-        mobileFundingCopy.page.readFailed,
-        "We couldn't update your balance. What you see may be out of date. Pull down to try again.",
-      ],
+  it("says, in every failure, what it means for the person's money", () => {
+    const failures = [
+      onboardingCopy.import.networkFailed,
+      mobileOnboardingCopy.import.networkFailed,
+      mobileOnboardingCopy.import.offline,
+      onboardingCopy.import.notNow,
+      onboardingCopy.password.encryptFailed,
+      appCopy.networkGate.wrongNetwork("Solana"),
+      appCopy.networkGate.unreachable,
+      errorsCopy.chain.noQuote,
+      errorsCopy.chain.wrongNetwork,
+      errorsCopy.chain.notAvailableNow,
+      errorsCopy.funding.failed,
+      errorsCopy.funding.privateNotStarted,
+      errorsCopy.send.notCompleted,
+      errorsCopy.send.failed,
+      errorsCopy.trade.noPrice,
+      errorsCopy.earn.failed,
+      tradeCopy.costCheckFailed,
+      pieCopy.order.costCheckFailed,
+      waitingCopy.overdue.check,
+      waitingCopy.overdue.review,
     ];
-    for (const [said, expected] of changed) expect(said).toBe(expected);
-    expect(fundingCopy.unknown("10.00 USDC", "USDC", "Investing")).toMatch(
-      /^The transfer of 10\.00 USDC was sent, but we could not confirm that it arrived\. It may still arrive\./,
-    );
+    const meansForMoney =
+      /nothing (was|can be|left)|money has not moved|nothing has been|nothing can be sent/i;
+    for (const text of failures) expect(text).toMatch(meansForMoney);
   });
 
   it("says a request the server would not take in the person's terms, the same on both", () => {
     const said = chainErrorMessage("notAvailableNow");
-    expect(said).toBe(
-      "We can't do this right now. Nothing was sent, and your money has not moved. Try again.",
-    );
     expect(chainErrorMessage("notAvailableNow", "mobile")).toBe(said);
     expect(said).not.toMatch(/token|session|auth|sign.?in|\bAPI\b|server|401/i);
-  });
-
-  it("holds the words each app used to keep for itself", () => {
-    const moved: [string, string][] = [
-      [waitingCopy.overdue.review, "We couldn't prepare your review. Nothing was sent. Try again."],
-      [
-        waitingCopy.overdue.action,
-        "This is taking much longer than it should. It may still go through. You can close this and check Activity before trying again.",
-      ],
-      [
-        waitingCopy.overdue.save,
-        "Saving your wallet is taking much longer than it should. It is still being saved. Keep this tab open.",
-      ],
-      [waitingCopy.actionHeld, "This is still being carried out, so it can't be closed yet."],
-      [waitingCopy.gettingReady, "Getting things ready..."],
-      [
-        onboardingCopy.import.notNow,
-        "We can't look for your wallet right now, so nothing was imported. Nothing was saved in this browser.",
-      ],
-      [portfolioCopy.balances.updating, "Updating balances..."],
-      [
-        portfolioCopy.balances.stale,
-        "We couldn't update your balances. What you see may be out of date.",
-      ],
-      [
-        marketsCopy.pricesUnavailable,
-        "Prices can't be shown right now. They are checked again every 30 seconds.",
-      ],
-      [
-        portfolioCopy.archived.value("$12.00"),
-        "Plus $12.00 in archived portfolios, not counted above.",
-      ],
-      [
-        portfolioCopy.archived.valueUnpriced,
-        "Archived portfolios still hold investments, not counted above.",
-      ],
-      [
-        portfolioCopy.archived.earnNotIncluded,
-        "What archived portfolios have in Earn can't be read right now and is not included.",
-      ],
-      [
-        portfolioCopy.archived.earnUnknown,
-        "What it has in Earn can't be shown right now, and is hidden with it.",
-      ],
-      [
-        portfolioCopy.archived.earnUnknownAlone,
-        "What this portfolio has in Earn can't be shown right now. Archiving hides it; it does not move anything.",
-      ],
-      [portfolioCopy.archived.heldIn("Investing"), "Investing (archived)"],
-      [portfolioCopy.archived.confirm, "Archive anyway"],
-      [portfolioCopy.archived.keep, "Keep it"],
-      [
-        onboardingCopy.phrase.discarded,
-        "This page was reloaded, so the recovery phrase you were shown before was discarded. It was never saved. A wallet created now gets a new phrase, and it has to be written down again.",
-      ],
-      [
-        onboardingCopy.phrase.newPhrase,
-        "This is a new recovery phrase. Words written down before the reload do not open this wallet.",
-      ],
-      [
-        onboardingCopy.phrase.acknowledgeNew,
-        "I understand the earlier phrase is gone and I will write this one down.",
-      ],
-      [
-        appCopy.offline.blocked,
-        "That page can't be opened while you're offline. You are still on this one.",
-      ],
-      [
-        appCopy.offline.walletReady,
-        "Your wallet is saved and unlocked. It opens as soon as you're back online.",
-      ],
-      [earnCopy.unread, "What is in Earn can't be shown right now."],
-      [
-        earnCopy.notHere("Solana devnet"),
-        "Earn runs on Solana mainnet. Switch from Solana devnet to lend or withdraw.",
-      ],
-      [mobileWalletCopy.newPassword.checkFailed, "Could not check this password. Type it again."],
-      [mobilePortfolioCopy.create.forExample("Investing"), "For example: Investing"],
-      [mobilePortfolioCopy.create.nameNeeded, "Type a name first."],
-      [commonCopy.tryAgain, "Try again"],
-      [waitingCopy.overdue.check, "We couldn't check this. Nothing was sent. Try again."],
-      [
-        mobileWaitingCopy.overdue.action,
-        "This is taking longer than it should. It may still go through, so check the balance and Activity before doing it again.",
-      ],
-      [
-        mobileWaitingCopy.overdue.prices,
-        "We couldn't load prices. They are missing or out of date here, and are asked for again every half minute.",
-      ],
-      [mobileWaitingCopy.overdue.chart, "We couldn't load this chart."],
-      [
-        mobileWaitingCopy.overdue.earn,
-        "We couldn't update what is in Earn. What you see may be out of date.",
-      ],
-      [mobileWaitingCopy.overdue.fundingBalance, "We couldn't read your funding wallet's balance."],
-    ];
-    for (const [said, expected] of moved) expect(said).toBe(expected);
   });
 
   it("never blames a request, a service or a timeout on either platform", () => {
@@ -468,18 +312,12 @@ describe("per-platform copy", () => {
     for (const text of strings(failuresAndWaiting)) expect(text).not.toMatch(technical);
   });
 
-  it("never says browser on the phone", () => {
+  it("never says browser on the phone, in its own copy or in a refusal chosen for it", () => {
     for (const text of strings(PHONE)) expect(text).not.toMatch(/browser/i);
-    expect(mobilePortfolioCopy.publicView.relayed).toMatch(/^These stay on this phone\./);
-    expect(mobileActivityCopy.emptyDetail).toBe(
-      "History is kept on this phone only. A wallet restored on a new phone starts with an empty list.",
-    );
-    expect(chainErrorMessage("notRecorded", "mobile")).toBe(
-      "This could not be saved on this phone, so nothing was sent.",
-    );
+    expect(chainErrorMessage("notRecorded", "mobile")).toBe(mobilePendingActionCopy.notRecorded);
     expect(chainErrorMessage("notRecorded")).toBe(pendingActionCopy.notRecorded);
     expect(refusalMessage({ reason: "portfolioNotSaved" }, "mobile")).toBe(
-      "The new portfolio could not be saved on this phone.",
+      mobileErrorsCopy.portfolioNotSaved,
     );
   });
 
@@ -497,30 +335,10 @@ describe("per-platform copy", () => {
     ])) {
       expect(text).not.toMatch(/\bstocks?\b/i);
     }
-    expect(pieCopy.problems.empty).toBe("Add at least one tracker.");
-    expect(portfolioCopy.card.pie(3)).toBe("Pie · 3 trackers");
   });
 
   it("has no em dash on either platform", () => {
-    const text = JSON.stringify(
-      strings([
-        onboardingCopy,
-        walletCopy,
-        activityCopy,
-        earnCopy,
-        errorsCopy,
-        fundingCopy,
-        marketsCopy,
-        pendingActionCopy,
-        pieCopy,
-        portfolioCopy,
-        sendCopy,
-        tradeCopy,
-        WEB,
-        PHONE,
-      ]),
-    );
-    expect(text).not.toContain(String.fromCharCode(0x2014));
+    expect(JSON.stringify(strings([WEB, PHONE]))).not.toContain(String.fromCharCode(0x2014));
   });
 
   it("uses one name for each thing on both platforms, and none of the names it replaced", () => {
@@ -556,157 +374,117 @@ describe("per-platform copy", () => {
         line: (network: string) => `Live trading is unavailable on ${network}.`,
       }),
     ).toHaveLength(1);
+    expect(productLimitationsIn({ line: "Earn is available on the main network only." })).toEqual(
+      [],
+    );
+    expect(productLimitationsIn({ line: "Earn is mainnet only." })).toHaveLength(1);
     expect(
-      productLimitationsIn({ line: "Earn is available on Solana mainnet only." }),
-    ).toHaveLength(1);
-    expect(
-      productLimitationsIn({ line: "Live trading is only available on mainnet." }),
+      productLimitationsIn({ line: "Live trading is only available on the main network." }),
     ).toHaveLength(1);
     expect(productLimitationsIn({ line: "That payment method is not supported." })).toHaveLength(1);
-    expect(productLimitationsIn({ line: "Earn runs on Solana mainnet." })).toEqual([]);
+    expect(productLimitationsIn({ line: "Earn runs on the main network." })).toEqual([]);
   });
 
-  it("says each first-time-user decision in its exact words", () => {
-    expect(onboardingCopy.welcome.title).toBe("Invest in US stock trackers. Privately.");
-    expect(onboardingCopy.welcome.lines).toEqual([
-      "Trackers follow share prices like Apple, Tesla or the S&P 500. You do not own the shares.",
-      "Each portfolio is separate from your funding wallet. Trades themselves are public.",
-    ]);
-    expect([
-      onboardingCopy.welcome.create,
-      onboardingCopy.welcome.restore,
-      onboardingCopy.welcome.explore,
-    ]).toEqual(["Create a wallet", "Restore a wallet", "Explore trackers"]);
-    expect(onboardingCopy.welcome.trust).toBe(
-      "No account and no ID check. Only your recovery words can restore your wallet.",
-    );
-    expect(portfolioCopy.home.onlyYouSee).toBe("Only you see this total");
-    expect(portfolioCopy.home.readyToInvest).toBe("Ready to invest");
-    expect(portfolioCopy.home.addMoney).toBe("Add money");
-    expect(portfolioCopy.home.moneyArrives).toBe(
-      "Your money arrives in your funding wallet. Then you move it into a portfolio.",
-    );
-    expect(portfolioCopy.addMoney.title).toBe("Add digital dollars");
-    expect(portfolioCopy.addMoney.steps.get.detail("Solana")).toBe(
-      "USDC is a digital dollar: 1 USDC = $1. Send it from any app or wallet that supports USDC on the Solana network. You do not need an account with us.",
-    );
-    expect(portfolioCopy.addMoney.steps.send.detail("Solana")).toBe(
-      "Copy the address below. In the other app choose USDC and the Solana network, and check the address before sending. This transfer is public.",
-    );
-    expect(portfolioCopy.addMoney.steps.move.detail("0.1% + $0.20")).toBe(
-      "When it arrives, choose a portfolio and tap Move to portfolio. A private move is not linked to your funding wallet in the public record. It costs 0.1% + $0.20. It usually arrives within a minute and can take a few.",
-    );
-    expect(portfolioCopy.addMoney.network("Solana")).toBe("Network: Solana");
-    expect(portfolioCopy.addMoney.costsLink).toBe("What does it cost?");
-    expect(portfolioCopy.detail.moveToPortfolio).toBe("Move to portfolio");
-    expect(fundingCopy.titlePrivate).toBe("Move to portfolio");
-    expect(fundingCopy.confirmPrivate).toBe("Move privately");
-    expect(mobileFundingCopy.page.move).toBe("Move to portfolio");
-    expect(networkCostCopy.moveToPortfolio).toBe("Move to portfolio");
-    expect(settingsCopy.costs.title).toBe("Costs");
-    expect(settingsCopy.costs.trade("0.5")).toBe("Buying or selling a tracker: 0.5% of the trade.");
-    expect(settingsCopy.costs.move("0.1% + $0.20")).toBe(
-      "Moving money into a portfolio privately: 0.1% + $0.20. It usually arrives within a minute and can take a few.",
-    );
-    expect(settingsCopy.costs.network).toBe(
-      "Network cost: a few cents, paid automatically from your USDC.",
-    );
-    expect(settingsCopy.costs.gettingUsdc).toBe(
-      "Getting USDC from another service: that service may charge its own fee.",
-    );
-    expect(settingsCopy.costs.exact).toBe("The exact amount is always shown before you confirm.");
-    expect(marketsCopy.detail.trackerLine("NVIDIA", "NVDAx")).toBe("NVIDIA tracker · NVDAx");
-    expect(marketsCopy.detail.follows("NVIDIA")).toBe(
-      "Follows NVIDIA's share price. You do not own a share.",
-    );
-    expect(marketsCopy.detail.approximate).toBe("Approximate price");
-    expect(marketsCopy.detail.finalPrice).toBe("The final price is shown before you buy.");
-    expect(marketsCopy.detail.issuerPowers).toBe(
-      "The company that issues this tracker can freeze or remove it.",
-    );
-    expect(marketsCopy.detail.noChart).toBe("Chart unavailable right now.");
-    expect(appCopy.networkGate.cannotReach).toBe(
-      "Can't reach NoirWire. Check your connection and try again.",
-    );
-    expect(onboardingCopy.import.waitingNote).toBe(
-      "Checking what this phrase holds. This can take up to a minute.",
-    );
-    expect(onboardingCopy.import.lookFurther.continuePaused).toBe(
-      "Continue is paused while we look.",
-    );
-    expect(onboardingCopy.import.newEmptyWallet).toBe(
-      "Nothing found yet. This phrase will open a new, empty wallet.",
-    );
-    expect(tradeCopy.noMoney).toBe("No money in this portfolio yet");
-    expect(mobileSettingsCopy.about).toMatchObject({
-      helpContact: "ph1l1ph@proton.me",
-      websiteValue: "noirwire.com",
-    });
+  it("says the fee, or that there is none, and never that it is shown somewhere else", () => {
+    for (const text of strings(settingsCopy.costs)) {
+      expect(text).not.toMatch(/fee is shown|shown in the review/i);
+    }
   });
 
-  it("gives each app leftover a shared home, with web and phone variants only where they differ", () => {
-    expect(commonCopy.showLabel("the recovery phrase")).toBe("Show the recovery phrase");
-    expect(commonCopy.hideLabel("the recovery phrase")).toBe("Hide the recovery phrase");
-    expect(commonCopy.increaseLabel("the weight")).toBe("Increase the weight");
-    expect(commonCopy.decreaseLabel("the weight")).toBe("Decrease the weight");
-    expect(commonCopy.percentSpoken(42)).toBe("42 percent");
-    expect(commonCopy.closeLabel("Add digital dollars")).toBe("Close Add digital dollars");
-    expect(commonCopy.nothingHereYet).toBe("Nothing here yet");
-    expect(commonCopy.discardThis).toBe("Discard this?");
-    expect(commonCopy.keepEditing).toBe("Keep editing");
-    expect(commonCopy.discard).toBe("Discard");
-    expect(commonCopy.stepStatus).toEqual({
-      waiting: "Waiting",
-      current: "In progress",
-      done: "Done",
-      failed: "Failed",
-      skipped: "Not done",
-    });
+  it("uses plain words on every screen: none of the words it retired", () => {
+    for (const scope of ["everywhere", "everyday", "mainPath"] as const) {
+      expect(plainWordsBrokenIn(SCOPES[scope], scope)).toEqual([]);
+    }
+  });
+
+  it("refuses a retired word wherever it is put back", () => {
+    const everyday = (copy: unknown) => plainWordsBrokenIn(copy, "everyday");
+    expect(everyday({ note: "The transfer itself is public on chain." })).toHaveLength(1);
+    expect(everyday({ note: "No owner label onchain" })).toHaveLength(1);
+    expect(everyday({ lead: "An address derived from your recovery phrase." })).toHaveLength(1);
+    expect(everyday({ lead: "Every portfolio this wallet derives." })).toHaveLength(1);
+    expect(everyday({ button: "Suggest a passphrase" })).toHaveLength(1);
+    expect(everyday({ button: "Encrypt and finish", busy: "Encrypting..." })).toHaveLength(2);
+    expect(
+      everyday({ button: "Deposit", done: (amount: string) => `Deposited ${amount}` }),
+    ).toHaveLength(2);
+    expect(everyday({ risk: "It is not a bank deposit." })).toEqual([]);
+    expect(everyday({ price: "At review", change: "No live price" })).toHaveLength(2);
+    expect(everyday({ note: "Your order price is shown at review." })).toEqual([]);
+
+    const everywhere = (copy: unknown) => plainWordsBrokenIn(copy, "everywhere");
+    expect(
+      everywhere({ title: "Import an existing wallet.", done: "Wallet imported." }),
+    ).toHaveLength(2);
+    expect(
+      everywhere({ banner: "Never send mainnet funds", tag: "Devnet SOL only." }),
+    ).toHaveLength(2);
+    expect(everywhere({ banner: "Test network", line: "Earn runs on the main network." })).toEqual(
+      [],
+    );
+
+    const mainPath = (copy: unknown) => plainWordsBrokenIn(copy, "mainPath");
+    expect(mainPath({ eyebrow: "Earn · Jupiter Lend" })).toHaveLength(1);
+    expect(mainPath({ about: "NVDAx is an xStocks tracker certificate." })).toHaveLength(1);
+    expect(mainPath({ line: "Its issuer keeps control over it." })).toHaveLength(1);
+  });
+
+  it("keeps what is behind Read the risks out of the scan, and nothing else", () => {
+    const scanned = strings(MAIN_PATH);
+    expect(scanned).not.toContain(marketsCopy.detail.issuerPowers);
+    expect(scanned).not.toContain(tradeCopy.tracker.notOffered);
+    expect(scanned).toContain(marketsCopy.detail.publicTrades);
+    expect(scanned).toContain(tradeCopy.publicLine);
+    expect(scanned).toContain(earnCopy.title);
+    expect(scanned).toContain(portfolioCopy.home.addMoney);
+  });
+
+  it("says ready to invest on every portfolio row, a pie's included", () => {
+    expect(portfolioCopy.home.portfolioLine.pie(2, "$0.00")).toMatch(/\$0\.00 ready to invest$/);
+    expect(portfolioCopy.home.portfolioLine.holdings("$0.00", 1)).toMatch(
+      /^\$0\.00 ready to invest/,
+    );
+  });
+
+  it("uses one word, Restore, for bringing a wallet back", () => {
+    expect(onboardingCopy.welcome.restore).toMatch(/^Restore\b/);
+    expect(onboardingCopy.import.title).toMatch(/^Restore\b/);
+    expect(onboardingCopy.import.submit).toMatch(/^Restore\b/);
+    expect(onboardingCopy.import.importedTitle).toMatch(/restored/);
+    expect(onboardingCopy.import.reunitedTitle).toMatch(/restored/);
+    expect(onboardingCopy.import.progress.title).toMatch(/^Restoring\b/);
+  });
+
+  it("still states every risk on the Risks and Privacy pages", () => {
+    const pages = [
+      strings(settingsCopy.risks).join(" "),
+      strings(mobileSettingsCopy.risks).join(" "),
+    ];
+    for (const page of pages) {
+      expect(page).toMatch(/not a share/i);
+      expect(page).toMatch(/issuer.*freeze/i);
+      expect(page).toMatch(/public on chain/i);
+      expect(page).toMatch(/not insured/i);
+      expect(page).toMatch(/Jupiter Lend/);
+      expect(page).toMatch(/not been (independently )?audited/i);
+      expect(page).toMatch(/only your recovery phrase/i);
+    }
+    const privacy = [
+      strings(settingsCopy.protection).join(" "),
+      strings(mobileSettingsCopy.privacy).join(" "),
+    ];
+    for (const page of privacy) {
+      expect(page).toMatch(/trades (are|stay) public/i);
+      expect(page).toMatch(/does not make (it|them) invisible/i);
+      expect(page).toMatch(/never leave this (browser|phone)/i);
+      expect(page).toMatch(/you have to trust it keeps nothing more/i);
+    }
+  });
+
+  it("joins a list the way a sentence does", () => {
+    expect(commonCopy.andList([])).toBe("");
     expect(commonCopy.andList(["SOL"])).toBe("SOL");
     expect(commonCopy.andList(["SOL", "USDC"])).toBe("SOL and USDC");
     expect(commonCopy.andList(["SOL", "USDC", "SPYx"])).toBe("SOL, USDC and SPYx");
-    expect(commonCopy.andList([])).toBe("");
-
-    expect(marketsCopy.detail.chartHint).toBe("Hover to see the price and date.");
-    expect(mobileMarketsCopy.detail.chartHint).toBe("Press and hold to see the price and date.");
-
-    expect(mobileOnboardingCopy.phrase.wordLabel(1, "abandon")).toBe("Word 1, abandon");
-    expect(mobileOnboardingCopy.phrase.copy.confirmTitle).toBe("Copy the recovery phrase?");
-    expect(mobileOnboardingCopy.phrase.copy.confirmBody(30)).toBe(
-      "Other apps and keyboards on this phone can read the clipboard, and it may sync to your other devices. It is cleared after 30 seconds.",
-    );
-    expect(mobileOnboardingCopy.phrase.copy.copiedNote(30)).toBe(
-      "Copied. The clipboard is cleared in 30 seconds; copy something else to be sure.",
-    );
-
-    expect(mobileWalletCopy.protection.refused).toBe(
-      "This can't be shown safely right now, so it is kept hidden. Try again.",
-    );
-
-    expect(mobileSendCopy.camera).toEqual({
-      purpose: "NoirWire uses the camera only to scan a QR code you point it at.",
-      allow: "Allow camera",
-      off: "Camera access is off.",
-      offDetail:
-        "Allow the camera in system settings to scan a code, or paste the address instead.",
-      openSettings: "Open settings",
-    });
-
-    expect(mobileAppCopy.runtimeFailure.title).toBe("NoirWire cannot run safely on this device");
-    expect(mobileAppCopy.runtimeFailure.configFailure).toBe("App configuration");
-  });
-
-  it("leaves what was already good as it was", () => {
-    expect(mobileOnboardingCopy.confirm.checkWord(5)).toBe("Check word 5 on your paper.");
-    expect(onboardingCopy.phrase.neverAsked).toBe(
-      "NoirWire never asks for these words. Nobody from NoirWire will ever ask you for them.",
-    );
-    expect(activityCopy.empty).toBe("Your buys, sells and money moves will appear here.");
-    expect(portfolioCopy.balances.stale).toBe(
-      "We couldn't update your balances. What you see may be out of date.",
-    );
-    expect(appCopy.networkGate.unreachable).toBe(
-      "We can't show your balances right now. Your money has not moved. Try again.",
-    );
   });
 });

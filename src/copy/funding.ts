@@ -11,7 +11,7 @@ export const privateMoveTiming = "It usually arrives within a minute and can tak
 
 /** Said on both platforms under the amount of a private move. */
 const privateMoveFooter =
-  "A private move breaks the onchain link between your funding wallet and this portfolio. It does not hide the amount, and the settlement service sees both addresses. It does not see your IP address: the request goes through NoirWire's own server first, which keeps only a basic record that a request was made, not your address or what's in it. Privacy from the chain, not from the service.";
+  "A private move breaks the public link between your funding wallet and this portfolio. It does not hide the amount, and the settlement service sees both addresses. It does not see your IP address: the request goes through NoirWire's own server first, which keeps only a basic record that a request was made, not your address or what's in it. Privacy from the public record, not from the service.";
 
 /** Moving money from the funding wallet into a portfolio, privately or in public. */
 export const fundingCopy = {
@@ -30,7 +30,7 @@ export const fundingCopy = {
     },
     arrive: {
       title: "Arrive at this portfolio",
-      detail: "Confirmed by reading this portfolio's real onchain balance.",
+      detail: "Confirmed by reading this portfolio's real balance.",
     },
   },
 
@@ -39,7 +39,7 @@ export const fundingCopy = {
   leadPublic: (asset: string, available: string) =>
     `Move ${asset} into this portfolio. Available ${available}.`,
   noPrivateMove: (asset: string) =>
-    `${asset} cannot be moved privately. This is a direct, public transfer from your funding wallet to this portfolio, and it links the two addresses onchain. Keep it small - enough to cover fees is usually plenty.`,
+    `${asset} cannot be moved privately. This is a direct, public transfer from your funding wallet to this portfolio, and it links the two addresses publicly. Keep it small - enough to cover fees is usually plenty.`,
   otherAmount: (asset: string) => `Other amount in ${asset}`,
   invalidAmount: "Enter an amount greater than zero and within your available balance.",
   belowMinimum: (minimum: string) => `A private move has to be at least ${minimum}.`,
@@ -68,7 +68,7 @@ export const fundingCopy = {
 
   arrivedTitle: "Funds arrived",
   arrived: (amount: string, portfolio: string) =>
-    `${amount} is now in ${portfolio}, read back from its real onchain balance.`,
+    `${amount} is now in ${portfolio}, read back from its real balance.`,
   /** The money moved, and the portfolio's balance could not be read back yet. */
   movedUnread: (amount: string, portfolio: string) =>
     `${amount} was moved into ${portfolio}. Its balance will update shortly.`,
@@ -84,7 +84,7 @@ export const fundingCopy = {
     "The transfer was accepted but has not landed yet. Queued transfers settle on their own schedule, so this is normal rather than a failure. This portfolio’s balance will show it once it arrives.",
 
   footerPrivate: privateMoveFooter,
-  footerPublic: "This is an ordinary, fully public onchain transfer.",
+  footerPublic: "This is an ordinary, fully public transfer.",
 } as const;
 
 /**

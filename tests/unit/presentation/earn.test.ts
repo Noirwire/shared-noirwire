@@ -25,7 +25,6 @@ const sheet = (overrides: Partial<EarnSheetState> = {}, amountText = "10") =>
     available: true,
     positionKnown: true,
     needsKnown: true,
-    venue: "Jupiter Lend",
     apy: 5,
     cost: { kind: "covered" },
     pending: { blocked: false },
@@ -57,7 +56,7 @@ describe("earnDraft and earnSample", () => {
 describe("earnSheetView", () => {
   it("reviews a deposit, with a year's estimate at today's rate", () => {
     expect(sheet()).toMatchObject({
-      title: "Deposit · Investing",
+      title: "Add to Earn · Investing",
       lead: "Lend USDC from this portfolio.",
       amountLabel: "Amount in USDC",
       available: "Available $50.00",
@@ -66,10 +65,10 @@ describe("earnSheetView", () => {
       mainnetOnly: null,
       networkCostLine: "Network cost: Covered",
       beforeDeposit: {
-        title: "Before you deposit",
-        body: "USDC is lent through Jupiter Lend. The rate changes. This is not a bank deposit and is not insured. Smart-contract failures can cause loss. Withdrawals may be delayed when the pool is heavily borrowed.",
+        title: "Before you add to Earn",
+        body: "USDC in Earn is lent out. The rate changes. This is not a bank deposit and is not insured. Smart-contract failures can cause loss. Withdrawals may be delayed when the pool is heavily borrowed.",
       },
-      confirm: { label: "Confirm deposit", disabled: false },
+      confirm: { label: "Add to Earn", disabled: false },
     });
   });
 
@@ -87,7 +86,7 @@ describe("earnSheetView", () => {
 
   it("says Earn is mainnet only, and shows no cost there", () => {
     const view = sheet({ available: false });
-    expect(view.mainnetOnly).toBe("Earn runs on Solana mainnet.");
+    expect(view.mainnetOnly).toBe("Earn runs on the main network.");
     expect(view.networkCost).toBeNull();
     expect(view.networkCostLine).toBeNull();
     expect(view.confirm.disabled).toBe(true);
@@ -120,7 +119,7 @@ describe("earnPortfolioView", () => {
       cashAvailable: "$10.00 ready to invest",
       inEarn: "$20.00",
       earned: "$0.50",
-      earnedLine: "$0.50 earned since deposit",
+      earnedLine: "$0.50 earned since you added it",
       archived: null,
       restore: null,
       canDeposit: true,

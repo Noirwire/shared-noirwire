@@ -12,6 +12,7 @@ import {
   type StoredRecord,
   type StoredWallet,
 } from "../../src/wallet/types.js";
+import { fastKeyDerivation } from "./support/fastKdf.js";
 import { fakeDevice, type FakeDevice } from "./support/device.js";
 import {
   FIXTURE_PASSWORD,
@@ -58,6 +59,18 @@ function makeWallet(): Wallet {
 }
 
 let window: FakeDevice;
+
+/**
+ * These suites are about what the store does with a key. The key itself is
+ * derived in one round here; the real derivation is proven by the records
+ * captured from real apps, by `keystore.test.ts`, and by the one round trip
+ * below that asks for it.
+ */
+let realKeyDerivation: () => void = () => undefined;
+beforeEach(() => {
+  realKeyDerivation = fastKeyDerivation();
+});
+afterEach(() => realKeyDerivation());
 
 /**
  * The store keeps its state in module scope, so a freshly imported copy is a
@@ -122,6 +135,28 @@ describe("the wallet store", () => {
     // Locking clears each tab's idle timer, which would otherwise outlive the test.
     tabs.splice(0).forEach((opened) => opened.lock());
     vi.useRealTimers();
+  });
+
+  describe("with the real key derivation", () => {
+    it("stores a wallet, refuses a wrong password and opens with the right one", async () => {
+      realKeyDerivation();
+      const derived = vi.spyOn(crypto.subtle, "deriveKey");
+      const store = await tab();
+      await store.storeNewWallet(makeWallet(), FIXTURE_PHRASE, PASSWORD);
+
+      const reloaded = await tab();
+      expect(await reloaded.unlock("not-the-password")).toMatch(/does not match/);
+      expect(reloaded.getPhrase()).toBeNull();
+      expect(await reloaded.unlock(PASSWORD)).toBeNull();
+      expect(reloaded.getPhrase()).toEqual(FIXTURE_PHRASE);
+
+      const rounds = derived.mock.calls.map(
+        ([algorithm]) => (algorithm as Pbkdf2Params).iterations,
+      );
+      expect(rounds.length).toBeGreaterThanOrEqual(3);
+      expect(new Set(rounds)).toEqual(new Set([600_000]));
+      derived.mockRestore();
+    });
   });
 
   describe("what is stored", () => {

@@ -4,6 +4,7 @@ import { portfolioCopy } from "../copy/portfolio.js";
 import { deltaText, shares, tokenAmount, usd } from "../domain/format.js";
 import type { Wallet } from "../domain/wallet.js";
 import { recentActivity, type ActivityRowView } from "./activity.js";
+import { freshnessView, type HomeFreshness } from "./freshness.js";
 import { portfolioRowView, toneOf, type ChangeTone, type PortfolioRowView } from "./portfolio.js";
 
 /** Where a Home control leads. The app maps each to a screen or sheet. */
@@ -44,6 +45,10 @@ export type HomeView = {
     /** The tappable line under the total: who sees it. */
     explainer: string;
   };
+  /** Balances or prices may be out of date. Null while both are current or still loading. */
+  stale: string | null;
+  /** Balances or prices have never been read, and nothing has failed: the screen waits. */
+  loading: boolean;
   /** The header arc is a share of something. With a total of zero there is nothing to draw. */
   showArc: boolean;
   /** The "Ready to invest" row: what the portfolios hold uninvested. */
@@ -150,9 +155,11 @@ function totalOf(
 
 /**
  * Everything on Home, decided from the unlocked wallet, when prices were
- * last read (null: there is no live price) and what is in Earn. The combined
- * total and the combined list of trackers exist only here, added up on the
- * device.
+ * last read (null: there is no live price), what is in Earn, and how
+ * current the balances and the prices are (`freshness`: the notice shows the
+ * moment a refresh fails and goes on the next one that succeeds). The
+ * combined total and the combined list of trackers exist only here, added
+ * up on the device.
  */
 export function homeView(
   reads: ScreenReads,
@@ -160,6 +167,7 @@ export function homeView(
   updatedAt: number | null,
   earn: EarnTotal,
   archivedHeld: ArchivedHeldState,
+  freshness: HomeFreshness,
 ): HomeView {
   const home = portfolioCopy.home;
   const addMoneyCopy = portfolioCopy.addMoney;
@@ -196,6 +204,10 @@ export function homeView(
   const archived = reads.archivedPortfolios(wallet);
 
   return {
+    ...freshnessView(freshness.now, [
+      { read: freshness.balances, notice: "balances" },
+      { read: freshness.prices, notice: "prices" },
+    ]),
     total: totalOf(overview, empty, earn),
     showArc: overview.valued && overview.total + (earn ?? 0) > 0,
     cash: { label: home.readyToInvest, value: usd(overview.cash) },

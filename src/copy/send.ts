@@ -76,7 +76,7 @@ export const sendCopy = {
     lastFour: "Type the last 4 characters of the address.",
   },
   sendingAmount: (amount: string) => `Sending ${amount}`,
-  steps: ["Checking the recipient", "Sending on chain", "Confirming"],
+  steps: ["Checking the recipient", "Sending", "Confirming"],
   sent: (amount: string) => `Sent ${amount}`,
   sentBody: (portfolio: string) => `To the address you entered. It has left ${portfolio}.`,
   unknownTitle: "Sent, but not confirmed",

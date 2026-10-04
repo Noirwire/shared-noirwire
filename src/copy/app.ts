@@ -22,7 +22,7 @@ export const appCopy = {
     weakPassword: "Your password is easy to guess. Change it to protect this wallet.",
   },
 
-  networkBanner: "Test network · never send mainnet funds",
+  networkBanner: "Test network · never send main network funds",
 
   networkGate: {
     wrongNetwork: (network: string) =>

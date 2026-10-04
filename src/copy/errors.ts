@@ -43,12 +43,12 @@ export const errorsCopy = {
     notTransferable: (symbol: string) => `${symbol} cannot be transferred.`,
     notCompleted:
       "This send can't be made. Nothing was sent. Check the amount and the recipient's address.",
-    moreThanOnchain: "More than this portfolio holds onchain.",
+    moreThanOnchain: "More than this portfolio holds.",
     failed: "We couldn't complete this send. Nothing was sent. Try again.",
   },
 
   trade: {
-    mainnetOnly: "Live trading runs on mainnet.",
+    mainnetOnly: "Live trading runs on the main network.",
     notTradable: (symbol: string) => `${symbol} is not a tradable asset.`,
     noPrice: "We couldn't get a price for this trade. Nothing was traded. Try again.",
     priceMoved: "The price moved before this order could be placed. Nothing was traded.",
@@ -60,7 +60,7 @@ export const errorsCopy = {
   },
 
   earn: {
-    mainnetOnly: "Earning runs on Solana mainnet.",
+    mainnetOnly: "Earning runs on the main network.",
     failed: "This did not go through. Nothing was moved. Try again.",
   },
 } as const;

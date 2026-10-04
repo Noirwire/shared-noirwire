@@ -76,19 +76,42 @@ A view model that reads prices, the catalog or valuations takes `ScreenReads` as
 
 What a first-time user meets is decided here too, so both apps open the same way:
 
-| View model                                   | Screen                                                                                                                                                                      |
-| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `welcomeView(platform)`                      | Welcome: the headline, two lines, three actions (only "Create a wallet" is filled) and the trust line. The web's example beside the column is `example`; the phone has none |
-| `homeView(...)`                              | Home. While the wallet is empty: one button, "Add money", `explanation` under it, no `secondary`, and `showArc` false                                                       |
-| `addMoneyView(wallet)`                       | The add-money sheet: three steps, the person's own funding wallet address inside the second (already shown, and `captureAllowed`), "Network: Solana" and the link to Costs  |
-| `costsView({ tradeFeeBps })`                 | Costs, in Settings and behind "What does it cost?". Its numbers are read from the fee constants and the app's own trading fee                                               |
-| `unreachableView({ hasWallet, locked })`     | NoirWire could not be reached as the app opened. With a stored, locked wallet `unlockOffered` is true: unlocking reads only the device, so the unlock screen is still shown |
-| `unlockProblemView(problem, platform)`       | A failed unlock. The typed password is never cleared; after a wrong one it is kept and selected                                                                             |
-| `newPasswordView(platform)`                  | Choosing a password: the rule, with its minimum length, before anything is typed                                                                                            |
-| `noMoneyView(reads, wallet, portfolioId)`    | Buying with nothing to invest, said at the first tap, with the way on: "Add money", or "Move to portfolio" when USDC is waiting                                             |
-| `chartReadout(points, x, { range, readAt })` | The price and date under a finger held on a chart. `chartHighLow(points)` is the range's high and low                                                                       |
+| View model                                   | Screen                                                                                                                                                                                                                                                                                                                  |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `welcomeView(platform)`                      | Welcome: the headline, two lines, three actions (only "Create a wallet" is filled) and the trust line. The web's example beside the column is `example`; the phone has none                                                                                                                                             |
+| `homeView(...)`                              | Home. While the wallet is empty: one button, "Add money", `explanation` under it, no `secondary`, and `showArc` false                                                                                                                                                                                                   |
+| `addMoneyView(wallet, { tradeFeeBps })`      | The add-money sheet: three steps, the person's own funding wallet address inside the second (already shown, and `captureAllowed`), "Network: Solana", and `costs`: "What does it cost?" opened in place, closed at first, so the sheet and its address stay on screen                                                   |
+| `costsView({ tradeFeeBps })`                 | Costs, in Settings and inside the add-money sheet. Its numbers are read from the fee constants and the app's own trading fee; with no fee set it says "no NoirWire fee"                                                                                                                                                 |
+| `aboutView()`                                | About: the help contact and the website, each with an `action` (a `mailto:` or an `https:` URL) to open on a tap                                                                                                                                                                                                        |
+| `discardPromptView()`                        | Asked before leaving a sheet with something typed into it: a title, a body saying what is lost, and the two buttons                                                                                                                                                                                                     |
+| `unreachableView({ hasWallet, locked })`     | NoirWire could not be reached as the app opened: `checkNetwork` (in `application/`) answered `unreachable`, which it does within `NETWORK_CHECK_LIMIT_MS` (8 s) however long the read hangs. With a stored, locked wallet `unlockOffered` is true: unlocking reads only the device, so the unlock screen is still shown |
+| `earnScreenView(...)`                        | Earn, titled "Earn". Off the main network `notHere` is the one line shown, and the rate, the actions, the total and the rows are left out. Who the USDC is lent through is in `risks.lines`, behind "Read the risks"                                                                                                    |
+| `trackerView(...)`                           | A tracker's page. What kind of certificate it is, what its issuer can do and where it is not offered are in `risks`, behind "Read the risks"; a missing price is `commonCopy.priceUnavailable` and nothing else                                                                                                         |
+| `unlockProblemView(problem, platform)`       | A failed unlock. The typed password is never cleared; after a wrong one it is kept and selected                                                                                                                                                                                                                         |
+| `newPasswordView(platform)`                  | Choosing a password: the rule, with its minimum length, before anything is typed                                                                                                                                                                                                                                        |
+| `noMoneyView(reads, wallet, portfolioId)`    | Buying with nothing to invest, said at the first tap, with the way on: "Add money", or "Move to portfolio" when USDC is waiting                                                                                                                                                                                         |
+| `chartReadout(points, x, { range, readAt })` | The price and date under a finger held on a chart. `chartHighLow(points)` is the range's high and low                                                                                                                                                                                                                   |
 
-`marketsView` and `trackerView` answer `stale` when there is no live price, from the same `updatedAt` Home goes by; pass `loading` while prices are read for the first time. An import says what it is doing under its button (`importWaitingView(...).note`), says why Continue is held while it looks further (`lookFurtherView(...).continuePaused`), and skips the choice of addresses when nothing was found (`importSourceView(...).skipped`).
+An import says what it is doing under its button (`importWaitingView(...).note`), says why Continue is held while it looks further (`lookFurtherView(...).continuePaused`), and skips the choice of addresses when nothing was found (`importSourceView(...).skipped`).
+
+## How current a screen is
+
+`homeView`, `marketsView` and `trackerView` answer `stale` (the quiet "may be out of date" notice, or null) and `loading` by one rule, `freshnessOf` in `domain/freshness.ts`:
+
+| The read                                             | The screen               |
+| ---------------------------------------------------- | ------------------------ |
+| its latest attempt failed                            | `stale`, at once         |
+| never came back, and nothing has failed              | `loading`, and no notice |
+| last came back more than `STALE_AFTER_MS` (60 s) ago | `stale`                  |
+| otherwise                                            | neither                  |
+
+Each read is a `ReadFreshness`: when it last succeeded, and whether its latest attempt failed. Prices keep their own (`livePricesFreshness()` in `@noirwire/shared/infrastructure`). For a read an app makes itself (balances, a chart), the app keeps one and moves it on with `recordRead(previous, ok, now)`, where `ok` is the result its refresh already answers with. A chart is read once for a range, so it does not age: only its own failure makes it stale.
+
+```ts
+const freshness = { now: Date.now(), prices: livePricesFreshness(), balances };
+const view = homeView(screenReads, wallet, updatedAt, earnTotal, archivedHeld, freshness);
+// draw view.stale as the quiet notice when it is not null; draw the waiting state while view.loading
+```
 
 ## Route parameters
 

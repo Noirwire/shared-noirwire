@@ -287,10 +287,10 @@ describe("an imported wallet's activity", () => {
     expect(view(imported([]), "web")).toMatchObject({
       kind: "none",
       importedNote:
-        "This wallet was imported in this browser. Activity from before the import, made on another device, is not shown here. Your balances are complete.",
+        "This wallet was restored in this browser. Activity from before that, made on another device, is not shown here. Your balances are complete.",
     });
     expect(view(imported([]), "mobile").importedNote).toBe(
-      "This wallet was imported on this phone. Activity from before the import, made on another device, is not shown here. Your balances are complete.",
+      "This wallet was restored on this phone. Activity from before that, made on another device, is not shown here. Your balances are complete.",
     );
     const some = imported([activity({ portfolioId: "acc_1", kind: "fund" })]);
     expect(view(some, "web")).toMatchObject({ kind: "list", importedNote: expect.any(String) });

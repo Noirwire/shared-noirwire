@@ -18,12 +18,23 @@ Every string a person reads, in one place, so both apps say the same thing in th
 | What follows a share price                            | "Tracker"                                                                                            | "stock" or "share" for what a person holds                                  |
 | A price shown before an order                         | "Approximate price", with "The final price is shown before you buy."                                 | "Indicative"                                                                |
 | The fee line                                          | "Network cost"                                                                                       | gas, or the network's own currency                                          |
+| Bringing a wallet back from its recovery phrase       | "Restore"                                                                                            | "Import"                                                                    |
+| Putting USDC into Earn, and taking it out             | "Add to Earn", "Withdraw"                                                                            | "Deposit"                                                                   |
+| A price that is missing                               | "Price unavailable right now."                                                                       | "At review", "No live price"                                                |
+| What anyone can see                                   | "public", "in public", "publicly"                                                                    | "on chain", "onchain"                                                       |
+| Where an address comes from                           | "comes from"                                                                                         | "derived from", "derives"                                                   |
+| What locks the wallet                                 | "password"                                                                                           | "passphrase"                                                                |
+| The network, said only off the main one               | "test network", "main network"                                                                       | the clusters' own names                                                     |
 
-No service for buying USDC is named or pointed to. A number in a sentence (a fee, a minimum, a length) is passed in by the view model from the constant the code enforces, never typed into the string. `tests/unit/copyVariants.test.ts` refuses a replaced name in any copy object; the Privacy and Risks pages keep their own, longer wording and are outside that check.
+No service for buying USDC is named or pointed to. A number in a sentence (a fee, a minimum, a length) is passed in by the view model from the constant the code enforces, never typed into the string. `tests/unit/copyVariants.test.ts` refuses a replaced name or a retired word in any copy object; the Privacy and Risks pages keep their own, longer wording and are outside that check.
+
+**Behind "Read the risks":** what kind of certificate a tracker is, what its issuer can do to it, where it is not offered, and who the USDC in Earn is lent through. None of that is said in the main path: Earn is titled "Earn", and a tracker's lead already says what a tracker is. The same test scans the main path for those words and leaves out only the keys that sit behind the disclosure.
+
+**Costs:** a cost line states the fee, or states that there is none. It never says the fee is shown somewhere else.
 
 **Counts:** a counted noun goes through `plural(count, noun)`, so nothing reads "1 assets".
 
-**Failures and waiting:** say what happened in the person's terms, what it means for their money ("Nothing was sent", "Nothing was charged", "Nothing was saved") and what to do next. Never how the app asked: no request, service, timeout or status. "Network cost" is the name of a fee, "Solana" is the chain a person must know they are on, and "offline" is said when the device truly has no connection; a privacy note may name who sees what. `tests/unit/copyVariants.test.ts` holds every changed string and refuses the blaming words.
+**Failures and waiting:** say what happened in the person's terms, what it means for their money ("Nothing was sent", "Nothing was charged", "Nothing was saved") and what to do next. Never how the app asked: no request, service, timeout or status. "Network cost" is the name of a fee, "Solana" is the chain a person must know they are on, and "offline" is said when the device truly has no connection; a privacy note may name who sees what. `tests/unit/copyVariants.test.ts` refuses the blaming words and checks that each failure says what it means for the money.
 
 **May import:** types from `domain/`.
 
@@ -45,4 +56,4 @@ mobileOnboardingCopy.phrase.intro; // onlyWayBack("phone")
 
 The template takes the exact words, preposition included, because the web does not use one noun everywhere: it says "in this browser" in one sentence and "this device" in another. Templates stay inside the copy files; an app reads finished strings, never a template. A string that differs in more than its platform words (a different rule, a different screen) is written out whole in the variant.
 
-The web's wording is held byte for byte by `tests/unit/copyVariants.test.ts`, so moving a string into a template cannot change what the web says.
+Rules are tested; prose is not. The web's wording is no longer pinned byte for byte: `tests/unit/copyVariants.test.ts` checks that a phone variant is the web's string with only the platform's words changed, that no retired name or word comes back, that nothing leads with a limitation, that a failure says what it means for the money and never blames a request, and that the Privacy and Risks pages still state each risk. A sentence can be reworded without touching a test, as long as it keeps to those rules.

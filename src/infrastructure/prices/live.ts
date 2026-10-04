@@ -1,3 +1,9 @@
+import {
+  NEVER_READ,
+  REFRESH_INTERVAL_MS,
+  recordRead,
+  type ReadFreshness,
+} from "../../domain/freshness.js";
 import type { LivePrice } from "./liveSource.js";
 import { apiUrl } from "../api.js";
 import { readFetch } from "../readFetch.js";
@@ -20,12 +26,14 @@ export type Visibility = {
   subscribe(onChange: () => void): () => void;
 };
 
-export const POLL_MS = 30_000;
+export const POLL_MS = REFRESH_INTERVAL_MS;
 /** Past this age a price stops counting as live, so an outage cannot keep yesterday's number labelled current. */
 const FRESH_MS = 120_000;
 
 let prices = new Map<string, LivePrice>();
 let updatedAt: number | null = null;
+/** When prices last arrived here, and whether the latest poll failed: what a screen's stale notice goes by. */
+let freshness: ReadFreshness = NEVER_READ;
 /** Bumped on every poll, success or failure, so screens re-check freshness even when nothing new arrives. */
 let version = 0;
 const listeners = new Set<() => void>();
@@ -40,6 +48,7 @@ async function refresh() {
   // A stock's value needs its multiplier as well as its price; this asks the
   // chain only when the last read has aged out.
   void refreshMultipliers();
+  let arrived = false;
   try {
     const response = await readFetch(apiUrl("prices"));
     if (response.ok) {
@@ -49,10 +58,12 @@ async function refresh() {
       // in seconds: a copy the server held for a minute is a minute old,
       // however recently it arrived here.
       updatedAt = Date.now() - (Number(response.headers.get("age")) || 0) * 1000;
+      arrived = true;
     }
   } catch {
-    /* the last prices age out on their own */
+    /* the last prices age out on their own, and the failed poll is said at once */
   }
+  freshness = recordRead(freshness, arrived, Date.now());
   version += 1;
   listeners.forEach((listener) => listener());
 }
@@ -79,6 +90,15 @@ export function livePricesVersion(): number {
 /** When prices were last fetched, or null when there is no fresh price at all. */
 export function livePricesUpdatedAt(): number | null {
   return isFresh() ? updatedAt : null;
+}
+
+/**
+ * When prices last arrived and whether the latest poll failed, for a
+ * screen's "may be out of date" notice: a failed poll is known at once,
+ * while the prices themselves stay shown until they age out.
+ */
+export function livePricesFreshness(): ReadFreshness {
+  return freshness;
 }
 
 onMultipliersChange(() => {

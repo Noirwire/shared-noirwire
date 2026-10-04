@@ -10,6 +10,8 @@ The rest is what the screens read: the catalog and valuation (`catalog.ts`, `por
 
 `apiSession.ts` keeps the app's anonymous session with NoirWire's server: started when there is none, renewed a minute before its token runs out, replaced once it is a day old, and shared by callers that arrive together, under the platform lock so two tabs make one between them. It is a quota bucket, not an identity, and nothing in it comes from the wallet. Where sessions come from is an interface it declares (`SessionGateway`); `infrastructure/` supplies the server's routes.
 
+`networkCheck.ts` asks which network the connection serves as the app opens, and waits no longer than `NETWORK_CHECK_LIMIT_MS` (8 s) for the answer: a read that fails and one that never answers are both `unreachable`.
+
 `pacer.ts` spaces requests so that no more than a set number start in a second, with a clock that can be passed in. Told that the service refused one for coming too fast (`slowDown`), it holds everything back for a moment and halves its rate; `hold` waits without slowing further.
 
 **Belongs here:** use cases, the result type, the pending-action reducer, and the interfaces a use case needs from the outside world (`ports.ts`).

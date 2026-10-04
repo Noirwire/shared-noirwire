@@ -74,6 +74,7 @@ export {
 export { sendDraft } from "./send.js";
 export { TRADE_CASH_DECIMALS, type Denomination, tradeDraft } from "./trade.js";
 export { mapPortfolio, walletUsage } from "./walletRecord.js";
+export { NETWORK_CHECK_LIMIT_MS, type NetworkCheck, checkNetwork } from "./networkCheck.js";
 export { type Pacer, type PacerOptions, createPacer } from "./pacer.js";
 export { processLocks } from "./processLocks.js";
 export {

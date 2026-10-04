@@ -14,7 +14,8 @@ export const commonCopy = {
   active: "Active",
   checking: "Checking...",
   unavailable: "Unavailable",
-  priceUnavailable: "Price unavailable",
+  /** Said wherever a price is missing: a row, a holding, a tracker's own page. One string, both platforms. */
+  priceUnavailable: "Price unavailable right now.",
   amountPlaceholder: "0.00",
   copy: "Copy",
   seeAll: "See all",
@@ -31,8 +32,8 @@ export const commonCopy = {
   tooPrecise: (smallest: string) =>
     `That amount has too many decimals. The smallest amount is ${smallest}.`,
   balanceUnavailable: "This token's balance cannot be shown right now. Try again in a moment.",
-  tradingUnavailableOn: (network: string) =>
-    `Live trading runs on Solana mainnet. You can explore trackers on ${network}.`,
+  /** Said off the main network, where trackers can be looked at and not traded. */
+  tradingUnavailableOn: "Live trading runs on the main network. You can explore trackers here.",
 
   /** A reveal control's accessible name: "Show the password", "Hide the recovery phrase". */
   showLabel: (label: string) => `Show ${label}`,
@@ -47,6 +48,7 @@ export const commonCopy = {
   nothingHereYet: "Nothing here yet",
   /** Asked before leaving a sheet with something typed into it. */
   discardThis: "Discard this?",
+  discardBody: "What you typed will be lost.",
   keepEditing: "Keep editing",
   discard: "Discard",
   /** The word for each state of a step in a progress list. */

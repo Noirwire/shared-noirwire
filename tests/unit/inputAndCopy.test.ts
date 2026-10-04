@@ -117,7 +117,7 @@ describe("an amount with more decimals than the asset has", () => {
       preparing: false,
       pastedForeign: false,
       unsendable: null,
-      network: "Solana mainnet",
+      network: "Solana",
     } as Parameters<typeof sendFormView>[0]);
   };
 

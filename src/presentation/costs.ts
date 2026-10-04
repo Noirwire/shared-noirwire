@@ -15,18 +15,22 @@ export function privateMoveCostText(): string {
 
 export type CostsView = { title: string; lines: string[] };
 
+/** The trading fee the app is set up with, in basis points. Unset, null or zero: NoirWire charges none. */
+export type CostsState = { tradeFeeBps?: number | null };
+
 /**
- * What things cost, for the Costs row in Settings and wherever "What does it
- * cost?" leads. `tradeFeeBps` is the trading fee the app is set up with, the
- * figure the trade review itself shows; where none is set there is no number
- * to state, and the line says where the fee is shown.
+ * What things cost, for the Costs row in Settings and under "What does it
+ * cost?" on the add-money sheet. `tradeFeeBps` is the trading fee the app is
+ * set up with, the figure the trade review itself shows. Where none is set,
+ * or it is zero, NoirWire takes no trading fee and the line says exactly that.
  */
-export function costsView(state: { tradeFeeBps: number }): CostsView {
+export function costsView(state: CostsState): CostsView {
   const copy = settingsCopy.costs;
+  const feeBps = state.tradeFeeBps ?? 0;
   return {
     title: copy.title,
     lines: [
-      state.tradeFeeBps > 0 ? copy.trade(String(state.tradeFeeBps / 100)) : copy.tradeAtReview,
+      feeBps > 0 ? copy.trade(String(feeBps / 100)) : copy.tradeNoFee,
       copy.move(privateMoveCostText()),
       copy.network,
       copy.gettingUsdc,

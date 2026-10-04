@@ -2,7 +2,7 @@
 export const earnCopy = {
   title: "Earn",
   eyebrow: "USDC lending",
-  lead: (venue: string) => `Lend USDC from a portfolio through ${venue}. The rate is variable.`,
+  lead: "Lend USDC from a portfolio. The rate is variable.",
   summaryLabel: "Earn summary",
   currentApy: "Current variable APY",
   supplyApy: "Supply APY",
@@ -24,7 +24,7 @@ export const earnCopy = {
     actions: "Actions",
   },
   inEarn: "in Earn",
-  earnedSinceDeposit: (amount: string) => `${amount} earned since deposit`,
+  earnedSinceDeposit: (amount: string) => `${amount} earned since you added it`,
   restoreToMove: "Restore this portfolio to move funds",
   createPortfolio: "Create a portfolio",
   risksTitle: "Lending risks",
@@ -33,31 +33,32 @@ export const earnCopy = {
   risksShort:
     "Lending has smart-contract risk. USDC in Earn is not insured and is not available to trade. Withdrawals can be delayed if the pool is heavily borrowed.",
 
-  deposit: "Deposit",
+  deposit: "Add to Earn",
   withdraw: "Withdraw",
   sheetTitle: (action: "deposit" | "withdraw", portfolio: string) =>
-    `${action === "deposit" ? "Deposit" : "Withdraw"} · ${portfolio}`,
+    `${action === "deposit" ? "Add to Earn" : "Withdraw"} · ${portfolio}`,
   sheetLead: (action: "deposit" | "withdraw") =>
     action === "deposit" ? "Lend USDC from this portfolio." : "Return USDC to this portfolio.",
   amountLabel: "Amount in USDC",
   yearEstimate: (dollars: string, rate: string) =>
     `About ${dollars} in a year at today's ${rate}% variable rate. This is an estimate, not a promise.`,
-  mainnetOnly: "Earn runs on Solana mainnet.",
-  notHere: (network: string) =>
-    `Earn runs on Solana mainnet. Switch from ${network} to lend or withdraw.`,
+  /** Said once, off the main network, in place of the rate, the rows and the actions. */
+  mainnetOnly: "Earn runs on the main network.",
   unread: "What is in Earn can't be shown right now.",
-  beforeDepositTitle: "Before you deposit",
-  beforeDeposit: (venue: string) =>
-    `USDC is lent through ${venue}. The rate changes. This is not a bank deposit and is not insured. Smart-contract failures can cause loss. Withdrawals may be delayed when the pool is heavily borrowed.`,
+  beforeDepositTitle: "Before you add to Earn",
+  beforeDeposit:
+    "USDC in Earn is lent out. The rate changes. This is not a bank deposit and is not insured. Smart-contract failures can cause loss. Withdrawals may be delayed when the pool is heavily borrowed.",
   submitting: "Submitting...",
   confirm: (action: "deposit" | "withdraw") =>
-    action === "deposit" ? "Confirm deposit" : "Confirm withdrawal",
-  earning: (amount: string, venue: string) => `${amount} earning through ${venue}`,
+    action === "deposit" ? "Add to Earn" : "Confirm withdrawal",
+  earning: (amount: string) => `${amount} in Earn`,
 
   rateAnnouncement: (rate: string) => `Current variable rate, ${rate} percent a year`,
-  noMoney: "No portfolio has USDC to deposit. Move money into a portfolio first.",
+  noMoney: "Move money into a portfolio first, then add it to Earn.",
   riskLine: "Lending carries risk and the rate changes.",
   readRisks: "Read the risks",
+  /** Under "Read the risks": who the USDC is lent through, named once. */
+  venueLine: (venue: string) => `USDC in Earn is lent through ${venue}.`,
   noPortfolio: "Create a portfolio to use Earn.",
   noPortfolioDetail: "Earn lends a portfolio's USDC.",
   continueWith: (portfolio: string) => `Continue with ${portfolio}`,
@@ -83,21 +84,21 @@ export const earnCopy = {
   openingReason: "The network cost includes opening this holding, a one-time cost.",
   fromProceeds:
     "The network cost is paid out of the USDC this returns, so no USDC is needed first.",
-  depositRisk: (venue: string) =>
-    `USDC is lent through ${venue}. It is not a bank deposit, and withdrawals can be delayed.`,
+  depositRisk:
+    "USDC in Earn is lent out. It is not a bank deposit, and withdrawals can be delayed.",
   confirmAmount: {
-    deposit: (amount: string) => `Deposit ${amount}`,
+    deposit: (amount: string) => `Add ${amount} to Earn`,
     withdraw: (amount: string) => `Withdraw ${amount}`,
   },
 
   progress: {
-    deposit: (amount: string) => `Depositing ${amount}`,
+    deposit: (amount: string) => `Adding ${amount} to Earn`,
     withdraw: (amount: string) => `Withdrawing ${amount}`,
   },
-  steps: ["Sending on chain", "Confirming", "Reading the new balance"],
+  steps: ["Sending", "Confirming", "Reading the new balance"],
 
   landed: {
-    deposit: (amount: string) => `Deposited ${amount}`,
+    deposit: (amount: string) => `Added ${amount} to Earn`,
     withdraw: (amount: string) => `Withdrew ${amount}`,
   },
   landedBody: {

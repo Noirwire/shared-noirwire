@@ -27,7 +27,6 @@ export type EarnSheetState = {
   /** Whether the portfolio's position and the action's needs have been read. */
   positionKnown: boolean;
   needsKnown: boolean;
-  venue: string;
   apy: number | undefined;
   cost: NetworkCost | null;
   pending: { blocked: boolean };
@@ -70,9 +69,7 @@ export function earnSheetView(state: EarnSheetState): EarnSheetView {
     mainnetOnly: state.available ? null : copy.mainnetOnly,
     networkCostLine: showsCost ? networkCostCopy.line(networkCost.value) : null,
     networkCost: showsCost ? networkCost : null,
-    beforeDeposit: depositing
-      ? { title: copy.beforeDepositTitle, body: copy.beforeDeposit(state.venue) }
-      : null,
+    beforeDeposit: depositing ? { title: copy.beforeDepositTitle, body: copy.beforeDeposit } : null,
     confirm: {
       label: state.busy ? copy.submitting : copy.confirm(action),
       disabled:
@@ -179,23 +176,30 @@ export type EarnRowView = {
 };
 
 export type EarnScreenView = {
+  /** "Earn", and nothing else: the header names no one. */
   title: string;
-  venue: string;
+  /**
+   * Earn does not run on this network. The one line the screen shows, at
+   * the top; the rate, the actions, the total and the rows are all left out.
+   */
+  notHere: string | null;
   rateLabel: string;
-  /** Null while the rate is read. */
+  /** Null while the rate is read, and where Earn does not run. */
   rate: { value: string; unavailable: boolean; announcement: string } | null;
   couldEarn: string | null;
   breakdown: string | null;
-  mainnetOnly: string | null;
-  deposit: { label: string; disabled: boolean; reason: string | null };
+  /** "Add to Earn". Null where Earn does not run. */
+  deposit: { label: string; disabled: boolean; reason: string | null } | null;
   withdraw: { label: string; disabled: boolean } | null;
   portfoliosTitle: string;
   inEarn: string;
-  /** What every portfolio has in Earn together, or "Unavailable" until each has been read. */
-  total: { label: string; value: string };
+  /** What every portfolio has in Earn together, or "Unavailable" until each has been read. Null where Earn does not run. */
+  total: { label: string; value: string } | null;
   rows: readonly EarnRowView[];
   riskLine: string;
   readRisks: string;
+  /** Behind "Read the risks": the lending risks, and who the USDC is lent through, named once. */
+  risks: { title: string; lines: string[] };
   empty: { title: string; detail: string; action: string } | null;
 };
 
@@ -230,10 +234,35 @@ export function earnScreenView(state: {
   const anyLent = portfolios.some((portfolio) => lent(portfolio) > 0);
   const inert = !online || !available;
   const restore = mobile ? mobileEarnCopy.restore : copy.restoreToMove;
+  const rateLabel = mobile ? mobileEarnCopy.rateLabel : copy.currentApy;
+  const risks = {
+    title: copy.readRisks,
+    lines: [copy.risksShort, copy.venueLine(state.venue)],
+  };
+  if (!available) {
+    return {
+      title: copy.title,
+      notHere: copy.mainnetOnly,
+      rateLabel,
+      rate: null,
+      couldEarn: null,
+      breakdown: null,
+      deposit: null,
+      withdraw: null,
+      portfoliosTitle: copy.portfolios,
+      inEarn: copy.inEarn,
+      total: null,
+      rows: [],
+      riskLine: copy.riskLine,
+      readRisks: copy.readRisks,
+      risks,
+      empty: null,
+    };
+  }
   return {
     title: copy.title,
-    venue: state.venue,
-    rateLabel: mobile ? mobileEarnCopy.rateLabel : copy.currentApy,
+    notHere: null,
+    rateLabel,
     rate: reading
       ? null
       : {
@@ -243,11 +272,10 @@ export function earnScreenView(state: {
         },
     couldEarn: reading ? null : live ? summary.couldEarn : copy.noRate,
     breakdown: live ? summary.breakdown : null,
-    mainnetOnly: available ? null : copy.mainnetOnly,
     deposit: {
       label: copy.deposit,
       disabled: inert || !anyCash,
-      reason: anyCash || !available ? null : copy.noMoney,
+      reason: anyCash ? null : copy.noMoney,
     },
     withdraw: anyLent ? { label: copy.withdraw, disabled: inert } : null,
     portfoliosTitle: copy.portfolios,
@@ -280,6 +308,7 @@ export function earnScreenView(state: {
     }),
     riskLine: copy.riskLine,
     readRisks: copy.readRisks,
+    risks,
     empty:
       portfolios.length === 0
         ? {
@@ -377,7 +406,6 @@ export function earnReviewView(state: {
   amount: number;
   portfolioLabel: string;
   cost: NetworkCost;
-  venue: string;
   pending: { blocked: boolean };
   online: boolean;
   /**
@@ -421,7 +449,7 @@ export function earnReviewView(state: {
     needsCash: network.moveMoney
       ? { text: network.moveMoney.before.trim(), action: network.moveMoney.link }
       : null,
-    risk: depositing ? { line: copy.depositRisk(state.venue), link: copy.readRisks } : null,
+    risk: depositing ? { line: copy.depositRisk, link: copy.readRisks } : null,
     error: failure && failure.action === action && failure.amount === amount ? failure.text : null,
     confirm: {
       label: copy.confirmAmount[action](figure(amount)),

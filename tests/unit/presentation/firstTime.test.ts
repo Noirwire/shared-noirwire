@@ -1,15 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { TRADE_CASH_DECIMALS } from "../../../src/application/trade.js";
 import { fundingCopy, mobileFundingCopy, privateMoveTiming } from "../../../src/copy/funding.js";
-import { walletCopy } from "../../../src/copy/wallet.js";
+import { appCopy } from "../../../src/copy/app.js";
+import { mobileWalletCopy, walletCopy } from "../../../src/copy/wallet.js";
 import {
   PRIVACY_FEE_BPS,
   RELAY_FEE_RAW,
   SETTLEMENT_DELAY_MS,
 } from "../../../src/domain/privateTransfer.js";
 import { MIN_PASSWORD_LENGTH } from "../../../src/domain/wallet.js";
+import { aboutView } from "../../../src/presentation/about.js";
 import { addMoneyView } from "../../../src/presentation/addMoney.js";
 import { costsView, privateMoveCostText } from "../../../src/presentation/costs.js";
+import { discardPromptView } from "../../../src/presentation/discard.js";
 import { newPasswordView } from "../../../src/presentation/password.js";
 import { noMoneyView } from "../../../src/presentation/trade.js";
 import { unlockProblemView } from "../../../src/presentation/unlock.js";
@@ -28,64 +31,45 @@ import {
 const reads = testReads();
 
 describe("welcomeView", () => {
-  it("says what the app is for, with one filled button, on both platforms", () => {
+  it("offers three ways in with one filled button, on both platforms", () => {
     for (const platform of ["web", "mobile"] as const) {
       const view = welcomeView(platform);
-      expect(view.title).toBe("Invest in US stock trackers. Privately.");
-      expect(view.lines).toEqual([
-        "Trackers follow share prices like Apple, Tesla or the S&P 500. You do not own the shares.",
-        "Each portfolio is separate from your funding wallet. Trades themselves are public.",
+      expect(view.actions.map((action) => [action.kind, action.filled])).toEqual([
+        ["create", true],
+        ["restore", false],
+        ["explore", false],
       ]);
-      expect(view.actions).toEqual([
-        { kind: "create", label: "Create a wallet", filled: true },
-        { kind: "restore", label: "Restore a wallet", filled: false },
-        { kind: "explore", label: "Explore trackers", filled: false },
-      ]);
-      expect(view.trust).toBe(
-        "No account and no ID check. Only your recovery words can restore your wallet.",
-      );
-    }
-  });
-
-  it("says nothing about the server, and offers nothing meant for a developer", () => {
-    for (const platform of ["web", "mobile"] as const) {
-      expect(JSON.stringify(welcomeView(platform))).not.toMatch(/server|request|UI kit/i);
+      expect(view.actions[1].label).toMatch(/^Restore\b/);
+      expect(JSON.stringify(view)).not.toMatch(/server|request|UI kit/i);
     }
   });
 
   it("shows the example portfolios on the web only", () => {
     expect(welcomeView("mobile").example).toBeNull();
-    expect(welcomeView("web").example).toMatchObject({
-      heading: "Your portfolios",
-      badge: "Example",
-      steps: [
-        "One recovery phrase for the whole wallet",
-        "A separate address for each portfolio",
-        "Add money, then invest in trackers",
-      ],
-    });
+    expect(welcomeView("web").example?.portfolios.length).toBeGreaterThan(0);
   });
 });
 
 describe("what a private move costs", () => {
   const flat = Number(RELAY_FEE_RAW) / 10 ** TRADE_CASH_DECIMALS;
 
-  it("is said from the constants the review charges by", () => {
-    expect(privateMoveCostText()).toBe(`${PRIVACY_FEE_BPS / 100}% + $${flat.toFixed(2)}`);
-    expect(privateMoveCostText()).toBe("0.1% + $0.20");
+  it("is said from the constants the review charges by, wherever it is said", () => {
+    const cost = `${PRIVACY_FEE_BPS / 100}% + $${flat.toFixed(2)}`;
+    expect(privateMoveCostText()).toBe(cost);
+    expect(costsView({ tradeFeeBps: 50 }).lines[1]).toContain(cost);
+    expect(addMoneyView(testWallet(), { tradeFeeBps: 50 }).steps[2].detail).toContain(cost);
   });
 });
 
 describe("how long a private move takes", () => {
   it("is one sentence, the same in the add-money step, in Costs and on the funding sheet", () => {
-    const timing = "It usually arrives within a minute and can take a few.";
-    expect(privateMoveTiming).toBe(timing);
-    expect(addMoneyView(testWallet()).steps[2].detail.endsWith(timing)).toBe(true);
-    expect(costsView({ tradeFeeBps: 50 }).lines[1].endsWith(timing)).toBe(true);
-    expect(fundingCopy.privateCosts(0.1, "0.20 USDC", "USDC", "0.50 USDC").endsWith(timing)).toBe(
-      true,
-    );
-    expect(mobileFundingCopy.costs("0.50 USDC").endsWith(timing)).toBe(true);
+    const said = [
+      addMoneyView(testWallet(), { tradeFeeBps: 50 }).steps[2].detail,
+      costsView({ tradeFeeBps: 50 }).lines[1],
+      fundingCopy.privateCosts(0.1, "0.20 USDC", "USDC", "0.50 USDC"),
+      mobileFundingCopy.costs("0.50 USDC"),
+    ];
+    for (const text of said) expect(text.endsWith(privateMoveTiming)).toBe(true);
   });
 
   it("promises no more than the app itself waits for an arrival", () => {
@@ -94,113 +78,89 @@ describe("how long a private move takes", () => {
 });
 
 describe("costsView", () => {
-  it("states each cost, the trading fee from the figure the app is set up with", () => {
-    expect(costsView({ tradeFeeBps: 50 })).toEqual({
-      title: "Costs",
-      lines: [
-        "Buying or selling a tracker: 0.5% of the trade.",
-        "Moving money into a portfolio privately: 0.1% + $0.20. It usually arrives within a minute and can take a few.",
-        "Network cost: a few cents, paid automatically from your USDC.",
-        "Getting USDC from another service: that service may charge its own fee.",
-        "The exact amount is always shown before you confirm.",
-      ],
-    });
-  });
+  const tradeLine = (state: Parameters<typeof costsView>[0]) => costsView(state).lines[0];
 
-  it("renders the numbers the constants hold, whatever they are", () => {
+  it("states five costs, the trading fee from the figure the app is set up with", () => {
+    expect(costsView({ tradeFeeBps: 50 }).lines).toHaveLength(5);
     for (const tradeFeeBps of [50, 75, 100, 255]) {
-      expect(costsView({ tradeFeeBps }).lines[0]).toBe(
-        `Buying or selling a tracker: ${tradeFeeBps / 100}% of the trade.`,
-      );
+      expect(tradeLine({ tradeFeeBps })).toContain(`${tradeFeeBps / 100}% of the trade`);
     }
-    expect(costsView({ tradeFeeBps: 50 }).lines[1]).toBe(
-      `Moving money into a portfolio privately: ${privateMoveCostText()}. It usually arrives within a minute and can take a few.`,
-    );
   });
 
-  it("states no trading fee where none is set, and says where it is shown", () => {
-    expect(costsView({ tradeFeeBps: 0 }).lines[0]).toBe(
-      "Buying or selling a tracker: the fee is shown in the review.",
-    );
+  it("says there is no NoirWire fee where the fee is zero or not set, and never points elsewhere", () => {
+    const none = [{ tradeFeeBps: 0 }, { tradeFeeBps: null }, { tradeFeeBps: undefined }, {}];
+    for (const state of none) {
+      expect(tradeLine(state)).toMatch(/no NoirWire fee/);
+      expect(tradeLine(state)).not.toMatch(/%|review/);
+    }
+    expect(tradeLine({ tradeFeeBps: 50 })).not.toMatch(/no NoirWire fee/);
   });
 });
 
 describe("addMoneyView", () => {
-  const view = addMoneyView(testWallet());
+  const view = addMoneyView(testWallet(), { tradeFeeBps: 50 });
 
-  it("explains adding digital dollars in three steps", () => {
-    expect(view.title).toBe("Add digital dollars");
-    expect(view.steps.map((step) => step.title)).toEqual([
-      "Get USDC",
-      "Send it to your funding wallet",
-      "Move it into a portfolio",
-    ]);
-    expect(view.steps[0].detail).toBe(
-      "USDC is a digital dollar: 1 USDC = $1. Send it from any app or wallet that supports USDC on the Solana network. You do not need an account with us.",
-    );
-    expect(view.steps[2].detail).toBe(
-      `When it arrives, choose a portfolio and tap Move to portfolio. A private move is not linked to your funding wallet in the public record. It costs ${privateMoveCostText()}. It usually arrives within a minute and can take a few.`,
-    );
-  });
-
-  it("holds the person's own funding wallet address in the second step, already shown", () => {
+  it("is three steps with the person's own funding wallet address in the second, already shown", () => {
     expect(view.steps.map((step) => step.address !== null)).toEqual([false, true, false]);
-    expect(view.steps[1].address).toMatchObject({
-      address: FUNDING_ADDRESS,
-      copy: "Copy address",
-      copyDescribe: "Copy funding wallet address",
-      network: "Network: Solana",
-      captureAllowed: true,
-    });
+    expect(view.steps[1].address).toMatchObject({ address: FUNDING_ADDRESS, captureAllowed: true });
     expect(view.steps[1].address?.lines.join(" ").replaceAll(" ", "")).toBe(FUNDING_ADDRESS);
     expect(view.steps[1].address).not.toHaveProperty("masked");
   });
 
-  it("leads to the costs from its footer, and names no service to buy from", () => {
-    expect(view.footer).toEqual({ label: "What does it cost?", target: { to: "costs" } });
+  it("says in the first step what USDC is and how to get it, naming no one to buy from", () => {
+    expect(view.steps[0].detail).toMatch(/1 USDC = \$1/);
+    expect(view.steps[0].detail).toMatch(/\bBuy it\b.*\bsend it on the Solana network\b/);
+    expect(view.steps[0].detail).not.toMatch(/cannot|can't|not yet/i);
     expect(JSON.stringify(view)).not.toMatch(/exchange/i);
+  });
+
+  it("opens the costs in place, closed at first, with the lines the Costs page has", () => {
+    expect(view.costs.expandedByDefault).toBe(false);
+    expect(view.costs.lines).toEqual(costsView({ tradeFeeBps: 50 }).lines);
+    expect(addMoneyView(testWallet(), {}).costs.lines).toEqual(costsView({}).lines);
+    // Nothing on the sheet leads away from it: the address stays on screen.
+    expect(view).not.toHaveProperty("footer");
+    expect(JSON.stringify(view)).not.toMatch(/"target"|"to":/);
   });
 });
 
 describe("unreachableView", () => {
+  const gate = appCopy.networkGate;
+
   it("tells someone with no wallet about the connection, never about balances", () => {
     expect(unreachableView({ hasWallet: false, locked: false })).toEqual({
-      message: "Can't reach NoirWire. Check your connection and try again.",
-      retry: "Try again",
+      message: gate.cannotReach,
+      retry: gate.retry,
       unlockOffered: false,
     });
+    expect(gate.cannotReach).not.toMatch(/balance|money/i);
   });
 
   it("says the same over a locked wallet, and still offers to unlock it", () => {
     expect(unreachableView({ hasWallet: true, locked: true })).toEqual({
-      message: "Can't reach NoirWire. Check your connection and try again.",
-      retry: "Try again",
+      message: gate.cannotReach,
+      retry: gate.retry,
       unlockOffered: true,
     });
   });
 
   it("speaks of balances only once a wallet is unlocked", () => {
     expect(unreachableView({ hasWallet: true, locked: false })).toEqual({
-      message: "We can't show your balances right now. Your money has not moved. Try again.",
-      retry: "Try again",
+      message: gate.unreachable,
+      retry: gate.retry,
       unlockOffered: false,
     });
   });
 });
 
 describe("newPasswordView", () => {
-  it("states the rule up front, in each platform's words", () => {
-    expect(newPasswordView().rule).toBe(
-      "Choose a password of at least 12 characters. It locks the wallet in this browser. We never see it.",
-    );
-    expect(newPasswordView("mobile").rule).toBe(
-      "Choose a password of at least 12 characters. It locks the wallet on this phone. We never see it.",
-    );
-    expect(newPasswordView().title).toBe("Set a password");
-  });
-
-  it("states the length the strength check enforces", () => {
-    expect(newPasswordView().rule).toContain(`at least ${MIN_PASSWORD_LENGTH} characters`);
+  it("states, before anything is typed, the length the strength check enforces", () => {
+    for (const platform of ["web", "mobile"] as const) {
+      expect(newPasswordView(platform).rule).toContain(
+        `at least ${MIN_PASSWORD_LENGTH} characters`,
+      );
+    }
+    expect(newPasswordView("mobile").rule).not.toMatch(/browser/);
     const strong = { check: () => ({ guessesLog10: 20 }) };
     expect(assessPasswordWith(strong, "x".repeat(MIN_PASSWORD_LENGTH - 1)).ok).toBe(false);
     expect(assessPasswordWith(strong, "x".repeat(MIN_PASSWORD_LENGTH)).ok).toBe(true);
@@ -210,7 +170,7 @@ describe("newPasswordView", () => {
 describe("unlockProblemView", () => {
   it("keeps a wrong password in the field, selected, with the reason under it", () => {
     expect(unlockProblemView(walletCopy.store.wrongPassword)).toEqual({
-      text: "That password does not match this wallet.",
+      text: walletCopy.store.wrongPassword,
       underField: true,
       typed: "keepSelected",
     });
@@ -223,10 +183,29 @@ describe("unlockProblemView", () => {
       typed: "keep",
     });
     expect(unlockProblemView(walletCopy.store.noWallet, "mobile")).toEqual({
-      text: "There is no wallet on this phone.",
+      text: mobileWalletCopy.store.noWallet,
       underField: false,
       typed: "keep",
     });
+  });
+});
+
+describe("aboutView", () => {
+  it("makes the help contact and the website something to tap", () => {
+    const view = aboutView();
+    expect(view.help.action).toEqual({ kind: "email", url: `mailto:${view.help.value}` });
+    expect(view.website.action).toEqual({ kind: "website", url: `https://${view.website.value}` });
+    expect(view.help.value).toMatch(/^[^@\s]+@[^@\s]+\.[a-z]+$/);
+    expect(new URL(view.website.action.url).protocol).toBe("https:");
+    expect(new URL(view.help.action.url).protocol).toBe("mailto:");
+  });
+});
+
+describe("discardPromptView", () => {
+  it("says what discarding loses, with a way to stay and a way to go", () => {
+    const view = discardPromptView();
+    expect(view.body).toMatch(/\blost\b/);
+    expect(new Set([view.title, view.body, view.keep, view.discard]).size).toBe(4);
   });
 });
 

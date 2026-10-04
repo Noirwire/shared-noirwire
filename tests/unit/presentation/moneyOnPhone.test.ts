@@ -325,12 +325,39 @@ describe("Earn", () => {
     expect(screen({ platform: "web" }).rateLabel).toBe("Current variable APY");
   });
 
-  it("waits for the rate, says Earn is mainnet only, and asks for a portfolio first", () => {
-    expect(screen({ rate: undefined }).rate).toBeNull();
-    expect(screen({ available: false })).toMatchObject({
-      mainnetOnly: "Earn runs on Solana mainnet.",
-      deposit: { disabled: true },
+  it("says once that Earn runs on the main network, with the actions and the rows left out", () => {
+    const view = screen({ available: false });
+    expect(view.notHere).toBe("Earn runs on the main network.");
+    expect(view).toMatchObject({
+      title: "Earn",
+      rate: null,
+      couldEarn: null,
+      breakdown: null,
+      deposit: null,
+      withdraw: null,
+      total: null,
+      rows: [],
+      empty: null,
     });
+    const { risks, ...main } = view;
+    expect(JSON.stringify(main)).not.toMatch(/Unavailable/);
+    expect(JSON.stringify(main).match(/main network/g)).toHaveLength(1);
+    expect(risks.lines.length).toBeGreaterThan(0);
+    expect(screen().notHere).toBeNull();
+  });
+
+  it("is titled Earn, and names who the USDC is lent through once, under Read the risks", () => {
+    const { risks, ...main } = screen();
+    expect(main.title).toBe("Earn");
+    expect(main.deposit?.label).toBe("Add to Earn");
+    expect(main.withdraw?.label).toBe("Withdraw");
+    expect(JSON.stringify(main)).not.toMatch(/Jupiter/);
+    expect(risks.title).toBe(main.readRisks);
+    expect(risks.lines.filter((line) => line.includes("Jupiter Lend"))).toHaveLength(1);
+  });
+
+  it("waits for the rate, and asks for a portfolio first", () => {
+    expect(screen({ rate: undefined }).rate).toBeNull();
     expect(screen({ portfolios: [] }).empty).toEqual({
       title: "Create a portfolio to use Earn.",
       detail: "Earn lends a portfolio's USDC.",
@@ -382,7 +409,6 @@ describe("Earn", () => {
       amount: 10,
       portfolioLabel: "Investing",
       cost,
-      venue: "Jupiter Lend",
       pending: { blocked: false },
       online: true,
     });
@@ -391,11 +417,11 @@ describe("Earn", () => {
       total: { label: "Total leaving Investing", value: "10.05 USDC" },
       reasons: ["The network cost includes opening this holding, a one-time cost."],
       risk: { link: "Read the risks" },
-      confirm: { label: "Deposit 10.00 USDC", disabled: false },
+      confirm: { label: "Add 10.00 USDC to Earn", disabled: false },
     });
     // An error belongs to the review it was about: the same action and amount, and no other.
     const failure = { text: "This did not go through.", action: "deposit" as const, amount: 10 };
-    const reviewing = { portfolioLabel: "Investing", cost, venue: "Jupiter Lend", online: true };
+    const reviewing = { portfolioLabel: "Investing", cost, online: true };
     const again = (action: "deposit" | "withdraw", amount: number) =>
       earnReviewView({ ...reviewing, action, amount, pending: { blocked: false }, failure }).error;
     expect(again("deposit", 10)).toBe("This did not go through.");
@@ -408,7 +434,6 @@ describe("Earn", () => {
       amount: 10,
       portfolioLabel: "Investing",
       cost: { ...cost, opens: null },
-      venue: "Jupiter Lend",
       pending: { blocked: true },
       online: true,
     });
@@ -421,7 +446,7 @@ describe("Earn", () => {
   });
 
   it("lists the steps and says how it ended, after its cost", () => {
-    expect(earnProgressView("deposit", 10).title).toBe("Depositing 10.00 USDC");
+    expect(earnProgressView("deposit", 10).title).toBe("Adding 10.00 USDC to Earn");
     expect(
       earnResultView({
         action: "withdraw",

@@ -321,7 +321,7 @@ describe("amounts", () => {
     const sent = mockChain(fundedPortfolio(5_000_000n, 10_000_000));
 
     await expect(withdrawToken(mint, DECIMALS, portfolio, funder, 6, recipient)).rejects.toThrow(
-      "More than this address holds onchain.",
+      "More than this address holds.",
     );
     expect(sent).toHaveLength(0);
   });
@@ -364,7 +364,7 @@ describe("a send, confirmed by asking the chain", () => {
       value: { slot: 1, confirmations: 1, err: { InstructionError: [0, "Custom"] } },
     });
 
-    await expect(send()).rejects.toThrow("The transfer failed on chain.");
+    await expect(send()).rejects.toThrow("The transfer failed.");
   });
 
   it("is a failure once its blockhash has expired with no trace of it", async () => {
@@ -372,7 +372,7 @@ describe("a send, confirmed by asking the chain", () => {
     vi.mocked(connection.getSignatureStatus).mockResolvedValue(noTrace);
     vi.mocked(connection.getBlockHeight).mockResolvedValue(LAST_VALID_BLOCK_HEIGHT + 1);
 
-    await expect(send()).rejects.toThrow("The transfer failed on chain.");
+    await expect(send()).rejects.toThrow("The transfer failed.");
   });
 
   it("is unknown, not a failure, when the wait ends with no trace and a live blockhash", async () => {

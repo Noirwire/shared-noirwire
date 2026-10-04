@@ -25,6 +25,10 @@ npm run build
 
 Every change comes with its tests. A new rule has a test for each branch; a fixed bug has a test that failed before the fix.
 
+- Give each test one failure it uniquely catches; repeat across layers only where the boundary changes.
+- Assert money, keys, authorization, accessibility or an observable decision; never exact prose or an input echoed back.
+- Keep one real crypto round trip per boundary; seed fixtures elsewhere and use controlled clocks, not sleeps.
+
 ## The dependency rule
 
 Each folder under `src/` may import only what its `README.md` allows:
@@ -54,7 +58,7 @@ Nothing imports from an app, from React, React Native, Next or Expo, or from Nod
 
 ## Text people read
 
-- Say "portfolio", "funding wallet" and "trackers". One name for each thing, on both platforms: the table is in [src/copy/README.md](src/copy/README.md), and a test refuses the names it replaced.
+- Say "portfolio", "funding wallet" and "trackers". One name for each thing, on both platforms: the table is in [src/copy/README.md](src/copy/README.md), and a test refuses the names it replaced and the words it retired.
 - No em dashes. Three periods for an ellipsis.
 - Say plainly what happened and what to do next.
 

@@ -66,7 +66,7 @@ export function assessPasswordWith(checker: PasswordChecker, password: string): 
     return {
       ok: false,
       reason:
-        "Too easy to guess. Use a few unrelated words, or tap Suggest a passphrase for a strong one.",
+        "Too easy to guess. Use a few unrelated words, or tap Suggest a password for a strong one.",
     };
   }
   return { ok: true };

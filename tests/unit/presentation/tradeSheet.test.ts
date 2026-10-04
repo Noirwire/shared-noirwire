@@ -48,9 +48,7 @@ describe("tradeReviewView on the phone", () => {
     expect(view.headline).toEqual(["Spend $50.00 from Investing", "Receive at least 1.9000 NVDAx"]);
     expect(view.countdown).toBe("Price held for 30 seconds.");
     expect(view.total).toEqual({ label: "Total cost", value: "50.05 USDC" });
-    expect(view.trackerLine).toBe(
-      "NVDAx is a tracker, not a share, and its issuer keeps control over it.",
-    );
+    expect(view.trackerLine).toBe("NVDAx is a tracker, not a share.");
     expect(view.action).toEqual({ kind: "confirm", label: "Confirm buy", disabled: false });
   });
 

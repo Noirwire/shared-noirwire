@@ -45,7 +45,7 @@ export const pendingActionCopy = {
       `${side === "buy" ? "a buy" : "a sale"} of ${symbol}`,
     openingHoldings: "opening accounts for trackers",
     earn: (action: "deposit" | "withdraw") =>
-      action === "deposit" ? "an Earn deposit" : "an Earn withdrawal",
+      action === "deposit" ? "adding to Earn" : "an Earn withdrawal",
   },
 } as const;
 

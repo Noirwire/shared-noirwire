@@ -13,11 +13,11 @@ const olderNotKept = (place: string) => (count: number) =>
 
 /** What the detail sheet says about where the entry was written down. */
 const recordedWhere = (place: string) =>
-  `Recorded ${place} when it happened. The transfer itself is public on chain.`;
+  `Recorded ${place} when it happened. The transfer itself is public.`;
 
 /** An imported wallet's history starts at the import. `where` is "in this browser" or "on this phone". */
 const importedNote = (where: string) =>
-  `This wallet was imported ${where}. Activity from before the import, made on another device, is not shown here. Your balances are complete.`;
+  `This wallet was restored ${where}. Activity from before that, made on another device, is not shown here. Your balances are complete.`;
 
 /** The record of money moves and trades. */
 export const activityCopy = {

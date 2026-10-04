@@ -8,6 +8,7 @@ import type { AppPlatform } from "../domain/appPlatform.js";
 import { dateAndTime, shares, sinceDate, usd } from "../domain/format.js";
 import { RANGE_SPAN_MS, type PriceRange } from "../domain/priceRanges.js";
 import type { Wallet } from "../domain/wallet.js";
+import { freshnessView, type ScreenFreshness, type TrackerFreshness } from "./freshness.js";
 
 type Listed = { symbol: string; name: string; issuer?: string };
 
@@ -17,12 +18,10 @@ export type TrackerRowView = {
   symbol: string;
   name: string;
   caption: string;
-  /** The live price, or "At review" when there is none. */
+  /** The live price, or "Price unavailable right now." when there is none. */
   price: string;
   live: boolean;
   change: ChangeView | null;
-  /** Shown in place of the change when there is no live price. */
-  noLivePrice: string | null;
   label: string;
   /** Null for a visitor, who has no watchlist. */
   star: { watched: boolean; label: string } | null;
@@ -51,14 +50,13 @@ export function trackerRowView(
     symbol: entry.symbol,
     name: entry.name,
     caption: marketsCopy.issuerLine(entry.symbol, entry.issuer),
-    price: price ?? marketsCopy.atReview,
+    price: price ?? commonCopy.priceUnavailable,
     live: price !== null,
     change: change === null ? null : changeView(change),
-    noLivePrice: price === null ? marketsCopy.noLivePrice : null,
     label: marketsCopy.rowLabel(
       entry.name,
       entry.symbol,
-      price,
+      price ?? commonCopy.priceUnavailable.replace(/\.$/, ""),
       change === null ? null : marketsCopy.changeSpoken(change),
     ),
     star:
@@ -78,23 +76,17 @@ export type MarketsState = {
   /** The wallet's watchlist, or null for a visitor. */
   watchlist: readonly string[] | null;
   updatedAt: number | null;
-  /** Prices are being read for the first time, so having none yet is not a failure. */
-  loading?: boolean;
+  /** How current the prices are: `livePricesFreshness()` and the screen's own clock. */
+  freshness: ScreenFreshness;
   platform: AppPlatform;
 };
 
-/**
- * The quiet notice that prices could not be read or have aged out, from the
- * same reading Home goes by: `updatedAt` is null when there is no live price.
- */
-function staleNotice(state: { updatedAt: number | null; loading?: boolean }): string | null {
-  return state.updatedAt === null && !state.loading ? marketsCopy.stale : null;
-}
-
 export type MarketsView = {
   title: string;
-  /** Prices may be out of date. Null while they are live or still loading. */
+  /** Prices may be out of date. Null while they are current or still loading. */
   stale: string | null;
+  /** Prices have never been read, and nothing has failed: the screen waits. */
+  loading: boolean;
   search: { label: string; placeholder: string; clear: string };
   searching: { count: string; rows: TrackerRowView[]; empty: string | null } | null;
   shelves: Shelf[];
@@ -166,7 +158,7 @@ export function marketsView(reads: ScreenReads, state: MarketsState): MarketsVie
 
   return {
     title: marketsCopy.desktopTitle,
-    stale: staleNotice(state),
+    ...freshnessView(state.freshness.now, [{ read: state.freshness.prices, notice: "prices" }]),
     search: {
       label: mobile ? mobileMarketsCopy.searchLabel : marketsCopy.searchLabel,
       placeholder: marketsCopy.searchPlaceholder,
@@ -224,15 +216,17 @@ export type TrackerView =
       /** The third line: what it follows, and that no share is owned. */
       follows: string;
       star: { watched: boolean; label: string } | null;
-      price:
-        { live: true; figure: string; tag: string } | { live: false; figure: string; note: string };
+      /** Without a live price the figure is "Price unavailable right now.", and nothing else is said. */
+      price: { live: true; figure: string; tag: string } | { live: false; figure: string };
       change: (ChangeView & { caption: string }) | null;
       /** That the price above is not the order's: the final one is shown before buying. */
       orderNote: string;
       /** About the smallest order that is placed. Null for a tracker no longer offered to buy. */
       minimum: string | null;
-      /** Prices may be out of date. Null while they are live or still loading. */
+      /** The price or the chart may be out of date. Null while both are current or still loading. */
       stale: string | null;
+      /** The price or the chart has never been read, and nothing has failed: the screen waits. */
+      loading: boolean;
       chart:
         | { kind: "loading"; text: string }
         | { kind: "none"; text: string }
@@ -252,15 +246,13 @@ export type TrackerView =
         rows: { id: string; label: string }[];
         none: string | null;
       } | null;
-      about: {
-        title: string;
-        lines: string[];
-        notOffered: string;
-        retired: string | null;
-        issuerDetails: string;
-      };
-      /** Behind "Read the risks": what the issuer can do to the tracker. */
-      risks: { title: string; lines: string[] };
+      about: { title: string; lines: string[]; retired: string | null };
+      /**
+       * Behind "Read the risks": what kind of certificate the tracker is, what
+       * its issuer can do to it and where it is not offered. `details` is the
+       * label of the link to the issuer's own page.
+       */
+      risks: { title: string; lines: string[]; details: string };
       actions: TrackerAction[];
       bottomNote: string | null;
       offline: string | null;
@@ -276,8 +268,8 @@ export type TrackerState = {
   history: PriceHistory;
   /** About the smallest order that is placed, in dollars: the figure the trade sheet holds an order to. */
   smallestOrderUsd: number;
-  /** Prices are being read for the first time, so having none yet is not a failure. */
-  loading?: boolean;
+  /** How current the price and the chart are, and the screen's own clock. */
+  freshness: TrackerFreshness;
   platform: AppPlatform;
 };
 
@@ -395,13 +387,16 @@ export function trackerView(reads: ScreenReads, state: TrackerState): TrackerVie
       : null,
     price: live
       ? { live: true, figure: usd(entry.price), tag: detail.approximate }
-      : { live: false, figure: marketsCopy.atReview, note: detail.priceUnavailable },
+      : { live: false, figure: commonCopy.priceUnavailable },
     change: live ? { ...changeView(entry.change24h), caption: detail.past24h } : null,
     orderNote: detail.finalPrice,
     minimum: entry.retired
       ? null
       : detail.smallestOrder(usd(state.smallestOrderUsd).replace(/\.00$/, "")),
-    stale: staleNotice(state),
+    ...freshnessView(state.freshness.now, [
+      { read: state.freshness.prices, notice: "prices" },
+      { read: state.freshness.chart, notice: "prices", readOnce: true },
+    ]),
     chart: chartOf(state),
     ranges: { value: state.range, label: detail.rangeLabel },
     holding: visitor
@@ -426,13 +421,19 @@ export function trackerView(reads: ScreenReads, state: TrackerState): TrackerVie
           none: held ? null : detail.notOwned,
         },
     about: {
-      title: detail.aboutAndRisk,
-      lines: [detail.aboutTracker(symbol, entry.name), detail.publicTrades, detail.dividends],
-      notOffered: tradeCopy.tracker.notOffered,
+      title: detail.about,
+      lines: [detail.publicTrades, detail.dividends],
       retired: entry.retired ? detail.retired(symbol) : null,
-      issuerDetails: detail.issuerDetails,
     },
-    risks: { title: detail.readRisks, lines: [detail.issuerPowers] },
+    risks: {
+      title: detail.readRisks,
+      lines: [
+        detail.aboutTracker(symbol, entry.name),
+        detail.issuerPowers,
+        tradeCopy.tracker.notOffered,
+      ],
+      details: detail.issuerDetails,
+    },
     actions,
     bottomNote:
       !visitor && portfolios.length > 0 && entry.retired && holders.length === 0

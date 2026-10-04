@@ -51,7 +51,7 @@ export const settingsCopy = {
     title: "Recovery phrase",
     description: "Your way back in if you forget your password",
     value: "View safely",
-    lead: "The phrase every portfolio in this wallet is derived from. It is the only way back in if you forget your password.",
+    lead: "The phrase every portfolio in this wallet comes from. It is the only way back in if you forget your password.",
     copyDescribe: "Copy recovery phrase",
     hide: "Hide phrase",
     hidesItself: "It hides again by itself after a minute.",
@@ -59,7 +59,7 @@ export const settingsCopy = {
     show: "Show",
     wrongPassword: walletCopy.store.wrongPassword,
     footnote:
-      "Stored encrypted under your password. Anyone who has these words controls every portfolio this wallet derives, on any device. NoirWire will never ask you for them.",
+      "Stored encrypted under your password. Anyone who has these words controls every portfolio that comes from them, on any device. NoirWire will never ask you for them.",
   },
 
   password: {
@@ -72,7 +72,7 @@ export const settingsCopy = {
     current: "Current password",
     failed: walletCopy.store.passwordNotChanged,
     changed: passwordChanged("in this browser"),
-    reEncrypting: "Re-encrypting...",
+    reEncrypting: "Saving...",
     submit: "Change password",
   },
 
@@ -91,8 +91,8 @@ export const settingsCopy = {
     description: "What buying, moving and sending cost",
     /** `percent` is the trading fee, from the app's own setting: "0.5". */
     trade: (percent: string) => `Buying or selling a tracker: ${percent}% of the trade.`,
-    /** Said where no trading fee is set, so there is no number to state. */
-    tradeAtReview: "Buying or selling a tracker: the fee is shown in the review.",
+    /** Said where the app charges no trading fee of its own. */
+    tradeNoFee: "Buying or selling a tracker: no NoirWire fee.",
     /** `cost` is what a private move costs, from the fee constants: "0.1% + $0.20". */
     move: (cost: string) =>
       `Moving money into a portfolio privately: ${cost}. ${privateMoveTiming}`,
@@ -103,7 +103,7 @@ export const settingsCopy = {
 
   protection: {
     title: "Privacy and your funds",
-    description: "What others can see, on chain and off",
+    description: "What others can see",
     value: "Read details",
     onChain: (assets: string, network: string) =>
       `Every portfolio, its ${assets} balances and every stock trade are real transactions on ${network}. Portfolio labels stay in this browser only.`,
@@ -116,7 +116,7 @@ export const settingsCopy = {
     phraseMainnet:
       "Anyone with your recovery phrase can take everything in every portfolio. Never share it, never type it into another site, and never reuse it for another wallet.",
     phraseTestNetwork: (network: string, tokens: string) =>
-      `These addresses hold ${network} SOL and test tokens (${tokens}). Do not send mainnet funds here, and never reuse this recovery phrase for another wallet.`,
+      `These addresses hold ${network} SOL and test tokens (${tokens}). Do not send main network funds here, and never reuse this recovery phrase for another wallet.`,
   },
 
   analytics: {
@@ -138,7 +138,7 @@ export const settingsCopy = {
       "A tracker is a certificate that follows the price of a stock or fund. It is not a share: it carries no voting rights and no claim on the company.",
       "The issuer of a tracker keeps control over its own tokens. It can freeze them, and move or burn them without your signature.",
       "Balances, trades, transfers, amounts and timing are public on chain for every portfolio address. Private funding makes a portfolio harder to link to you. It does not hide what the portfolio does.",
-      "USDC in Earn is lent out. The rate changes, withdrawals can be delayed while the pool is heavily borrowed, and a failure of the lending program can cause loss. It is not a bank deposit and is not insured.",
+      "USDC in Earn is lent out through Jupiter Lend. The rate changes, withdrawals can be delayed while the pool is heavily borrowed, and a failure of the lending program can cause loss. It is not a bank deposit and is not insured.",
       "This software has not been audited.",
       "Only your recovery phrase restores this wallet. Nobody else holds a copy, and nobody can reset it for you.",
     ],
@@ -160,7 +160,7 @@ export const settingsCopy = {
 export const mobileSettingsCopy = {
   saveFailing: saveFailing("on this phone", "when the app closes"),
   cleanupFailing:
-    "An old copy of a recovery phrase from an earlier version could not be deleted from this phone, so it may still be readable there. Reset the wallet and import it again if this stays.",
+    "An old copy of a recovery phrase from an earlier version could not be deleted from this phone, so it may still be readable there. Reset the wallet and restore it again if this stays.",
   saving: "Saving...",
 
   biometric: {

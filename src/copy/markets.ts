@@ -33,8 +33,6 @@ export const marketsCopy = {
   browseAll: "Browse all",
   categoriesLabel: "Market categories",
   nothingHere: "Nothing here yet.",
-  atReview: "At review",
-  noLivePrice: "No live price",
   approximatePrice: "Approximate price",
   issuerLine: (symbol: string, issuer: string | undefined) => `${symbol} · ${issuer ?? ""}`,
   assets: (count: number) => plural(count, "asset"),
@@ -53,8 +51,9 @@ export const marketsCopy = {
     `${watched ? "Remove" : "Add"} ${symbol} ${watched ? "from" : "to"} watchlist`,
   clearSearch: "Clear search",
   watchlistEmpty: "Your watchlist is empty.",
-  rowLabel: (name: string, symbol: string, price: string | null, change: string | null) =>
-    [name, symbol, price ?? "no live price", change].filter(Boolean).join(", "),
+  /** `price` is the figure, or the words for a missing one. */
+  rowLabel: (name: string, symbol: string, price: string, change: string | null) =>
+    [name, symbol, price, change].filter(Boolean).join(", "),
   changeSpoken: (percent: number) =>
     Math.abs(percent) < 0.005
       ? "unchanged today"
@@ -75,7 +74,6 @@ export const marketsCopy = {
     backToSearch: "Back to search",
     search: "Search",
     watch: (watched: boolean) => (watched ? "Remove from watchlist" : "Add to watchlist"),
-    priceUnavailable: "Current price unavailable",
     past24h: "past 24h",
     finalPrice: "The final price is shown before you buy.",
     historyLabel: "Price history",
@@ -87,6 +85,7 @@ export const marketsCopy = {
     valueWaiting: "Value available when a current price loads",
     notOwned: "You do not own this tracker yet.",
     about: "About",
+    /** Under "Read the risks". */
     aboutTracker: (symbol: string, name: string) =>
       `${symbol} is an xStocks tracker certificate that follows ${name}. It is not a direct company or ETF share and gives no voting rights.`,
     /** The line under a tracker's name: "NVIDIA tracker · NVDAx". */
@@ -94,17 +93,18 @@ export const marketsCopy = {
     follows: (name: string) => `Follows ${name}'s share price. You do not own a share.`,
     /** `dollars` is about the smallest order that is placed, already formatted. */
     smallestOrder: (dollars: string) => `The smallest order is about ${dollars}.`,
-    publicTrades: "Trades, amounts and timing are visible on chain.",
+    publicTrades: "Trades, amounts and timing are public.",
     /** Under "Read the risks". */
     issuerPowers: "The company that issues this tracker can freeze or remove it.",
     dividends:
-      "Dividends are not paid out. The issuer reinvests them, so the balance shown here grows instead. Stock splits change the balance the same way.",
+      "Dividends are not paid out. They are reinvested, so the balance shown here grows instead. Stock splits change the balance the same way.",
     high: "High",
     low: "Low",
     retired: (symbol: string) =>
       `${symbol} is no longer offered to buy here. What you hold can still be sold or sent.`,
     retiredShort: (symbol: string) => `${symbol} is no longer offered to buy here.`,
     retiredMobile: "No longer offered to buy.",
+    /** Under "Read the risks". */
     issuerDetails: "Read issuer details",
     tradePanel: "Trade panel",
     tradeDirection: "Trade direction",
@@ -123,7 +123,6 @@ export const marketsCopy = {
     chartLabel: (range: string, from: string, to: string, change: string) =>
       `${range} price chart. Started at ${from}, now ${to}, ${change}.`,
     backToMarkets: "Back to Markets",
-    aboutAndRisk: "About and risk",
     readRisks: "Read the risks",
     holdingRow: (label: string, quantity: string) => `${label} · ${quantity}`,
     /** One line under the chart: how to read its price and date at a point. */

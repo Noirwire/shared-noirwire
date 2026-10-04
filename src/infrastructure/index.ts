@@ -12,6 +12,7 @@ export {
   POLL_MS,
   type Visibility,
   livePrice,
+  livePricesFreshness,
   livePricesUpdatedAt,
   livePricesVersion,
   subscribeLivePrices,

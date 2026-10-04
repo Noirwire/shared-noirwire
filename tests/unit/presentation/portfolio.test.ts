@@ -124,7 +124,7 @@ describe("portfolioView", () => {
     expect(view.valueUnavailable).toBe(true);
     expect(view.holdings?.rows[0]).toMatchObject({
       amount: "2.0000 NVDAx",
-      value: "Price unavailable",
+      value: "Price unavailable right now.",
     });
   });
 

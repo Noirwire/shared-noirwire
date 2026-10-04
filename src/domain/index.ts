@@ -14,6 +14,15 @@ export {
   usd,
 } from "./format.js";
 export {
+  type Freshness,
+  NEVER_READ,
+  REFRESH_INTERVAL_MS,
+  type ReadFreshness,
+  STALE_AFTER_MS,
+  freshnessOf,
+  recordRead,
+} from "./freshness.js";
+export {
   DISCOVERY_GAP,
   EXTENDED_DISCOVERY_GAP,
   MAX_UNUSED_PORTFOLIOS_IN_A_ROW,

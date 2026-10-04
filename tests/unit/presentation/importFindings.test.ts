@@ -20,7 +20,7 @@ const activity = (over: Partial<SchemeActivity> = {}): SchemeActivity => ({
 
 describe("what an import found, in words", () => {
   it("names portfolios and token balances, and never the address", () => {
-    expect(importFoundText(activity())).toBe("Nothing found on chain yet");
+    expect(importFoundText(activity())).toBe("Nothing found yet");
     expect(
       importFoundText(activity({ active: true, portfolios: [portfolio(1), portfolio(2)] })),
     ).toBe("2 portfolios");
@@ -93,17 +93,17 @@ describe("what an import found, in words", () => {
     expect(
       importResultView(activity({ active: true, portfolios: [portfolio(1), portfolio(2)] })),
     ).toEqual({
-      title: "Wallet reunited with its funds.",
-      body: "Found 2 portfolios this phrase already had on chain.",
+      title: "Wallet restored",
+      body: "Found 2 portfolios this phrase already had.",
       found: true,
     });
     expect(importResultView(activity({ active: true }))).toEqual({
-      title: "Wallet reunited with its funds.",
-      body: "Found token balances this phrase already had on chain.",
+      title: "Wallet restored",
+      body: "Found token balances this phrase already had.",
       found: true,
     });
     expect(importResultView(activity())).toEqual({
-      title: "Wallet imported.",
+      title: "Wallet restored",
       body: "Nothing found yet. This phrase will open a new, empty wallet.",
       found: false,
     });

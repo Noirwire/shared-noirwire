@@ -37,7 +37,7 @@ const form = (overrides: Partial<SendFormState> = {}, draftInput: Partial<SendIn
     archived: false,
     submitting: false,
     preparing: false,
-    network: "Solana mainnet",
+    network: "Solana",
     ...overrides,
   });
 };
@@ -56,7 +56,7 @@ const review = (overrides: Partial<SendReviewState> = {}, draftInput: Partial<Se
     checks: { checkedAddress: false, acceptedLink: false, lastFour: "" },
     pending: { blocked: false },
     submitting: false,
-    network: "Solana mainnet",
+    network: "Solana",
     solFee: 0.000005,
     ...overrides,
   });
@@ -106,7 +106,7 @@ describe("sendFormView", () => {
       amountLine: "10.00 USDC · Available 100.00 USDC",
     });
     expect(view.explainer).toMatch(
-      /^Real transfer on Solana mainnet, straight from this portfolio's own USDC balance/,
+      /^Real transfer on Solana, straight from this portfolio's own USDC balance/,
     );
   });
 
@@ -154,7 +154,7 @@ describe("sendReviewView", () => {
       { label: "Asset", value: "USDC" },
       { label: "Amount", value: "10.00 USDC" },
       { label: "USD value", value: "$10.00" },
-      { label: "Network", value: "Solana mainnet" },
+      { label: "Network", value: "Solana" },
       { label: "Network cost", value: "Covered" },
     ]);
     expect(review({ pricePerHeld: null }).terms.map((term) => term.label)).not.toContain(

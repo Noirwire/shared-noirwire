@@ -13,13 +13,13 @@ const staysLocal = (place: string) =>
 
 /** Home's combined total is added up only where the wallet is kept. */
 const addedUpHere = (place: string) =>
-  `This total is added up ${place}. Nothing on chain ties your portfolios to each other or to your funding wallet, and NoirWire's server never receives the sum.`;
+  `This total is added up ${place}. Nothing public ties your portfolios to each other or to your funding wallet, and NoirWire's server never receives the sum.`;
 
 /** A portfolio's public view, as far as the place the wallet is kept knows. */
 const publicViewWords = (place: string) => ({
   announce: `Public view. Showing what someone with this address can see, as far as ${place} knows.`,
   transactions: `Transactions ${place} knows about`,
-  notFullHistory: `This is not the full history. Every transfer and trade on this address is public on chain, with its amount and time, including any made before ${place} or outside this app.`,
+  notFullHistory: `This is not the full history. Every transfer and trade on this address is public, with its amount and time, including any made before ${place} or outside this app.`,
   noTransactions: `${place.charAt(0).toUpperCase()}${place.slice(1)} has recorded nothing for this address.`,
 });
 
@@ -67,7 +67,6 @@ export const portfolioCopy = {
       investments: "Investments",
       cash: "Cash",
     },
-    atReview: "At review",
     share: (percent: string) => `${percent}%`,
     noInvestments: "No investments yet. ",
     exploreMarkets: "Explore markets",
@@ -102,9 +101,9 @@ export const portfolioCopy = {
     lookAtTrackers: "Look at trackers first",
     portfolioLine: {
       holdings: (ready: string, count: number) =>
-        `${ready} to invest · ${plural(count, "holding")}`,
+        `${ready} ready to invest · ${plural(count, "holding")}`,
       pie: (count: number, ready: string) =>
-        `Pie · ${plural(count, "tracker")} · ${ready} to invest`,
+        `Pie · ${plural(count, "tracker")} · ${ready} ready to invest`,
     },
     archivedCount: (count: number) => `Archived portfolios (${count})`,
     restored: "Restored.",
@@ -112,7 +111,7 @@ export const portfolioCopy = {
   },
 
   earnPromo: {
-    eyebrow: "Earn · Jupiter Lend",
+    eyebrow: "Earn",
     rate: (rate: string) => `${rate}%`,
     apy: "APY",
     couldBeEarning: "Your USDC could be earning",
@@ -325,14 +324,14 @@ export const portfolioCopy = {
 
   observer: {
     eyebrow: "Privacy posture",
-    noLabel: "No owner label onchain",
+    noLabel: "No owner label in public",
     standalone:
       "This portfolio appears as a standalone address, without your name or its NoirWire label.",
-    publicTitle: "Public onchain",
+    publicTitle: "Public",
     copyAddress: "Copy portfolio address",
     publicNote: "Balances and activity on this address are public.",
     visible: "Balances, asset tickers, transfers, trades, amounts, and timing are visible.",
-    privateTitle: "Not written onchain",
+    privateTitle: "Not in the public record",
     privateItems: [
       "Your local portfolio name",
       "Its relationship to your funding wallet",
@@ -347,9 +346,9 @@ export const portfolioCopy = {
   receive: {
     title: "Receive",
     lead: (portfolio: string, network: string) =>
-      `${portfolio}'s own address on ${network}, derived from your recovery phrase.`,
+      `${portfolio}'s own address on ${network}. It comes from your recovery phrase.`,
     mainnet: " Only send Solana assets to it. Funds sent from another network are lost.",
-    testNetwork: " It holds devnet assets only, so never send mainnet funds to it.",
+    testNetwork: " It holds test network assets only, so never send main network funds to it.",
     copyAddress: "Copy address",
     copyDescribe: "Copy portfolio address",
     publicNote:
@@ -376,7 +375,7 @@ export const portfolioCopy = {
       get: {
         title: "Get USDC",
         detail: (network: string) =>
-          `USDC is a digital dollar: 1 USDC = $1. Send it from any app or wallet that supports USDC on the ${network} network. You do not need an account with us.`,
+          `USDC is a digital dollar: 1 USDC = $1. Many apps sell it. Buy it there, then send it on the ${network} network. You do not need an account with us.`,
       },
       send: {
         title: "Send it to your funding wallet",
@@ -420,7 +419,7 @@ export const mobilePortfolioCopy = {
   },
   publicView: {
     ...publicViewWords("this phone"),
-    notOnChainTitle: "Not written on chain",
+    notOnChainTitle: "Not in the public record",
     notOnChain: [
       "Your portfolio name",
       "Its relationship to your funding wallet",

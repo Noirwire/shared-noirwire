@@ -63,8 +63,8 @@ describe("fundingTitle and fundingFooter", () => {
   it("calls only the private route private", () => {
     expect(fundingTitle("USDC", true)).toBe("Move to portfolio");
     expect(fundingTitle("SOL", false)).toBe("Move SOL publicly");
-    expect(fundingFooter(true)).toMatch(/^A private move breaks the onchain link/);
-    expect(fundingFooter(false)).toBe("This is an ordinary, fully public onchain transfer.");
+    expect(fundingFooter(true)).toMatch(/^A private move breaks the public link/);
+    expect(fundingFooter(false)).toBe("This is an ordinary, fully public transfer.");
   });
 });
 
@@ -195,14 +195,14 @@ describe("fundingOutcomeView", () => {
   it("says the funds arrived, with the fees charged on a private transfer", () => {
     expect(fundingOutcomeView({ ...base, outcome: "done", privateRoute: true })).toEqual({
       title: "Funds arrived",
-      body: "10.00 USDC is now in Investing, read back from its real onchain balance. 0.21 USDC in fees was charged on top.",
+      body: "10.00 USDC is now in Investing, read back from its real balance. 0.21 USDC in fees was charged on top.",
       observerLink: "See what an outside observer can and cannot connect.",
       close: "Done",
       alert: false,
       tone: "success",
     });
     expect(fundingOutcomeView({ ...base, outcome: "done", privateRoute: false })).toMatchObject({
-      body: "10.00 USDC is now in Investing, read back from its real onchain balance.",
+      body: "10.00 USDC is now in Investing, read back from its real balance.",
       observerLink: null,
     });
   });

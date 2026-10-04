@@ -247,7 +247,7 @@ export async function checkKeepsOut(
       return {
         ok: false,
         reason:
-          "This transfer would name one of your portfolios on chain next to your funding wallet. Not signed.",
+          "This transfer would name one of your portfolios publicly next to your funding wallet. Not signed.",
       };
     }
   }

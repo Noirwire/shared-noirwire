@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createCatalog } from "../../../src/application/catalog.js";
 import { createScreenReads } from "../../../src/application/screenReads.js";
+import { commonCopy } from "../../../src/copy/common.js";
+import { marketsCopy } from "../../../src/copy/markets.js";
+import { STALE_AFTER_MS, recordRead } from "../../../src/domain/freshness.js";
 import { ALL_STOCKS } from "../../../src/infrastructure/solana/tokenRegistry.js";
 import {
   changeView,
@@ -12,6 +15,8 @@ import {
   type TrackerState,
 } from "../../../src/presentation/markets.js";
 import {
+  FRESH,
+  READ,
   TEST_PRICES,
   UPDATED_AT,
   holding,
@@ -37,18 +42,18 @@ describe("trackerRowView", () => {
       price: "$100.00",
       live: true,
       change: { text: "+2.00%", tone: "safe" },
-      noLivePrice: null,
       label: "NVIDIA, NVDAx, $100.00, up 2.00 percent today",
       star: { watched: true, label: "Remove NVDAx from watchlist" },
     });
-    expect(trackerRowView(reads, { symbol: "AAPLx", name: "Apple" }, null)).toMatchObject({
-      price: "At review",
-      live: false,
-      change: null,
-      noLivePrice: "No live price",
-      label: "Apple, AAPLx, no live price",
-      star: null,
-    });
+  });
+
+  it("says one thing where a price is missing, and nothing beside it", () => {
+    const row = trackerRowView(reads, { symbol: "AAPLx", name: "Apple" }, null);
+    expect(row).toMatchObject({ live: false, change: null, star: null });
+    expect(row.price).toBe(commonCopy.priceUnavailable);
+    expect(row.price).toBe("Price unavailable right now.");
+    expect(row.label).toBe("Apple, AAPLx, Price unavailable right now");
+    expect(row).not.toHaveProperty("noLivePrice");
   });
 });
 
@@ -60,16 +65,40 @@ describe("marketsView", () => {
       shown: 25,
       watchlist: [],
       updatedAt: UPDATED_AT,
+      freshness: FRESH,
       platform: "mobile",
       ...over,
     });
+  const NEVER = { succeededAt: null, lastAttemptFailed: false };
 
-  it("says prices may be out of date once the first read has ended without one", () => {
-    expect(view().stale).toBeNull();
-    expect(view({ updatedAt: null, loading: true }).stale).toBeNull();
-    expect(view({ updatedAt: null }).stale).toBe(
-      "We couldn't update prices. What you see may be out of date.",
-    );
+  it("shows the notice the moment a price refresh fails, over prices still on screen", () => {
+    expect(view()).toMatchObject({ stale: null, loading: false });
+    const failed = recordRead(READ, false, UPDATED_AT + 5_000);
+    const offline = view({ freshness: { now: UPDATED_AT + 5_000, prices: failed } });
+    expect(offline.stale).toBe(marketsCopy.stale);
+    // The prices read before are still drawn: the notice is what says they may be old.
+    expect(offline.shelves[0].rows[0].live).toBe(true);
+  });
+
+  it("drops the notice on the next refresh that succeeds", () => {
+    const failed = recordRead(READ, false, UPDATED_AT + 5_000);
+    const back = recordRead(failed, true, UPDATED_AT + 35_000);
+    expect(view({ freshness: { now: UPDATED_AT + 35_000, prices: back } }).stale).toBeNull();
+  });
+
+  it("shows the notice once prices are older than the bound", () => {
+    const at = (age: number) => view({ freshness: { now: UPDATED_AT + age, prices: READ } }).stale;
+    expect(at(STALE_AFTER_MS)).toBeNull();
+    expect(at(STALE_AFTER_MS + 1)).toBe(marketsCopy.stale);
+  });
+
+  it("waits, without the notice, for prices that were never loaded", () => {
+    const first = view({ updatedAt: null, freshness: { now: UPDATED_AT, prices: NEVER } });
+    expect(first).toMatchObject({ stale: null, loading: true });
+    const failedFirst = recordRead(NEVER, false, UPDATED_AT);
+    expect(
+      view({ updatedAt: null, freshness: { now: UPDATED_AT, prices: failedFirst } }),
+    ).toMatchObject({ stale: marketsCopy.stale, loading: false });
   });
 
   it("leads with the movers, then the shelves, and pages the full list", () => {
@@ -120,6 +149,7 @@ describe("trackerView", () => {
     range: "1W",
     history: { status: "ready", points: [90, 100] },
     smallestOrderUsd: 12,
+    freshness: FRESH,
     platform: "mobile",
     ...over,
   });
@@ -151,10 +181,7 @@ describe("trackerView", () => {
         high: { label: "High", value: "$100.00" },
         low: { label: "Low", value: "$90.00" },
       },
-      risks: {
-        title: "Read the risks",
-        lines: ["The company that issues this tracker can freeze or remove it."],
-      },
+      risks: { title: "Read the risks" },
       holding: { quantity: null, none: "You do not own this tracker yet." },
       actions: [{ kind: "buy", label: "Buy", disabled: false }],
       offline: null,
@@ -189,27 +216,31 @@ describe("trackerView", () => {
     ).toMatchObject({ actions: [{ kind: "createPortfolio", label: "Create a portfolio" }] });
   });
 
-  it("says the chart is loading or missing, and the price is at review without a live one", () => {
+  it("says the chart is loading or missing, and one thing for a missing price", () => {
     expect(trackerView(reads, state({ history: { status: "loading" } }))).toMatchObject({
-      chart: { kind: "loading", text: "Loading price history..." },
+      chart: { kind: "loading" },
     });
-    expect(
-      trackerView(reads, state({ history: { status: "none" }, updatedAt: null })),
-    ).toMatchObject({
-      chart: { kind: "none", text: "Chart unavailable right now." },
-      price: { live: false, figure: "At review" },
+    const view = trackerView(reads, state({ history: { status: "none" }, updatedAt: null }));
+    expect(view).toMatchObject({
+      chart: { kind: "none" },
+      price: { live: false, figure: commonCopy.priceUnavailable },
       change: null,
-      orderNote: "The final price is shown before you buy.",
-      stale: "We couldn't update prices. What you see may be out of date.",
     });
+    if (view.kind !== "tracker") throw new Error("expected a tracker");
+    expect(view.price).not.toHaveProperty("note");
   });
 
-  it("keeps the issuer's powers, the multiplier and the venue out of the main column", () => {
+  it("keeps the certificate, its issuer, the multiplier and the venue under Read the risks", () => {
     const view = trackerView(reads, state());
     if (view.kind !== "tracker") throw new Error("expected a tracker");
     const { risks, ...main } = view;
-    expect(risks.lines.join(" ")).toMatch(/freeze or remove/);
-    expect(JSON.stringify(main)).not.toMatch(/multiplier|\bburn|Jupiter|freeze/i);
+    const behind = [...risks.lines, risks.details].join(" ");
+    expect(behind).toMatch(/freeze or remove/);
+    expect(behind).toMatch(/xStocks tracker certificate/);
+    expect(behind).toMatch(/issuer/);
+    expect(JSON.stringify(main)).not.toMatch(
+      /multiplier|\bburn|Jupiter|freeze|xStocks|issuer|certificate/i,
+    );
   });
 
   it("states the smallest order from the figure it is given, and not for a tracker no longer sold", () => {
@@ -231,12 +262,47 @@ describe("trackerView", () => {
     expect(trackerView(retired, state())).toMatchObject({ minimum: null });
   });
 
-  it("says prices may be out of date once the first read has ended without one", () => {
-    const stale = "We couldn't update prices. What you see may be out of date.";
-    expect(trackerView(reads, state({ updatedAt: null, loading: true }))).toMatchObject({
-      stale: null,
+  it("shows the notice the moment the price or the chart could not be read again", () => {
+    const failed = recordRead(READ, false, UPDATED_AT);
+    expect(trackerView(reads, state())).toMatchObject({ stale: null, loading: false });
+    expect(trackerView(reads, state({ freshness: { ...FRESH, prices: failed } }))).toMatchObject({
+      stale: marketsCopy.stale,
     });
-    expect(trackerView(reads, state({ updatedAt: null }))).toMatchObject({ stale });
+    expect(trackerView(reads, state({ freshness: { ...FRESH, chart: failed } }))).toMatchObject({
+      stale: marketsCopy.stale,
+    });
+    const back = recordRead(failed, true, UPDATED_AT + 1);
+    expect(
+      trackerView(reads, state({ freshness: { ...FRESH, now: UPDATED_AT + 1, prices: back } })),
+    ).toMatchObject({ stale: null });
+  });
+
+  it("ages the price, and not a chart that is read once", () => {
+    const later = UPDATED_AT + STALE_AFTER_MS + 1;
+    const pricesRefreshed = { succeededAt: later, lastAttemptFailed: false };
+    expect(
+      trackerView(
+        reads,
+        state({ freshness: { now: later, prices: pricesRefreshed, chart: READ } }),
+      ),
+    ).toMatchObject({ stale: null });
+    expect(
+      trackerView(reads, state({ freshness: { now: later, prices: READ, chart: READ } })),
+    ).toMatchObject({ stale: marketsCopy.stale });
+  });
+
+  it("waits, without the notice, while the price or the chart was never loaded", () => {
+    const never = { succeededAt: null, lastAttemptFailed: false };
+    expect(
+      trackerView(
+        reads,
+        state({
+          updatedAt: null,
+          history: { status: "loading" },
+          freshness: { now: UPDATED_AT, prices: never, chart: never },
+        }),
+      ),
+    ).toMatchObject({ stale: null, loading: true });
   });
 });
 

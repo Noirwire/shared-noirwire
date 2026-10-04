@@ -13,6 +13,12 @@ export const TEST_PRICES: Record<string, LivePrice> = {
 /** When the test prices were read. Any number will do: only null means "no live price". */
 export const UPDATED_AT = 1_750_000_000_000;
 
+/** A read that came back whole at `UPDATED_AT`. */
+export const READ = { succeededAt: UPDATED_AT, lastAttemptFailed: false };
+
+/** Everything a screen shows was read just now. */
+export const FRESH = { now: UPDATED_AT, balances: READ, prices: READ, chart: READ };
+
 /** The screen reads over the real stock list, with `TEST_PRICES` as the live feed. */
 export function testReads(prices: Record<string, LivePrice> = TEST_PRICES) {
   return createScreenReads(

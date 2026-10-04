@@ -4,6 +4,7 @@ import { deriveKeypair } from "../../src/infrastructure/solana/keys.js";
 import type { Wallet } from "../../src/domain/wallet.js";
 import { newVaultKey, open, seal, vaultKeyFor, type Envelope } from "../../src/wallet/keystore.js";
 import { STORAGE_KEY, toStored } from "../../src/wallet/types.js";
+import { fastKeyDerivation } from "./support/fastKdf.js";
 import { fakeDevice, type FakeDevice } from "./support/device.js";
 import { FIXTURE_PHRASE } from "./support/walletFixtures.js";
 
@@ -16,6 +17,18 @@ import { FIXTURE_PHRASE } from "./support/walletFixtures.js";
 
 const PASSWORD = "orbit-cactus-lamp-velvet-quarry";
 const MNEMONIC = FIXTURE_PHRASE.join(" ");
+
+/**
+ * These suites are about what the store does with a key. The key itself is
+ * derived in one round here; the real derivation is proven by the records
+ * captured from real apps, by `keystore.test.ts`, and by the one round trip
+ * below that asks for it.
+ */
+let realKeyDerivation: () => void = () => undefined;
+beforeEach(() => {
+  realKeyDerivation = fastKeyDerivation();
+});
+afterEach(() => realKeyDerivation());
 const keyAt = (index: number) => deriveKeypair(MNEMONIC, index, "app");
 const addressAt = (index: number) => keyAt(index).publicKey.toBase58();
 const LAST_VALID = 1_000;

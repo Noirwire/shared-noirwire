@@ -84,7 +84,7 @@ export async function signSendConfirm(
     transaction,
     signature,
     latest.lastValidBlockHeight,
-    () => new Error("The transfer failed on chain."),
+    () => new Error("The transfer failed."),
   );
 }
 

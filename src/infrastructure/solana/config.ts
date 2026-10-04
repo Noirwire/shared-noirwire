@@ -37,13 +37,13 @@ type NetworkProfile = {
 
 const NETWORKS: Record<SolanaNetwork, NetworkProfile> = {
   mainnet: {
-    label: "Solana mainnet",
+    label: "Solana",
     privatePaymentCluster: "mainnet",
     usdcMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     genesisHash: "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
   },
   devnet: {
-    label: "Solana devnet",
+    label: "Solana test network",
     privatePaymentCluster: "devnet",
     usdcMint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
     genesisHash: "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
@@ -58,6 +58,11 @@ function profile(): NetworkProfile {
   return NETWORKS[network()];
 }
 
+/**
+ * The network as a person is told it. On the main network that is only the
+ * chain's name: which network it is goes without saying there, and is said
+ * only where the app is on another one.
+ */
 export function networkLabel(): string {
   return profile().label;
 }

@@ -130,7 +130,7 @@ describe("lending and withdrawing", () => {
     );
     expect(await t.run()).toMatchObject({ kind: "unknown", signature: "sig" });
     expect(t.h.pending.pendingFor("p1")).toMatchObject({
-      what: "an Earn deposit",
+      what: "adding to Earn",
       status: "unknown",
     });
     expect(await t.run()).toMatchObject({ reason: "actionPending" });

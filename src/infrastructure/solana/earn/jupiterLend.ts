@@ -261,7 +261,7 @@ async function signSendConfirm(
     transaction,
     signature,
     latest.lastValidBlockHeight,
-    () => new Error("The transaction failed on chain."),
+    () => new Error("The transaction failed."),
   );
 }
 

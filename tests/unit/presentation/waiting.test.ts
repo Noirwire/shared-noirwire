@@ -138,21 +138,21 @@ describe("importWaitingView", () => {
 
   it("speaks of a tab on the web and of the app on the phone", () => {
     expect(importWaitingView(0)).toMatchObject({
-      title: "Importing your wallet",
+      title: "Restoring your wallet",
       lead: "Keep this tab open. This can take up to a minute.",
     });
     expect(importWaitingView(0, "mobile")).toMatchObject({
-      title: "Importing your wallet",
+      title: "Restoring your wallet",
       lead: "Keep the app open. This can take up to a minute.",
     });
   });
 
   it("says nothing was saved when it could not finish", () => {
     expect(importFailedText()).toBe(
-      "We couldn't finish importing your wallet. Nothing was saved in this browser. Try again.",
+      "We couldn't finish restoring your wallet. Nothing was saved in this browser. Try again.",
     );
     expect(importFailedText("mobile")).toBe(
-      "We couldn't finish importing your wallet. Nothing was saved on this phone. Try again.",
+      "We couldn't finish restoring your wallet. Nothing was saved on this phone. Try again.",
     );
   });
 });

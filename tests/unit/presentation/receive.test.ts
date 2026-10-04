@@ -48,7 +48,7 @@ describe("receiveView", () => {
       address: portfolio.address,
       qrLabel: "QR code of Investing's address",
       notes: [
-        "Investing's own address on Solana, derived from your recovery phrase. Only send Solana assets to it. Funds sent from another network are lost.",
+        "Investing's own address on Solana. It comes from your recovery phrase. Only send Solana assets to it. Funds sent from another network are lost.",
       ],
     });
     expect(JSON.stringify(phone)).not.toContain(wallet.funding.address);
@@ -58,7 +58,7 @@ describe("receiveView", () => {
       network: "devnet",
     });
     expect(web.kind === "address" && web.notice).toMatch(/^A transfer straight to this address/);
-    expect(web.kind === "address" && web.notes[0]).toMatch(/devnet assets only/);
+    expect(web.kind === "address" && web.notes[0]).toMatch(/test network assets only/);
   });
 
   it("refuses a missing or archived portfolio", () => {

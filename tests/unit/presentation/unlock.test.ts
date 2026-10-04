@@ -12,7 +12,7 @@ describe("unlockProblemText", () => {
 
   it("is the phone's words where the store names a browser", () => {
     expect(unlockProblemText(walletCopy.store.damaged, "mobile")).toBe(
-      "The wallet stored on this phone cannot be read. Reset it and import it again from your recovery phrase.",
+      "The wallet stored on this phone cannot be read. Reset it and restore it from your recovery phrase.",
     );
     expect(unlockProblemText(walletCopy.store.noWallet, "mobile")).toBe(
       "There is no wallet on this phone.",

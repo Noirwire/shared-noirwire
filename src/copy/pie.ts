@@ -67,8 +67,7 @@ export const pieCopy = {
   order: {
     investTitle: (portfolio: string) => `Invest in ${portfolio}`,
     rebalanceTitle: (portfolio: string) => `Rebalance ${portfolio}`,
-    tradingUnavailable: (network: string) =>
-      `The pie is saved. Live tracker trading runs on mainnet; switch from ${network} to invest it.`,
+    tradingUnavailable: "The pie is saved. Live trading runs on the main network.",
     investLabel: "Invest $",
     moreThanReady: "More than this pie has to invest.",
     howItSplits: "How it splits, toward your targets",
@@ -160,7 +159,7 @@ export const pieCopy = {
     noMoneyDetail: "Move money into this pie first.",
     addMoney: "Add money",
     smallerLeftAlone: "Smaller differences are left as they are.",
-    trackersLine: "These are trackers, not shares, and their issuer keeps control over them.",
+    trackersLine: "These are trackers, not shares.",
     readRisks: "Read the risks",
     risksTitle: "Risks",
     publicLine: "This portfolio's trades and holdings are public.",

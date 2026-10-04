@@ -1,7 +1,7 @@
 import { commonCopy } from "../copy/common.js";
 import { portfolioCopy } from "../copy/portfolio.js";
 import type { Wallet } from "../domain/wallet.js";
-import { privateMoveCostText } from "./costs.js";
+import { costsView, privateMoveCostText, type CostsState } from "./costs.js";
 import { addressLines, spokenAddress } from "./receive.js";
 
 export type AddMoneyAddress = {
@@ -26,15 +26,21 @@ export type AddMoneyView = {
   title: string;
   /** In order. The second holds the address, shown at once with nothing to tap first. */
   steps: { title: string; detail: string; address: AddMoneyAddress | null }[];
-  footer: { label: string; target: { to: "costs" } };
+  /**
+   * "What does it cost?", opened in place: tapping the label shows the same
+   * lines the Costs page has, under it, inside the sheet. The person never
+   * leaves the sheet, so the address stays on screen.
+   */
+  costs: { label: string; lines: string[]; expandedByDefault: false };
 };
 
 /**
  * Bringing money in from outside, as one sheet: get USDC, send it to the
  * funding wallet, move it into a portfolio. The address is the person's own
- * funding wallet's and is already revealed.
+ * funding wallet's and is already revealed. `costs` is what `costsView`
+ * takes: the app's own trading fee.
  */
-export function addMoneyView(wallet: Wallet): AddMoneyView {
+export function addMoneyView(wallet: Wallet, costs: CostsState): AddMoneyView {
   const copy = portfolioCopy.addMoney;
   const { address } = wallet.funding;
   return {
@@ -65,6 +71,6 @@ export function addMoneyView(wallet: Wallet): AddMoneyView {
         address: null,
       },
     ],
-    footer: { label: copy.costsLink, target: { to: "costs" } },
+    costs: { label: copy.costsLink, lines: costsView(costs).lines, expandedByDefault: false },
   };
 }
