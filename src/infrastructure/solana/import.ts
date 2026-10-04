@@ -1,6 +1,6 @@
 import "./buffer-polyfill.js";
 
-import type { PublicKey } from "@solana/web3.js";
+import type { Keypair, PublicKey } from "@solana/web3.js";
 import {
   DISCOVERY_GAP,
   EXTENDED_DISCOVERY_GAP,
@@ -122,6 +122,14 @@ async function probeOwner(owner: PublicKey): Promise<Probe> {
   return { lamports: infos[0]?.lamports ?? 0, used: infos.some((info) => info !== null) };
 }
 
+/**
+ * Hands the thread back before the next owner's addresses are worked out.
+ * Deriving a key and its token accounts is slow arithmetic on a phone, and a
+ * step of ten in one go holds the screen still: nothing is drawn and a tap
+ * on Cancel waits. A turn of the event loop between owners lets both through.
+ */
+const breathe = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
 export function shuffled<T>(items: T[]): T[] {
   const result = [...items];
   for (let i = result.length - 1; i > 0; i -= 1) {
@@ -138,11 +146,16 @@ export function shuffled<T>(items: T[]): T[] {
  */
 async function probeOwners(owners: PublicKey[]): Promise<Probe[]> {
   const results: Probe[] = [];
-  await Promise.all(
-    shuffled(owners.map((_, position) => position)).map(async (position) => {
-      results[position] = await probeOwner(owners[position]);
-    }),
-  );
+  const asked: Promise<void>[] = [];
+  for (const position of shuffled(owners.map((_, index) => index))) {
+    await breathe();
+    asked.push(
+      probeOwner(owners[position]).then((probe) => {
+        results[position] = probe;
+      }),
+    );
+  }
+  await Promise.all(asked);
   return results;
 }
 
@@ -172,7 +185,11 @@ async function continueScan(
 ): Promise<void> {
   while (scan.misses < gapLimit) {
     const indices = Array.from({ length: OWNERS_PER_STEP }, (_, offset) => scan.next + offset);
-    const keypairs = indices.map((index) => deriveKeypair(mnemonic, index, scheme));
+    const keypairs: Keypair[] = [];
+    for (const index of indices) {
+      await breathe();
+      keypairs.push(deriveKeypair(mnemonic, index, scheme));
+    }
     const probes = await probeOwners(keypairs.map((keypair) => keypair.publicKey));
     for (let i = 0; i < indices.length && scan.misses < gapLimit; i++) {
       scan.next = indices[i] + 1;

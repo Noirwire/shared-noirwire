@@ -34,7 +34,13 @@ export {
   totalValue,
   unitsPerHeld,
 } from "./market.js";
-export { assessPassword, suggestPassphrase } from "./passwordStrength.js";
+export {
+  type PasswordAssessment,
+  type PasswordChecker,
+  assessPassword,
+  assessPasswordWith,
+  suggestPassphrase,
+} from "./passwordStrength.js";
 export { unlockedSession } from "./session.js";
 export {
   type ChangePasswordOptions,

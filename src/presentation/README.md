@@ -58,6 +58,8 @@ const order = waitingView(now - startedAt, "action", { titles: stepTitles, curre
 // order.steps is the progress list: done, current, waiting.
 ```
 
+A wait does not run for ever. `WAIT_LIMIT_MS` says how long each kind may run before the screen stops waiting, says so with `waitingCopy.overdue` (the phone's differences are in `mobileWaitingCopy.overdue`) and offers a way out: 20 s for content, 30 s for a check or a review, 120 s for an action. The work may still finish unseen, which is why an action's line says to check Activity before doing it again. Each platform owns the timer here too.
+
 An import has its own, `importWaitingView(elapsedMs, platform)`: its title and lead, the three steps (the list moves to the last one after `IMPORT_LAST_STEP_AFTER_MS`, 6 s, so a long lookup still shows progress) and its own slow line. `importFailedText(platform)` is what it says when it could not finish.
 
 The words are in `copy/waiting.ts` and follow one rule: a person waits for their balance or their order, never for a request. Nothing shown while waiting, and nothing said after a failure, names a request, a service or a timeout. A failure says what happened in the person's terms, what it means for their money ("Nothing was sent", "Nothing was charged", "Nothing was saved") and what to do next. `failureMessage` holds to that even for a failure that arrives with its own account: one that only says how a request failed ("fetch failed", "returned 502") is replaced by the plain words for what the action was doing.

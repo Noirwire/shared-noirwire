@@ -658,6 +658,33 @@ describe("the wallet store", () => {
       expect(second.getSnapshot()).toEqual(stored && fromStored(stored.wallet));
     });
 
+    it("drops the session with the wallet, in the tab that reset and in the others", async () => {
+      const first = await tab();
+      await first.storeNewWallet(makeWallet(), FIXTURE_PHRASE, PASSWORD);
+      const second = await tab();
+      // The second tab's own copy of the package: it holds a session in memory.
+      const { keepSessionWith } = await import("../../src/infrastructure/apiSession.js");
+      const { fakeSession } = await import("../../src/testing/index.js");
+      const held = fakeSession();
+      keepSessionWith(held);
+      second.subscribe(() => undefined);
+      expect(await presence(second)).toBe(true);
+      window.sessionStore.value = JSON.stringify({ accessToken: "of-the-old-wallet" });
+
+      expect(await first.resetWallet()).toEqual({ ok: true });
+      expect(window.sessionStore.value).toBeNull();
+      await vi.waitFor(() => expect(held.drops).toBe(1));
+    });
+
+    it("keeps the session when the wallet would not go", async () => {
+      const first = await tab();
+      await first.storeNewWallet(makeWallet(), FIXTURE_PHRASE, PASSWORD);
+      window.sessionStore.value = "kept";
+      window.state.refuseWrites = true;
+      expect(await first.resetWallet()).toEqual({ ok: false, reason: "notRemoved" });
+      expect(window.sessionStore.value).toBe("kept");
+    });
+
     it("does not bring back a wallet another tab reset", async () => {
       const first = await tab();
       await first.storeNewWallet(makeWallet(), FIXTURE_PHRASE, PASSWORD);

@@ -4,6 +4,66 @@ All notable changes to this package are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The apps pin an exact tag; see [README.md](README.md#releasing) for how a tag becomes a release.
 
+## [0.5.0] - 2026-10-04
+
+Every request now goes to one server, NoirWire's own, and carries an anonymous session. Both apps must change how they boot.
+
+### Breaking
+
+For both apps:
+
+- `Platform` has a new required port, `sessionStore`: `get`, `set` and `remove` of one small JSON value in plain app storage. Not the vault, and never inside the wallet record.
+- `Env` has a new required value, `apiBaseUrl`, and `envFrom` refuses settings without it. `EnvSettings` gains `apiBaseUrl`, `platform`, `development` and `rpcUrl`.
+- `configureHttp`, `HttpConfig` and its `headers()` are gone. There is nothing to call in their place: where requests go is `env.apiBaseUrl`, and the one header every request carries is added by the package. A server or a test that named an RPC provider with `configureHttp({ rpcUrl })` now sets `rpcUrl` in the environment.
+- `RPC_RELAY_PATH`, `JUPITER_RELAY_PATH` and `PRIVATE_PAYMENT_RELAY_PATH` are gone. An address is built with `apiUrl(route, rest)`.
+- The paths changed, so the web app's own relay routes are no longer called by this package:
+
+  | Was                                | Is                                       |
+  | ---------------------------------- | ---------------------------------------- |
+  | `POST /api/rpc`                    | `POST /v1/rpc`                           |
+  | `/api/jupiter/*`                   | `/v1/jupiter/*`                          |
+  | `POST /api/private-payments/*`     | `POST /v1/private-payments/*`            |
+  | `GET` and `POST /api/relayer`      | `GET` and `POST /v1/relayer`             |
+  | `GET /api/prices`                  | `GET /v1/prices`                         |
+  | `GET /api/history/:symbol/:range`  | `GET /v1/history/:symbol/:range`         |
+  | `POST /api/event` (each app's own) | `POST /v1/events`, as `apiUrl("events")` |
+
+- Every one of those requests carries `Authorization: Bearer <token>`. An app's own requests to the server go through `authorizedFetch` to carry it too.
+- A new failure code, `notAvailableNow`, in `ChainErrorCode`: a `switch` over the codes that lists them all needs the new case. `chainErrorMessage` already words it.
+- `memoryPlatform()` now includes a `sessionStore`, and `testEnv()` an `apiBaseUrl` (`https://api.noirwire.test`). A test that pinned a relative path such as `/api/jupiter/swap/v2/order` now sees `https://api.noirwire.test/v1/jupiter/swap/v2/order`. A test setup calls `installTestPlatform()` in place of `installPlatform(memoryPlatform())` and `configureHttp(...)`, or its first request tries to start a real session.
+- `WAIT_LIMIT_MS` replaces each app's own table, and where the two differed the longer stands: a check may now run 30 s on the phone (was 20 s) and an action 120 s on the web (was 90 s).
+
+For the web app:
+
+- Set `apiBaseUrl` to `/api` with `platform: "web"`, and have the host forward `/api/:path*` to the server; or name the server's origin and allow it in `connect-src`.
+- Install a `sessionStore` over `localStorage`, and keep the cross-tab `locks`: a session's renewal runs under the lock `noirwire-session`.
+- Delete `src/components/wallet/passwordCheck.ts`'s copy of the rule and call `assessPasswordWith(checker, password)` with the bundled checker. Delete `src/components/localCopy.ts` and `WAIT_LIMIT_MS` in `src/components/waiting/limits.ts`; their words and numbers are here now (see Added).
+- The server-side platform passes `rpcUrl` to `envFrom`, where it passed it to `configureHttp`.
+
+For the mobile app:
+
+- Set `apiBaseUrl` to the server's origin (`https://api.noirwire.com`), in place of the relay URL. Plain http is accepted only for `localhost`, `127.0.0.1` and `10.0.2.2`, and only with `development: true`. A path is refused on the phone.
+- Delete the `X-NoirWire-Client` header and the HTTP configuration that carried it (`src/platform/httpConfig.ts`): nothing reads `headers()` any more.
+- Install a `sessionStore` over the app's plain key-value storage.
+- Delete `src/features/phoneCopy.ts` and `WAITING_LIMIT_MS` in `src/ui/useWaiting.ts`; their words and numbers are here now.
+
+### Added
+
+- `apiUrl(route, rest?)` in `@noirwire/shared/infrastructure`: the one function that builds a request's address, from `env.apiBaseUrl` and the server's paths (`session`, `rpc`, `jupiter`, `privatePayments`, `relayer`, `prices`, `history`, `events`, `health`). `apiBaseUrl` is an origin, or on the web a path on the page's own origin.
+- The anonymous session. `createSessionKeeper` in `@noirwire/shared/application` starts one (`POST /v1/session`, no token, empty body), keeps it through `sessionStore`, renews it a minute before its token runs out (`POST /v1/session/refresh`) and whenever the server turns it down, shares one start or renewal among callers that arrive together and, under the platform lock, among tabs, starts a new one when a renewal is refused or the server answers `session_expired`, and replaces one older than `SESSION_MAX_AGE_MS` (24 hours; `env.sessionMaxAgeMs` sets another). The session is a quota bucket, not an identity: it is not derived from the wallet, it rotates daily, and a wallet reset drops it.
+- `authorizedFetch(input, init)` in `@noirwire/shared/infrastructure`: `fetch` with the session's token. After a 401 a read or an unsigned build is made once more with a renewed session; a request that hands over a signed transaction, or asks the relayer to sign one, never is. `dropSession()`, `keepSessionWith()` and `sessionRoutes` beside it.
+- `errorsCopy.chain.notAvailableNow`, said the same on both platforms: "We can't do this right now. Nothing was sent, and your money has not moved. Try again." It is what a person reads when the server would not take a request or no session could be had.
+- In `@noirwire/shared/testing`: `installTestPlatform(overrides?)`, `fakeSession()`, `memorySessionStore()`, `fakeApi(routes)` to answer the server by path, and `TEST_API_URL`.
+- `assessPasswordWith(checker, password)` in `@noirwire/shared/wallet`, with `PasswordChecker` and `PasswordAssessment`: the password rule as a synchronous function over a checker the app already holds, so a screen that bundles the checker runs the same rule with nothing loaded on demand. `assessPassword` is built on it.
+- `WAIT_LIMIT_MS` in `@noirwire/shared/presentation`: how long each kind of wait may run before a screen ends it (content 20 s, check 30 s, review 30 s, action 120 s).
+- The words both apps kept for themselves: `waitingCopy.overdue`, `waitingCopy.actionHeld`, `waitingCopy.gettingReady` and `mobileWaitingCopy.overdue`; `onboardingCopy.import.notNow` and `onboardingCopy.phrase.discarded`, `.newPhrase`, `.acknowledgeNew`; `portfolioCopy.balances` and `portfolioCopy.archived`; `marketsCopy.pricesUnavailable`; `appCopy.offline`; `earnCopy.unread` and `earnCopy.notHere`; `commonCopy.tryAgain`; `mobileWalletCopy.newPassword.checkFailed`; `mobilePortfolioCopy.create.forExample` and `.nameNeeded`.
+
+### Changed
+
+- `resetWallet()` drops the session once the wallet is removed, and a tab that hears of a reset made elsewhere drops the one it holds.
+- An import hands the thread back between owners, before each key is derived and before each owner's accounts are worked out, so a slow phone keeps drawing and a tap on Cancel is heard promptly.
+- A signed submit the server turns down with a 401 fails as `notAvailableNow`, with nothing sent. Any other answer that was not understood is settled against the chain, as before.
+
 ## [0.4.1] - 2026-10-03
 
 ### Added

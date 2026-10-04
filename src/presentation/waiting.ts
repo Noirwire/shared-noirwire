@@ -23,6 +23,23 @@ export const STILL_WORKING_AFTER_MS: Record<WaitingKind, number> = {
   action: 8_000,
 };
 
+/**
+ * How long a wait may run before the screen stops waiting, says it could not
+ * finish (`waitingCopy.overdue`) and offers a way out: Back, Cancel or Try
+ * again. A read that never answers must not keep a screen waiting, and an
+ * action that never answers must not hold a dialog for good. The work may
+ * still finish later, unseen, which is why an action's line says to check
+ * Activity before doing it again. Where the two apps had set a kind
+ * differently, the longer of the two stands, so neither gives up sooner
+ * than it did.
+ */
+export const WAIT_LIMIT_MS: Record<WaitingKind, number> = {
+  content: 20_000,
+  check: 30_000,
+  review: 30_000,
+  action: 120_000,
+};
+
 /** When an import's progress list moves on to its last step, so a long lookup still shows progress. */
 export const IMPORT_LAST_STEP_AFTER_MS = 6_000;
 

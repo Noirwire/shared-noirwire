@@ -1,6 +1,6 @@
 # Architecture
 
-The layer table and the one-paragraph summary of each piece live in [README.md](../README.md#architecture). This is the detail: how the dependency rule is enforced, the platform seam an app wires in, the wallet store's guarantees, biometric unlock, the one-reservation-per-action lifecycle, the presentation model, how waiting and retried reads work, where a moved-in module goes, and the files that decide whether money is safe.
+The layer table and the one-paragraph summary of each piece live in [README.md](../README.md#architecture). This is the detail: how the dependency rule is enforced, the platform seam an app wires in, the session every request carries, the wallet store's guarantees, biometric unlock, the one-reservation-per-action lifecycle, the presentation model, how waiting and retried reads work, where a moved-in module goes, and the files that decide whether money is safe.
 
 ## The dependency rule
 
@@ -17,17 +17,17 @@ The layer table and the one-paragraph summary of each piece live in [README.md](
    nothing imports wallet; nothing imports from an app, a framework or Node
 ```
 
-| Layer             | May import                                                                               |
-| ----------------- | ---------------------------------------------------------------------------------------- |
-| `domain/`         | nothing of ours                                                                          |
-| `design/`         | nothing of ours                                                                          |
-| `platform.ts`     | `domain/` (the usage event types)                                                        |
-| `copy/`           | `domain/`                                                                                |
-| `application/`    | `domain/`, `platform.ts`                                                                 |
-| `infrastructure/` | `domain/`, `application/`, `platform.ts`                                                 |
-| `presentation/`   | `domain/`, `application/`, `copy/`                                                       |
-| `wallet/`         | `domain/`, `application/`, `infrastructure/`, `presentation/`, `copy/`, `platform.ts`    |
-| `testing/`        | `platform.ts`, `infrastructure/` (the signing entry point, for a test's stand-in client) |
+| Layer             | May import                                                                             |
+| ----------------- | -------------------------------------------------------------------------------------- |
+| `domain/`         | nothing of ours                                                                        |
+| `design/`         | nothing of ours                                                                        |
+| `platform.ts`     | `domain/` (the usage event types)                                                      |
+| `copy/`           | `domain/`                                                                              |
+| `application/`    | `domain/`, `platform.ts`                                                               |
+| `infrastructure/` | `domain/`, `application/`, `platform.ts`                                               |
+| `presentation/`   | `domain/`, `application/`, `copy/`                                                     |
+| `wallet/`         | `domain/`, `application/`, `infrastructure/`, `presentation/`, `copy/`, `platform.ts`  |
+| `testing/`        | `platform.ts`, `infrastructure/` (the signing entry point and the session, for a test) |
 
 A use case reaches the chain, the store and the price feeds only through the interfaces it declares (`src/application/ports.ts` and each use case's own); an app wires the clients in. Use cases answer with reason codes from closed unions; only `presentation/` chooses the words. `wallet/` is where the keys live and where the catalog is bound to the price feeds: it composes the other layers, and nothing imports it.
 
@@ -54,6 +54,14 @@ interface Env {
   network: "mainnet-beta" | "devnet";
   referralAccount: string | null;
   feeBps: number;
+  apiBaseUrl: string;
+  sessionMaxAgeMs?: number;
+  rpcUrl?: string;
+}
+interface SessionStore {
+  get(): Promise<string | null>;
+  set(value: string): Promise<void>;
+  remove(): Promise<void>;
 }
 interface Activity {
   subscribe(onActive: () => void): () => void;
@@ -68,26 +76,32 @@ interface Platform {
   activity: Activity;
   track: Track;
   locks: Locks;
+  sessionStore: SessionStore;
 }
 ```
 
 - **`vault`** is asynchronous and fallible: every call reports failure rather than throwing. `update` is an atomic read-modify-write that runs under the platform lock for its key, so nothing from this tab, another tab or another process comes between its read and its write. `subscribe` hears of every persisted change, including ones made elsewhere. Whether a value is sealed is the app's business.
 - **`track`** takes only events and values from the closed list in `src/domain/usageEvents.ts`. Every property is a string from a closed union or a number, so an address cannot be passed by accident: it does not type-check.
 - **`locks`** serialises across tabs on the web; `inProcessLocks()` is enough on mobile.
-- **`env`** is read when a value is asked for, never when a module loads, so the package can be imported before the platform is installed. `envFrom()` in `@noirwire/shared/infrastructure` builds one from settings kept as text (build-time variables) and refuses a fee with nowhere to go.
+- **`env`** is read when a value is asked for, never when a module loads, so the package can be imported before the platform is installed. `envFrom()` in `@noirwire/shared/infrastructure` builds one from settings kept as text (build-time variables) and refuses a fee with nowhere to go, and a server address it would not send to.
+- **`sessionStore`** keeps one small JSON value in plain app storage: the anonymous session below. A call that throws is taken as nothing stored, and the session is then held in memory only.
 - **`activity`** reports input and a return to the app. The idle lock counts from it: either one inside the window restarts it, either one past it locks.
-
-Where the clients send their requests (the web's same-origin relay routes, or an absolute URL with a client header on mobile) is adapter configuration, `HttpConfig` in `src/infrastructure/httpConfig.ts`, set once with `configureHttp`. It is not a port. Every request goes to a relay route under `baseUrl` (`/api/rpc`, `/api/jupiter`, `/api/private-payments`, `/api/relayer`, `/api/prices`, `/api/history`) and carries `headers()`. `rpcUrl` names an RPC provider directly, for a server or a test that has no relay in front of it and no visitor behind it.
 
 Each app installs its implementations once, at boot:
 
 ```ts
 import { assertRuntime, installPlatform, inProcessLocks } from "@noirwire/shared/platform";
-import { configureHttp, envFrom } from "@noirwire/shared/infrastructure";
+import { envFrom } from "@noirwire/shared/infrastructure";
 
 assertRuntime();
-installPlatform({ vault, env: envFrom(settings), activity, track, locks: inProcessLocks() });
-configureHttp({ baseUrl: "", headers: () => ({}) });
+installPlatform({
+  vault,
+  env: envFrom(settings),
+  activity,
+  track,
+  locks: inProcessLocks(),
+  sessionStore,
+});
 ```
 
 `getPlatform()` and every client throw a clear error if nothing was installed.
@@ -95,6 +109,52 @@ configureHttp({ baseUrl: "", headers: () => ({}) });
 Live prices are polled only while the app is in view. Whether it is, is passed to `watchLivePrices(visibility)` by the screen that shows prices: the document's visibility on the web, the app state on mobile.
 
 Cryptography and randomness are not ports. Both platforms provide WebCrypto on `globalThis.crypto`. `assertRuntime()` checks for `crypto.subtle`, `crypto.getRandomValues`, `TextEncoder` and `TextDecoder`, so a missing polyfill stops the app at boot.
+
+## One server
+
+Every request this package makes goes to NoirWire's own server, at the one place the environment names as `apiBaseUrl`. The chain's provider, the swap venue and the private-payment service are behind it, so each sees the server's address and never a visitor's next to the addresses it is asked about.
+
+`apiUrl(route, rest)` in `src/infrastructure/api.ts` is the only place an address is put together:
+
+| Route             | Address                      | Asked with                                     |
+| ----------------- | ---------------------------- | ---------------------------------------------- |
+| `session`         | `/v1/session`                | `POST`, and `POST /refresh`. Takes no session. |
+| `rpc`             | `/v1/rpc`                    | `POST`                                         |
+| `jupiter`         | `/v1/jupiter/*`              | `GET`, `POST`                                  |
+| `privatePayments` | `/v1/private-payments/*`     | `POST`                                         |
+| `relayer`         | `/v1/relayer`                | `GET`, `POST`                                  |
+| `prices`          | `/v1/prices`                 | `GET`                                          |
+| `history`         | `/v1/history/:symbol/:range` | `GET`                                          |
+| `events`          | `/v1/events`                 | `POST`                                         |
+| `health`          | `/health`                    | `GET`. Takes no session.                       |
+
+`apiBaseUrl` is an origin with no path on the phone (`https://api.noirwire.com`). On the web it may be a path on the page's own origin (`/api`): the web app's host forwards `/api/*` to the server, so the page's content security policy can stay at `connect-src 'self'`. `envFrom` holds either to its rules at boot: https, or http to `localhost`, `127.0.0.1` or `10.0.2.2` in a development build only; nothing after the host; and a path only when `platform` is `"web"`, starting with one slash and carrying no query. `rpcUrl` names an RPC provider directly, with no session, for a server or a test that has no visitor behind it.
+
+## The session with NoirWire's server
+
+Every `/v1` request carries `Authorization: Bearer <token>`, the token of an anonymous session the server issued.
+
+**What it is, and is not.** The session is a quota bucket, not an identity. It lets the server count one running copy of the app's requests apart from another's, so one copy cannot use up what is meant for everyone. It has no email and no account behind it. It is not derived from the wallet: it is asked for with an empty body, before a wallet exists, and it is the same whether a wallet is unlocked or not. No address, key, phrase or password goes into it or can be worked out from it. It is kept in the `sessionStore`, in plain storage, and never in the encrypted wallet record.
+
+**It rotates.** A session older than `SESSION_MAX_AGE_MS` (24 hours, the server's own default; `env.sessionMaxAgeMs` sets another) is replaced by a new one, not renewed, and the server retires an old one on its side too. What could be counted under one session never spans more than a day. **A wallet reset drops it at once**, in the tab that reset and in every other tab that hears of it, and the next request starts a new one: a session that outlived a reset would let the server tie the wallet imported afterwards to the one that was deleted, which is the link a reset is expected to cut.
+
+**How it is kept** (`createSessionKeeper` in `src/application/apiSession.ts`, bound to the server's routes in `src/infrastructure/apiSession.ts`):
+
+- Started with `POST /v1/session` (no token, empty body), which answers `{ accessToken, refreshToken, expiresAt }`. Renewed with `POST /v1/session/refresh` and `{ refreshToken }`.
+- Renewed `RENEW_BEFORE_EXPIRY_MS` (one minute) before its token runs out, when a request is about to be made. There is no timer: an app left idle asks for nothing.
+- Callers that arrive together share one start or one renewal. It runs under the platform lock `noirwire-session`, so a second tab finds what the first one stored instead of spending the same refresh token twice.
+- A renewal the server refuses is followed by a new session. So is a 401 that carries the code `session_expired`.
+- A renewal that gets no answer while the token is still good changes nothing: the token goes on being used.
+
+**`authorizedFetch(input, init)`** is `fetch` with the token added. A 401 means the server did not take the token and did nothing with the request:
+
+| Request                                                                                                                                                                                                   | After a 401                                                                                                      |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| A read: any `GET`, an RPC call other than `sendTransaction`, the relayer's keys and price, anything through `readFetch`                                                                                   | The session is renewed, or started again, and the request is made once more                                      |
+| An unsigned build: a swap order, an Earn deposit or withdrawal to review, a private transfer to check                                                                                                     | The same                                                                                                         |
+| A signed submit: `sendTransaction` over RPC, a swap's `execute`, a private transfer's `send`, and the relayer's `signTransaction` (the half of its sign-and-send that hands it the portfolio's signature) | Never made a second time. The session is put right for the next attempt, and this one fails as `notAvailableNow` |
+
+A request made again that is turned down again, and any request for which no session can be had (the server does not answer, or refuses to start one), also fail as `notAvailableNow`, a `ChainError`. The clients that submit let it through instead of calling the outcome unknown, because the server refused before it passed anything on. A person reads it as: "We can't do this right now. Nothing was sent, and your money has not moved. Try again." `tests/unit/apiSession.test.ts` and `tests/unit/apiClients.test.ts` hold each row to this.
 
 ## The wallet store
 
@@ -104,7 +164,7 @@ Cryptography and randomness are not ports. Both platforms provide WebCrypto on `
 - **A write lands only over the record it was built on.** Each write is one atomic `vault.update` that compares the stored record with the one the change was applied to. When another tab wrote in between, the change is applied again to the newer record, so an old picture of the wallet is never written over newer state.
 - **A failed write is surfaced, not dropped.** The change stays pending, `isSaveFailing()` turns true, and the next successful write clears it.
 - **An unsaved change is visible.** `isSaving()` is true from a change until its write lands, so a screen can say it is not stored yet.
-- **A reset says the wallet is gone only once it is.** `resetWallet()` locks at once, then resolves to `{ ok: true }` after the vault has removed the record (with the pending actions inside it), or `{ ok: false, reason: "notRemoved" }` with the wallet still reported as stored.
+- **A reset says the wallet is gone only once it is.** `resetWallet()` locks at once, then resolves to `{ ok: true }` after the vault has removed the record (with the pending actions inside it), or `{ ok: false, reason: "notRemoved" }` with the wallet still reported as stored. A reset that removed the wallet drops the session with the server too.
 - **Old plain text phrases are deleted and checked.** Their removal is awaited after a wallet is stored or unlocked, `isPlaintextCleanupFailing()` says when it failed, and each later start tries again while a current wallet is stored.
 - **A lock is wallet-wide.** `lock()` locks here and announces it under `LOCK_SIGNAL_KEY`, a counter in the vault that says nothing about the wallet; every other tab or running copy that hears it locks too. A reset announces the same when the record would not go, and removes the signal with everything else when it did. A tab that only went idle locks alone.
 - **Other tabs are heard.** While anything subscribes, the store listens to the vault: a routine write elsewhere is taken in; a reset, a replacement or a password change elsewhere locks this tab, because its phrase no longer belongs to what is stored.
@@ -197,6 +257,8 @@ A read that fails on a busy moment is asked for again before anyone is told. `re
 | A recipient checked while the address is typed                                                                                               | `checkRecipient` in `src/infrastructure/solana/address.ts`                       |
 | Preparing a review: a trade's price, what a send costs, whether a holding is open, the relayer's price and keys, the portfolio's own balance | `quoteTrade`, `reviewSend`, `reviewOrdersCost`, `planNetworkCost`, `relayerPins` |
 
+A read the server turns down for its session (a 401) is made once more with a renewed one; that is `authorizedFetch`'s doing, described above, and it does not count against these tries.
+
 Never asked again: anything that signs or submits (`send`, `fundDirectly`, `fundPrivately`, `placeTrade`, `earn`, opening a holding, every relayer-paid transaction), the price taken again inside `placeTrade`, the recipient check inside a send, the network's identity before a signature, and settling a sent transaction. A second attempt at one of those could do the same thing twice. A refusal is never asked again either: a `ChainError`, "no price", a 4xx or a guard's own account is an answer. `tests/unit/retries.test.ts` holds each path to this with fake timers.
 
 ## Moving a module in
@@ -204,7 +266,7 @@ Never asked again: anything that signs or submits (`send`, `fundDirectly`, `fund
 1. Pick its layer from the table above. Split the file if it spans two.
 2. Move the file and its tests with it. Do not leave a copy in the app.
 3. Replace `@/` imports with relative ones ending in `.js`.
-4. Replace every platform call (`localStorage`, `window`, `document`, `process.env`, `navigator.locks`) with `getPlatform()`, and every relative `fetch` with `relayUrl()` and `relayInit()` from `src/infrastructure/httpConfig.ts`.
+4. Replace every platform call (`localStorage`, `window`, `document`, `process.env`, `navigator.locks`) with `getPlatform()`, and every `fetch` to the server with `authorizedFetch(apiUrl(route, rest), init)` from `src/infrastructure/`: through `readFetch` for a read, with `asksAgain: true` for an unsigned build, and bare for anything that hands over a signature.
 5. Return reason codes from closed unions. Move every string a person reads to `src/copy/`, and every decision about what a screen shows, including whether Confirm is enabled, to `src/presentation/`.
 6. Add any library it needs to `peerDependencies` and `devDependencies`, at the version both apps use.
 7. Export it from the layer's `index.ts`. For a new layer entry, add the subpath to `exports` in `package.json`.
@@ -238,3 +300,5 @@ The files that decide whether money is safe.
 | Runtime check for WebCrypto                                                         | `src/platform.ts`                                                                                                    |
 | What a review says about its cost, and whether it can be confirmed                  | `src/presentation/networkCost.ts`                                                                                    |
 | Which reads are asked again, and that nothing which moves money is                  | `src/application/retries.ts`                                                                                         |
+| Which requests are made again after the server turns a session down                 | `src/infrastructure/apiSession.ts`, `src/infrastructure/solana/client.ts`                                            |
+| Where every request goes, and what an app may set that to                           | `src/infrastructure/api.ts`, `envFrom` in `src/infrastructure/solana/config.ts`                                      |

@@ -1,4 +1,15 @@
 export {
+  type ApiSession,
+  type IssuedSession,
+  RENEW_BEFORE_EXPIRY_MS,
+  SESSION_LOCK,
+  SESSION_MAX_AGE_MS,
+  type SessionGateway,
+  type SessionKeeper,
+  SessionRefused,
+  createSessionKeeper,
+} from "./apiSession.js";
+export {
   type ActionResult,
   type Attempt,
   type CompletedStep,

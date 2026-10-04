@@ -20,7 +20,9 @@ export type ChainErrorCode =
   /** The venue has no price for this order right now. */
   | "noQuote"
   /** The network the app is connected to is not the one it is built for. Nothing was signed. */
-  | "wrongNetwork";
+  | "wrongNetwork"
+  /** NoirWire's server would not take this, or the app could not make itself known to it. Nothing was sent. */
+  | "notAvailableNow";
 
 export class ChainError extends Error {
   constructor(

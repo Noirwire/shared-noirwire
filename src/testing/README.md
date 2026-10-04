@@ -21,4 +21,22 @@ const fakeSend = async (owner: Keypair, stillUnlocked: () => boolean) => {
 };
 ```
 
-**May import:** `platform.ts`, and `infrastructure/` for the signing entry point only. Nothing outside tests imports this folder.
+`installTestPlatform()` is the one call a consumer's test setup needs: it installs every port in memory and a `fakeSession()` in place of the server's session routes, so nothing reaches the network to start with. `fakeApi(routes)` then stands in for the server, by path, until `restore()`:
+
+```ts
+import { fakeApi, installTestPlatform } from "@noirwire/shared/testing";
+
+const { session } = installTestPlatform();
+const api = fakeApi({
+  "/v1/prices": () => ({ prices: {} }),
+  "POST /v1/relayer": (call) => ({ result: { fee_in_token: 4000 } }),
+  "/v1/jupiter/*": () => new Response("busy", { status: 429 }),
+});
+// ... the code under test ...
+api.callsTo("/v1/prices"); // what was asked, with its headers and body
+api.restore();
+```
+
+A route is a path, optionally with its method in front or a `*` at its end; it answers a `Response`, or a value sent as JSON. A request no route answers throws and names itself. Every request carries `Bearer test-token-1`; a 401 from a route moves the fake session on to `test-token-2`, as a renewal would. `memorySessionStore()` is the session store in memory, for a test of the real session.
+
+**May import:** `platform.ts`, and `infrastructure/` for the signing entry point and the session. Nothing outside tests imports this folder.

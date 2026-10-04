@@ -475,6 +475,30 @@ describe("running a relayer-paid action", () => {
     expect(reading.ok && reading.relayed.feeRaw).toBe(FEE);
   });
 
+  it("never asks the relayer to sign a second time when the server turns the request down", async () => {
+    relay.signTransaction = () => new Response("{}", { status: 401 });
+    const error = await run().catch((caught: unknown) => caught);
+    // The server did nothing with it, so nothing was sent: not unknown, and not another way to pay.
+    expect(error).toMatchObject({ code: "notAvailableNow" });
+    expect(methods()).toEqual(["getPayerSigner", "signTransaction"]);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("asks for a price again with a renewed session when the server turns the first down", async () => {
+    let turnedDown = false;
+    relay.estimateTransactionFee = () => {
+      if (turnedDown) return answer({ fee_in_token: Number(FEE) });
+      turnedDown = true;
+      return new Response("{}", { status: 401 });
+    };
+    expect(await quoteRelayed(owner, build())).toEqual({ feeRaw: FEE, opensAccount: false });
+    expect(methods()).toEqual([
+      "getPayerSigner",
+      "estimateTransactionFee",
+      "estimateTransactionFee",
+    ]);
+  });
+
   it("is not available, with nothing sent, when no replica can be reached to sign", async () => {
     relay.signTransaction = () => refusal("unavailable", 503);
     await expect(run()).rejects.toBeInstanceOf(RelayerUnavailableError);

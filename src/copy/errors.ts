@@ -25,6 +25,8 @@ export const errorsCopy = {
       "There is no price for this order right now. Nothing was traded. Try again in a moment.",
     wrongNetwork:
       "NoirWire is not connected to Solana as it should be, so this was stopped. Nothing was signed or sent. Try again later.",
+    notAvailableNow:
+      "We can't do this right now. Nothing was sent, and your money has not moved. Try again.",
   },
 
   reviewNewCost: (reason: string) => `${reason} Review the new network cost.`,

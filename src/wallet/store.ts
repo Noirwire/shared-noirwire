@@ -1,5 +1,6 @@
 import { getPlatform } from "../platform.js";
 import { walletCopy } from "../copy/wallet.js";
+import { dropSession } from "../infrastructure/apiSession.js";
 import { deriveKeypair, FUNDING_DERIVATION_INDEX } from "../infrastructure/solana/keys.js";
 import {
   decryptVault,
@@ -519,7 +520,10 @@ function handleStored(key: string) {
   if (key === LOCK_SIGNAL_KEY) return handleLockSignal();
   if (key !== STORAGE_KEY && key !== LEGACY_STORAGE_KEY) return;
   void exclusive(async () => {
+    const existed = exists;
     exists = await hasStoredWallet();
+    // Reset from another tab: the session this tab holds goes with the wallet too.
+    if (existed && !exists) await dropSession();
     const live = session;
     if (live) await sync(live);
     emit();
@@ -715,7 +719,8 @@ export type ResetResult =
  * back. Locks at once, so nothing more can be signed, and says the wallet is
  * gone only once the vault has removed and confirmed the removal of the
  * record, with the pending actions kept inside it, and of the previous
- * format's record.
+ * format's record. The anonymous session with NoirWire's server is dropped
+ * with it, and a new one is made on the next request.
  */
 export async function resetWallet(): Promise<ResetResult> {
   lockHere();
@@ -725,6 +730,9 @@ export async function resetWallet(): Promise<ResetResult> {
     const removed = (await remove(STORAGE_KEY)) && (await remove(LEGACY_STORAGE_KEY));
     // A password change left unknown was about the record that is now gone.
     if (removed) unsettledRekey = null;
+    // The session with NoirWire's server goes with the wallet, so the next
+    // wallet on this device is not tied to this one by a session they share.
+    if (removed) await dropSession();
     // Other tabs lock when they see the record gone, and nothing is left
     // behind, the lock signal included. A record that would not go is still
     // there for them to use, so they are told to lock.

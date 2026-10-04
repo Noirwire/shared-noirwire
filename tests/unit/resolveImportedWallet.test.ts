@@ -137,6 +137,20 @@ describe("resolveImportedWallet", () => {
     expect(most).toBe(3);
   });
 
+  it("hands the thread back between owners, so the screen can draw and Cancel can be tapped", async () => {
+    const mnemonic = generateWalletMnemonic();
+    mockChain({ sol: { [addressAt(mnemonic, 0, "app")]: 1_000_000 } });
+    // What a tap or a frame would be: a task waiting its turn on the event loop.
+    let turns = 0;
+    const ticking = setInterval(() => (turns += 1), 0);
+
+    await resolveImportedWallet(mnemonic);
+    clearInterval(ticking);
+
+    // Two conventions, two steps of ten each at the least: a turn before each key and each lookup.
+    expect(turns).toBeGreaterThanOrEqual(40);
+  });
+
   it("waits and asks again when the RPC rate-limits a request, instead of failing the import", async () => {
     vi.useFakeTimers();
     const mnemonic = generateWalletMnemonic();

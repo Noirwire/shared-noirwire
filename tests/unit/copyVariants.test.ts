@@ -5,7 +5,7 @@ import { appCopy } from "../../src/copy/app.js";
 import { commonCopy } from "../../src/copy/common.js";
 import { networkCostCopy } from "../../src/copy/networkCost.js";
 import { mobileSettingsCopy, settingsCopy } from "../../src/copy/settings.js";
-import { waitingCopy } from "../../src/copy/waiting.js";
+import { mobileWaitingCopy, waitingCopy } from "../../src/copy/waiting.js";
 import { activityCopy, mobileActivityCopy } from "../../src/copy/activity.js";
 import { mobileAppCopy } from "../../src/copy/app.js";
 import { earnCopy, mobileEarnCopy } from "../../src/copy/earn.js";
@@ -34,6 +34,7 @@ const PHONE = [
   mobileTradeCopy,
   mobileSettingsCopy,
   mobileWalletCopy,
+  mobileWaitingCopy,
 ];
 
 const WEB = [
@@ -265,6 +266,112 @@ describe("per-platform copy", () => {
     );
   });
 
+  it("says a request the server would not take in the person's terms, the same on both", () => {
+    const said = chainErrorMessage("notAvailableNow");
+    expect(said).toBe(
+      "We can't do this right now. Nothing was sent, and your money has not moved. Try again.",
+    );
+    expect(chainErrorMessage("notAvailableNow", "mobile")).toBe(said);
+    expect(said).not.toMatch(/token|session|auth|sign.?in|\bAPI\b|server|401/i);
+  });
+
+  it("holds the words each app used to keep for itself", () => {
+    const moved: [string, string][] = [
+      [waitingCopy.overdue.review, "We couldn't prepare your review. Nothing was sent. Try again."],
+      [
+        waitingCopy.overdue.action,
+        "This is taking much longer than it should. It may still go through. You can close this and check Activity before trying again.",
+      ],
+      [
+        waitingCopy.overdue.save,
+        "Saving your wallet is taking much longer than it should. It is still being saved. Keep this tab open.",
+      ],
+      [waitingCopy.actionHeld, "This is still being carried out, so it can't be closed yet."],
+      [waitingCopy.gettingReady, "Getting things ready..."],
+      [
+        onboardingCopy.import.notNow,
+        "We can't look for your wallet right now, so nothing was imported. Nothing was saved in this browser.",
+      ],
+      [portfolioCopy.balances.updating, "Updating balances..."],
+      [
+        portfolioCopy.balances.stale,
+        "We couldn't update your balances. What you see may be out of date.",
+      ],
+      [
+        marketsCopy.pricesUnavailable,
+        "Prices can't be shown right now. They are checked again every 30 seconds.",
+      ],
+      [
+        portfolioCopy.archived.value("$12.00"),
+        "Plus $12.00 in archived portfolios, not counted above.",
+      ],
+      [
+        portfolioCopy.archived.valueUnpriced,
+        "Archived portfolios still hold investments, not counted above.",
+      ],
+      [
+        portfolioCopy.archived.earnNotIncluded,
+        "What archived portfolios have in Earn can't be read right now and is not included.",
+      ],
+      [
+        portfolioCopy.archived.earnUnknown,
+        "What it has in Earn can't be shown right now, and is hidden with it.",
+      ],
+      [
+        portfolioCopy.archived.earnUnknownAlone,
+        "What this portfolio has in Earn can't be shown right now. Archiving hides it; it does not move anything.",
+      ],
+      [portfolioCopy.archived.heldIn("Investing"), "Investing (archived)"],
+      [portfolioCopy.archived.confirm, "Archive anyway"],
+      [portfolioCopy.archived.keep, "Keep it"],
+      [
+        onboardingCopy.phrase.discarded,
+        "This page was reloaded, so the recovery phrase you were shown before was discarded. It was never saved. A wallet created now gets a new phrase, and it has to be written down again.",
+      ],
+      [
+        onboardingCopy.phrase.newPhrase,
+        "This is a new recovery phrase. Words written down before the reload do not open this wallet.",
+      ],
+      [
+        onboardingCopy.phrase.acknowledgeNew,
+        "I understand the earlier phrase is gone and I will write this one down.",
+      ],
+      [
+        appCopy.offline.blocked,
+        "That page can't be opened while you're offline. You are still on this one.",
+      ],
+      [
+        appCopy.offline.walletReady,
+        "Your wallet is saved and unlocked. It opens as soon as you're back online.",
+      ],
+      [earnCopy.unread, "What is in Earn can't be shown right now."],
+      [
+        earnCopy.notHere("Solana devnet"),
+        "Earn is available on Solana mainnet only. Nothing can be lent or withdrawn on Solana devnet.",
+      ],
+      [mobileWalletCopy.newPassword.checkFailed, "Could not check this password. Type it again."],
+      [mobilePortfolioCopy.create.forExample("Investing"), "For example: Investing"],
+      [mobilePortfolioCopy.create.nameNeeded, "Type a name first."],
+      [commonCopy.tryAgain, "Try again"],
+      [waitingCopy.overdue.check, "We couldn't check this. Nothing was sent. Try again."],
+      [
+        mobileWaitingCopy.overdue.action,
+        "This is taking longer than it should. It may still go through, so check the balance and Activity before doing it again.",
+      ],
+      [
+        mobileWaitingCopy.overdue.prices,
+        "We couldn't load prices. They are missing or out of date here, and are asked for again every half minute.",
+      ],
+      [mobileWaitingCopy.overdue.chart, "We couldn't load this chart."],
+      [
+        mobileWaitingCopy.overdue.earn,
+        "We couldn't update what is in Earn. What you see may be out of date.",
+      ],
+      [mobileWaitingCopy.overdue.fundingBalance, "We couldn't read your funding wallet's balance."],
+    ];
+    for (const [said, expected] of moved) expect(said).toBe(expected);
+  });
+
   it("never blames a request, a service or a timeout on either platform", () => {
     const blame =
       /could not reach|couldn't reach|did not answer|never came back|timed out|time out|rate limit|\bAPI\b|\bRPC\b|\bHTTP\b|\bendpoint\b/i;
@@ -278,6 +385,7 @@ describe("per-platform copy", () => {
       errorsCopy,
       mobileErrorsCopy,
       waitingCopy,
+      mobileWaitingCopy,
       appCopy.networkGate,
       mobileAppCopy,
       pendingActionCopy,

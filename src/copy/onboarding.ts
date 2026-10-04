@@ -59,6 +59,12 @@ export const onboardingCopy = {
       "NoirWire never asks for these words. Nobody from NoirWire will ever ask you for them.",
     reveal: "Reveal phrase",
     hidden: "••••••",
+    /** A reload while the phrase was on screen: it was never saved, so the wallet gets a new one. */
+    discarded:
+      "This page was reloaded, so the recovery phrase you were shown before was discarded. It was never saved. A wallet created now gets a new phrase, and it has to be written down again.",
+    newPhrase:
+      "This is a new recovery phrase. Words written down before the reload do not open this wallet.",
+    acknowledgeNew: "I understand the earlier phrase is gone and I will write this one down.",
   },
 
   confirm: {
@@ -80,6 +86,9 @@ export const onboardingCopy = {
     phrasePlaceholder: "word1 word2 word3 ...",
     wordCount: (count: number) => (count > 0 ? plural(count, "word") : "12 or 24 words"),
     networkFailed: importFailed("in this browser"),
+    /** The chain cannot be read at all, so an import cannot start. */
+    notNow:
+      "We can't look for your wallet right now, so nothing was imported. Nothing was saved in this browser.",
     checking: "Finding your portfolios...",
     /** The import while it works: a title, a lead, the three steps, the slow line and the failure. */
     progress: {

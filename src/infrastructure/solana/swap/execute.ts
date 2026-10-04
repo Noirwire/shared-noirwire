@@ -54,9 +54,8 @@ export const MAX_PRICE_DEVIATION_BPS = 1000;
 /**
  * Holds a quote's price against the price index this site serves.
  *
- * What that is, exactly: the figure comes from this site's own price route
- * (`/api/prices`), which reads Jupiter's price API. That is a separate
- * system from the order builder that produced the quote, with its own data,
+ * What that is, exactly: the figure comes from NoirWire's own prices route,
+ * which reads Jupiter's price API. That is a separate system from the order builder that produced the quote, with its own data,
  * so a quote that is wrong on its own shows up here. It is the same company,
  * though, and so not an independent check: nothing here would notice the two
  * being wrong together.

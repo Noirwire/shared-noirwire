@@ -1,5 +1,10 @@
 import { inProcessLocks, type Platform } from "../../../src/platform.js";
-import { manualActivity, memoryPlatform, memoryVault } from "../../../src/testing/index.js";
+import {
+  manualActivity,
+  memoryPlatform,
+  memorySessionStore,
+  memoryVault,
+} from "../../../src/testing/index.js";
 
 /**
  * One device for the wallet store: an in-memory vault, the locks every tab on
@@ -14,10 +19,12 @@ export function fakeDevice() {
   const vault = memoryVault();
   const locks = inProcessLocks();
   const activity = manualActivity();
+  const sessionStore = memorySessionStore();
   return {
     vault,
     activity,
-    platform: (): Platform => memoryPlatform({ vault, locks, activity }),
+    sessionStore,
+    platform: (): Platform => memoryPlatform({ vault, locks, activity, sessionStore }),
     state: {
       get refuseWrites() {
         return vault.refuseWrites;

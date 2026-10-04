@@ -1,26 +1,48 @@
 import "./buffer-polyfill.js";
 
 import { Connection } from "@solana/web3.js";
-import { relayInit, rpcEndpoint } from "../httpConfig.js";
+import { getPlatform } from "../../platform.js";
+import { apiUrl } from "../api.js";
+import { authorizedFetch } from "../apiSession.js";
 
 /**
- * Every RPC call goes to the app's own relay, never to the provider, so the
- * provider cannot put a visitor's IP next to an address. Code with no relay
- * in front of it and no visitor behind it (a server, a test suite) names the
- * provider itself, as `rpcUrl` in its HTTP configuration.
+ * Every RPC call goes to NoirWire's server, never to the provider, so the
+ * provider cannot put a visitor's IP next to an address. Code with no server
+ * in front of it and no visitor behind it (a server itself, a test suite)
+ * names the provider, as `rpcUrl` in its environment, and sends no session.
  *
- * The connection is made once, when this module loads, and asks the HTTP
- * configuration where to send each request at the moment it sends it. The
+ * The connection is made once, when this module loads, and asks the
+ * environment where to send each request at the moment it sends it. The
  * address it is made with is never contacted.
  */
 const UNCONFIGURED = "http://rpc.unconfigured.invalid";
 
-const relayedFetch: typeof fetch = (_input, init) => fetch(rpcEndpoint(), relayInit(init));
+/**
+ * Whether an RPC request hands a signed transaction to the chain. One that
+ * cannot be read is taken to, so that it is never made a second time.
+ */
+export function sendsTransaction(body: unknown): boolean {
+  if (typeof body !== "string") return true;
+  try {
+    const calls: unknown = JSON.parse(body);
+    return (Array.isArray(calls) ? calls : [calls]).some(
+      (call) => (call as { method?: unknown } | null)?.method === "sendTransaction",
+    );
+  } catch {
+    return true;
+  }
+}
+
+const relayedFetch: typeof fetch = (_input, init) => {
+  const { rpcUrl } = getPlatform().env;
+  if (rpcUrl) return fetch(rpcUrl, init);
+  return authorizedFetch(apiUrl("rpc"), { ...init, asksAgain: !sendsTransaction(init?.body) });
+};
 
 /**
- * Everything on a Connection that opens a websocket. The relay is a plain
- * request and response: a server function cannot hold a socket open, and one
- * opened from the browser would go around the relay to wherever it pointed.
+ * Everything on a Connection that opens a websocket. The server's RPC route
+ * is a plain request and response, and a socket opened from the app would go
+ * around it to wherever it pointed.
  * A transaction is confirmed by asking for its status (`outcomeWithin` in
  * settlement.ts), never by subscribing.
  */

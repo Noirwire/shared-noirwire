@@ -21,6 +21,7 @@ import {
 import { ChainError, UnknownOutcomeError } from "../../src/domain/chainError.js";
 import { priceHistory } from "../../src/infrastructure/prices/history.js";
 import { refreshMultipliers } from "../../src/infrastructure/prices/multipliers.js";
+import { apiUrl } from "../../src/infrastructure/api.js";
 import { readFetch } from "../../src/infrastructure/readFetch.js";
 import { checkRecipient } from "../../src/infrastructure/solana/address.js";
 import { connection } from "../../src/infrastructure/solana/client.js";
@@ -417,14 +418,14 @@ describe("the clients' reads", () => {
       .mockResolvedValueOnce(new Response("busy", { status: 429 }))
       .mockResolvedValue(Response.json({ ok: true }));
     vi.stubGlobal("fetch", fetched);
-    expect((await settled(readFetch("/api/prices"))).status).toBe(200);
+    expect((await settled(readFetch(apiUrl("prices")))).status).toBe(200);
     expect(fetched).toHaveBeenCalledTimes(3);
   });
 
   it("hands back a 4xx as the answer it is", async () => {
     const fetched = vi.fn(async () => new Response("no", { status: 404 }));
     vi.stubGlobal("fetch", fetched);
-    expect((await settled(readFetch("/api/history/NVDAx/1D"))).status).toBe(404);
+    expect((await settled(readFetch(apiUrl("history", "/NVDAx/1D")))).status).toBe(404);
     expect(fetched).toHaveBeenCalledTimes(1);
   });
 

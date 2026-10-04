@@ -3,6 +3,7 @@ import "./buffer-polyfill.js";
 import { Buffer } from "buffer";
 import { SendTransactionError, type VersionedTransaction } from "@solana/web3.js";
 import { connection } from "./client.js";
+import { isChainError } from "../../domain/chainError.js";
 import { UnknownOutcomeError } from "./swap/types.js";
 
 /**
@@ -102,7 +103,8 @@ export const OWN_SEND_WAIT_MS = 120_000;
  *
  * From the moment it is sent the transaction may land whatever happens to
  * the connection, so an error after that is not yet a failure. Only the RPC
- * rejecting it outright is; anything else is settled against the chain, and
+ * rejecting it outright is, or NoirWire's server refusing the request before
+ * it passed anything on; anything else is settled against the chain, and
  * thrown as `UnknownOutcomeError` when the chain cannot say either. A
  * transaction the chain shows failed is thrown as `failed()`, each route's
  * own error.
@@ -117,6 +119,8 @@ export async function sendAndSettle(
     () => true,
     (error: unknown) => {
       if (error instanceof SendTransactionError) throw error;
+      // The server would not take the request, so it never had the transaction.
+      if (isChainError(error, "notAvailableNow")) throw error;
       return false;
     },
   );

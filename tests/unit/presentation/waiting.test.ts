@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   IMPORT_LAST_STEP_AFTER_MS,
   STILL_WORKING_AFTER_MS,
+  WAIT_LIMIT_MS,
   WAITING_DELAY_MS,
   importFailedText,
   importWaitingView,
@@ -21,6 +22,18 @@ describe("waitingView", () => {
       action: 8_000,
     });
     expect(IMPORT_LAST_STEP_AFTER_MS).toBe(6_000);
+  });
+
+  it("names how long each kind of wait may run, well past its still-working line", () => {
+    expect(WAIT_LIMIT_MS).toEqual({
+      content: 20_000,
+      check: 30_000,
+      review: 30_000,
+      action: 120_000,
+    });
+    for (const kind of KINDS) {
+      expect(WAIT_LIMIT_MS[kind]).toBeGreaterThan(STILL_WORKING_AFTER_MS[kind]);
+    }
   });
 
   it.each(KINDS)(

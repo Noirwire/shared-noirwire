@@ -12,6 +12,7 @@ export const marketsCopy = {
   results: (count: number) => plural(count, "result"),
   noMatch: "No matching investment.",
   noMatches: "No matching investments.",
+  pricesUnavailable: "Prices can't be shown right now. They are checked again every 30 seconds.",
   groups: {
     movers: "Top movers",
     index: "Funds and ETFs",

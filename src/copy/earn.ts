@@ -43,6 +43,9 @@ export const earnCopy = {
   yearEstimate: (dollars: string, rate: string) =>
     `About ${dollars} in a year at today's ${rate}% variable rate. This is an estimate, not a promise.`,
   mainnetOnly: "Earn is available on Solana mainnet only.",
+  notHere: (network: string) =>
+    `Earn is available on Solana mainnet only. Nothing can be lent or withdrawn on ${network}.`,
+  unread: "What is in Earn can't be shown right now.",
   beforeDepositTitle: "Before you deposit",
   beforeDeposit: (venue: string) =>
     `USDC is lent through ${venue}. The rate changes. This is not a bank deposit and is not insured. Smart-contract failures can cause loss. Withdrawals may be delayed when the pool is heavily borrowed.`,

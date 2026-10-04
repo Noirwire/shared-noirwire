@@ -11,7 +11,8 @@ import {
 } from "@solana/web3.js";
 import { bytesEqual } from "./bytes.js";
 import { connection } from "./client.js";
-import { relayInit, relayUrl } from "../httpConfig.js";
+import { apiUrl } from "../api.js";
+import { authorizedFetch } from "../apiSession.js";
 import { readFetch } from "../readFetch.js";
 import { usdcMint, usdcMintKey } from "./config.js";
 import { type BalanceLimits, verifyBalancesBeforeSigning } from "./presign-guard.js";
@@ -24,7 +25,7 @@ import {
 } from "./relayed.js";
 import { signForSending, type StillUnlocked } from "./signerAccounts.js";
 import { sendAndSettle, signatureOf } from "./settlement.js";
-import { ChainError } from "../../domain/chainError.js";
+import { ChainError, isChainError } from "../../domain/chainError.js";
 import { UnknownOutcomeError } from "./swap/types.js";
 import { ataFor } from "./tokens.js";
 
@@ -34,10 +35,11 @@ import { ataFor } from "./tokens.js";
  * one USDC transfer into the relayer's payment account. The portfolio needs
  * no SOL, and nothing is converted first.
  *
- * The app builds the whole transaction. The relayer never alters it: this
- * site's relay route prices it, and then the relayer adds the fee payer's
- * signature to exactly the bytes the portfolio signed. Both go through
- * /api/relayer, which holds the relayer's credentials and pins its keys.
+ * The app builds the whole transaction. The relayer never alters it:
+ * NoirWire's server prices it, and then the relayer adds the fee payer's
+ * signature to exactly the bytes the portfolio signed. Both go through the
+ * server's relayer route, which holds the relayer's credentials and pins its
+ * keys.
  *
  * The portfolio signs a transaction whose fee payer it does not control, so
  * before it does, the transaction is read back from its bytes
@@ -53,8 +55,8 @@ import { ataFor } from "./tokens.js";
  * the funding wallet or another portfolio, which `keepOut` enforces.
  */
 
-/** The relay to the fee relayer. */
-const RELAYER_PATH = "/api/relayer";
+/** The one relayer call that hands over a signed transaction, and so is never made a second time. */
+const SIGN_METHOD = "signTransaction";
 
 const USDC_DECIMALS = 6;
 
@@ -102,7 +104,7 @@ const PINS_TTL_MS = 60_000;
 let pinsCache: { at: number; pins: Promise<RelayerPins | null> } | null = null;
 
 async function fetchPins(): Promise<RelayerPins | null> {
-  const response = await readFetch(relayUrl(RELAYER_PATH), relayInit());
+  const response = await readFetch(apiUrl("relayer"));
   const payload = (await response.json()) as {
     available?: boolean;
     feePayers?: string[];
@@ -155,15 +157,15 @@ const REFUSED = [400, 403, 413, 422, 429, 503];
 async function call<T>(method: string, params?: Record<string, unknown>): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(
-      relayUrl(RELAYER_PATH),
-      relayInit({
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ method, params }),
-      }),
-    );
-  } catch {
+    response = await authorizedFetch(apiUrl("relayer"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ method, params }),
+      asksAgain: method !== SIGN_METHOD,
+    });
+  } catch (error) {
+    // The server would not take the request at all: nothing reached the relayer.
+    if (isChainError(error, "notAvailableNow")) throw error;
     throw new RelayerSilence();
   }
   const payload = (await response.json().catch(() => null)) as {
@@ -474,7 +476,7 @@ export async function quoteRelayed(
 /**
  * Runs an action whose review showed `reviewedFeeRaw` as its network cost:
  * builds it, checks it, has the portfolio sign, has the relayer add the fee
- * payer's signature, sends it through this site's own RPC relay and watches
+ * payer's signature, sends it through the server's RPC route and watches
  * for it. Returns the transaction's signature, which is the fee payer's.
  *
  * Until the relayer has signed, nothing can land, so a failure up to there
@@ -553,11 +555,14 @@ export async function runRelayed(run: {
 
     let answer: { signed_transaction: string };
     try {
-      answer = await call("signTransaction", {
+      answer = await call(SIGN_METHOD, {
         transaction: encoded(transaction),
         signer_key: feePayer.toBase58(),
       });
     } catch (error) {
+      // The server refused the request before the relayer saw it. Nothing
+      // was sent, and nothing is asked of the relayer again here.
+      if (isChainError(error, "notAvailableNow")) throw error;
       // This replica never had the transaction. Another is asked for, and
       // when none is left that ends it (`relayerFor` above).
       if (neverReceived(error)) {

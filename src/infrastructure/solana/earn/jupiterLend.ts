@@ -15,8 +15,7 @@ import {
 } from "@solana/web3.js";
 import { bytesEqual, readU64LE } from "../bytes.js";
 import { connection } from "../client.js";
-import { relayInit, relayUrl } from "../../httpConfig.js";
-import { JUPITER_RELAY_PATH, jupiterFetch, usdcMint, usdcMintKey } from "../config.js";
+import { jupiterThroughApi, usdcMint, usdcMintKey } from "../config.js";
 import {
   COMPUTE_BUDGET_RULE,
   CREATE_ATA_RULE,
@@ -148,13 +147,8 @@ function vault(): Promise<VaultInfo> {
   return info;
 }
 
-/** A request to Jupiter Lend through the relay. */
-function lendFetch(path: string, init?: RequestInit): Promise<Response> {
-  return jupiterFetch(relayUrl(`${JUPITER_RELAY_PATH}${path}`), relayInit(init));
-}
-
 async function fetchVault(): Promise<VaultInfo> {
-  const response = await lendFetch(`/lend/v1/earn/tokens`);
+  const response = await jupiterThroughApi(`/lend/v1/earn/tokens`);
   if (!response.ok) throw new Error(`Jupiter Lend returned ${response.status}.`);
   const vaults = (await response.json()) as VaultInfo[];
   const usdc = vaults.find(
@@ -173,7 +167,7 @@ async function buildTransaction(
   owner: PublicKey,
   amountRaw: bigint,
 ): Promise<VersionedTransaction> {
-  const response = await lendFetch(`/lend/v1/earn/${action}`, {
+  const response = await jupiterThroughApi(`/lend/v1/earn/${action}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -293,7 +287,7 @@ async function lendInstruction(
   owner: PublicKey,
   amountRaw: bigint,
 ): Promise<TransactionInstruction> {
-  const response = await lendFetch(`/lend/v1/earn/${action}-instructions`, {
+  const response = await jupiterThroughApi(`/lend/v1/earn/${action}-instructions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -446,7 +440,7 @@ export const jupiterLend = {
     try {
       // A POST, not Jupiter's own GET: the relay builds the query on its
       // side, so the portfolio's address is in no URL of ours.
-      const response = await lendFetch(`/lend/v1/earn/earnings`, {
+      const response = await jupiterThroughApi(`/lend/v1/earn/earnings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user: owner.toBase58(), positions: RECEIPT_MINT.toBase58() }),

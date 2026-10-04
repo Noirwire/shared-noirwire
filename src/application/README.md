@@ -8,6 +8,8 @@ The rest is what the screens read: the catalog and valuation (`catalog.ts`, `por
 
 `retries.ts` is the quiet retry for reads: `withRetries(attempt, { tries, pauseMs, retryable })` and `readWithRetries`, which tries three times, 400 ms and then 800 ms apart, and only on a failure of the asking itself (a request that never got through, ran out of time, or came back 429 or 5xx). The balance refresh, a trade's price, the cost of a review and the clients' own reads go through it. Nothing that signs, submits or could move money does, and a refusal is never asked again: it is an answer.
 
+`apiSession.ts` keeps the app's anonymous session with NoirWire's server: started when there is none, renewed a minute before its token runs out, replaced once it is a day old, and shared by callers that arrive together, under the platform lock so two tabs make one between them. It is a quota bucket, not an identity, and nothing in it comes from the wallet. Where sessions come from is an interface it declares (`SessionGateway`); `infrastructure/` supplies the server's routes.
+
 `pacer.ts` spaces requests so that no more than a set number start in a second, with a clock that can be passed in.
 
 **Belongs here:** use cases, the result type, the pending-action reducer, and the interfaces a use case needs from the outside world (`ports.ts`).

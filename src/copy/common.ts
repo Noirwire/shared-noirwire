@@ -18,6 +18,8 @@ export const commonCopy = {
   amountPlaceholder: "0.00",
   copy: "Copy",
   seeAll: "See all",
+  /** The plain retry offered wherever a read or a check did not come back. */
+  tryAgain: "Try again",
   cash: "Cash",
   solana: "Solana",
   tracker: (name: string) => `${name} tracker`,

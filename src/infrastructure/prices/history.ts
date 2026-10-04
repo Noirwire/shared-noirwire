@@ -1,10 +1,9 @@
 import { SERIES_TTL_SECONDS, type PriceRange } from "../../domain/priceRanges.js";
-import { relayInit, relayUrl } from "../httpConfig.js";
+import { apiUrl } from "../api.js";
 import { readFetch } from "../readFetch.js";
 
 /**
- * Price history as an app gets it: from its own relay's `/api/history`,
- * which reads the source once for everyone and caches it.
+ * Price history as an app gets it: from NoirWire's server, which reads the source once for everyone and caches it.
  *
  * `null` means no history could be read, and every caller hides the chart
  * rather than drawing a plausible-looking line - an invented curve on an
@@ -21,10 +20,7 @@ import { readFetch } from "../readFetch.js";
 const seriesCache = new Map<string, { at: number; points: Promise<number[] | null> }>();
 
 async function fetchSeries(symbol: string, range: PriceRange): Promise<number[] | null> {
-  const response = await readFetch(
-    relayUrl(`/api/history/${encodeURIComponent(symbol)}/${range}`),
-    relayInit(),
-  );
+  const response = await readFetch(apiUrl("history", `/${encodeURIComponent(symbol)}/${range}`));
   if (!response.ok) return null;
   const { points } = (await response.json()) as { points: number[] | null };
   return points && points.length >= 2 ? points : null;

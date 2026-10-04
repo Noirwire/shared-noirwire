@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SERIES_TTL_SECONDS } from "../../src/domain/priceRanges.js";
-import { memoryPlatform, memoryVault, type MemoryVault } from "../../src/testing/index.js";
+import { memoryVault, type MemoryVault } from "../../src/testing/index.js";
 
 let vault: MemoryVault;
 
@@ -10,10 +10,8 @@ let vault: MemoryVault;
  */
 async function loadPage() {
   vi.resetModules();
-  const { installPlatform } = await import("../../src/platform.js");
-  const { configureHttp } = await import("../../src/infrastructure/httpConfig.js");
-  installPlatform(memoryPlatform({ vault }));
-  configureHttp({ baseUrl: "", headers: () => ({}) });
+  const { installTestPlatform } = await import("../../src/testing/index.js");
+  installTestPlatform({ vault });
   return import("../../src/infrastructure/prices/history.js");
 }
 

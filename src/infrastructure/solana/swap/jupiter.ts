@@ -1,16 +1,12 @@
 import "../buffer-polyfill.js";
 
 import { Buffer } from "buffer";
-import { relayInit, relayUrl } from "../../httpConfig.js";
-import {
-  JUPITER_RELAY_PATH,
-  jupiterFetch,
-  jupiterReferralAccount,
-  noirwireFeeBps,
-} from "../config.js";
+import { apiUrl } from "../../api.js";
+import { authorizedFetch } from "../../apiSession.js";
+import { jupiterThroughApi, jupiterReferralAccount, noirwireFeeBps } from "../config.js";
 
 import { PublicKey, VersionedTransaction } from "@solana/web3.js";
-import { ChainError } from "../../../domain/chainError.js";
+import { ChainError, isChainError } from "../../../domain/chainError.js";
 import { connection } from "../client.js";
 import {
   clampSlippageBps,
@@ -126,16 +122,13 @@ async function getOrder(request: SwapRequest, taker: PublicKey): Promise<Jupiter
       : {}),
   };
 
-  // A POST with the order in its body, never a query: the relay builds
+  // A POST with the order in its body, never a query: the server builds
   // Jupiter's GET on its side, so the taker's address is in no URL of ours.
-  const response = await jupiterFetch(
-    relayUrl(`${JUPITER_RELAY_PATH}/swap/v2/order`),
-    relayInit({
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(order),
-    }),
-  );
+  const response = await jupiterThroughApi("/swap/v2/order", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(order),
+  });
   const payload: unknown = await response.json().catch(() => null);
 
   if (!response.ok) {
@@ -283,20 +276,19 @@ export async function executeJupiterSwap(
   let status = 0;
   let result: ExecuteResult | null = null;
   try {
-    const response = await fetch(
-      relayUrl(`${JUPITER_RELAY_PATH}/swap/v2/execute`),
-      relayInit({
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          signedTransaction: Buffer.from(signedTransaction.serialize()).toString("base64"),
-          requestId: order.requestId,
-        }),
+    const response = await authorizedFetch(apiUrl("jupiter", "/swap/v2/execute"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        signedTransaction: Buffer.from(signedTransaction.serialize()).toString("base64"),
+        requestId: order.requestId,
       }),
-    );
+    });
     status = response.status;
     result = (await response.json().catch(() => null)) as ExecuteResult | null;
-  } catch {
+  } catch (error) {
+    // NoirWire's server would not take the request, so Jupiter never had the swap.
+    if (isChainError(error, "notAvailableNow")) throw error;
     /* no answer; settled against the chain below */
   }
 

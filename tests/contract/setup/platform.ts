@@ -1,11 +1,13 @@
-import { configureHttp } from "../../../src/infrastructure/httpConfig.js";
 import { installPlatform } from "../../../src/platform.js";
 import { memoryPlatform, testEnv } from "../../../src/testing/index.js";
 
 /**
  * These run against mainnet by definition, so the network is part of the
  * suite's setup. RPC calls go straight to `SOLANA_RPC_URL` (see
- * vitest.contract.config.ts); nothing here goes through a relay.
+ * vitest.contract.config.ts); nothing here goes through NoirWire's server.
  */
-installPlatform(memoryPlatform({ env: testEnv({ network: "mainnet-beta" }) }));
-configureHttp({ baseUrl: "", headers: () => ({}), rpcUrl: process.env.SOLANA_RPC_URL });
+installPlatform(
+  memoryPlatform({
+    env: testEnv({ network: "mainnet-beta", rpcUrl: process.env.SOLANA_RPC_URL }),
+  }),
+);

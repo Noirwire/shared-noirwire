@@ -213,6 +213,26 @@ export const portfolioCopy = {
     back: "Back to my view",
   },
 
+  /** The state of the balances on screen, beside them. */
+  balances: {
+    updating: "Updating balances...",
+    stale: "We couldn't update your balances. What you see may be out of date.",
+  },
+
+  /** What archived portfolios still hold, and archiving one that holds something. */
+  archived: {
+    value: (value: string) => `Plus ${value} in archived portfolios, not counted above.`,
+    valueUnpriced: "Archived portfolios still hold investments, not counted above.",
+    earnNotIncluded:
+      "What archived portfolios have in Earn can't be read right now and is not included.",
+    earnUnknown: "What it has in Earn can't be shown right now, and is hidden with it.",
+    earnUnknownAlone:
+      "What this portfolio has in Earn can't be shown right now. Archiving hides it; it does not move anything.",
+    heldIn: (portfolio: string) => `${portfolio} (archived)`,
+    confirm: "Archive anyway",
+    keep: "Keep it",
+  },
+
   settings: {
     title: "Portfolio settings",
     nameLabel: "Portfolio name",
@@ -400,6 +420,10 @@ export const mobilePortfolioCopy = {
     markAction: "See public view",
   },
   create: {
+    /** A name field's placeholder, worded so it cannot be mistaken for a name already typed. */
+    forExample: (name: string) => `For example: ${name}`,
+    /** Pressing Create with no name typed. */
+    nameNeeded: "Type a name first.",
     lead: nameStays("this phone"),
     notSaved: notSavedIn("on this phone"),
     kinds: {

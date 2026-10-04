@@ -1,11 +1,10 @@
 import type { LivePrice } from "./liveSource.js";
-import { relayInit, relayUrl } from "../httpConfig.js";
+import { apiUrl } from "../api.js";
 import { readFetch } from "../readFetch.js";
 import { onMultipliersChange, refreshMultipliers } from "./multipliers.js";
 
 /**
- * Live prices as an app gets them: from its own relay's `/api/prices`,
- * which reads Jupiter's index once for everyone and caches it.
+ * Live prices as an app gets them: from NoirWire's server, which reads Jupiter's index once for everyone and caches it.
  *
  * Polled only while a screen that shows prices is mounted and the app is in
  * view. A tab or an app left in the background asks for nothing, and catches
@@ -42,7 +41,7 @@ async function refresh() {
   // chain only when the last read has aged out.
   void refreshMultipliers();
   try {
-    const response = await readFetch(relayUrl("/api/prices"), relayInit());
+    const response = await readFetch(apiUrl("prices"));
     if (response.ok) {
       const payload = (await response.json()) as { prices: Record<string, LivePrice> | null };
       if (payload.prices) {

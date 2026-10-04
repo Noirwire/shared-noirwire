@@ -1,4 +1,11 @@
-export { type HttpConfig, RPC_RELAY_PATH, configureHttp } from "./httpConfig.js";
+export { type ApiRoute, apiUrl } from "./api.js";
+export {
+  type AuthorizedInit,
+  authorizedFetch,
+  dropSession,
+  keepSessionWith,
+  sessionRoutes,
+} from "./apiSession.js";
 export { priceHistory } from "./prices/history.js";
 export { loadPriceHistory } from "./prices/historySource.js";
 export {
@@ -28,9 +35,7 @@ export { connection } from "./solana/client.js";
 export {
   DEVNET_RPC_URL,
   type EnvSettings,
-  JUPITER_RELAY_PATH,
   PRICE_HISTORY_API_URL,
-  PRIVATE_PAYMENT_RELAY_PATH,
   envFrom,
   expectedGenesisHash,
   isMainnet,

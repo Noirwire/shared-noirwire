@@ -112,8 +112,9 @@ describe("a quote taken from the venue", () => {
     await quoteFor(ORDER);
 
     const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/jupiter/swap/v2/order");
+    expect(url).toBe("https://api.noirwire.test/v1/jupiter/swap/v2/order");
     expect(init.method).toBe("POST");
+    expect(init.headers).toMatchObject({ Authorization: "Bearer test-token-1" });
     expect(JSON.parse(init.body as string)).toMatchObject({
       taker: TAKER.toBase58(),
       inputMint: REQUEST.inputMint.toBase58(),

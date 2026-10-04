@@ -43,6 +43,33 @@ export interface Env {
   /** The account trade fees are paid to, or null where none is set. */
   referralAccount: string | null;
   feeBps: number;
+  /**
+   * Where NoirWire's server is, and what every request's path is added to:
+   * an origin with no path (`https://api.noirwire.com`), or in a browser a
+   * path on the page's own origin that the host forwards to it (`/api`).
+   */
+  apiBaseUrl: string;
+  /** How old a session may get before it is replaced by a new one. `SESSION_MAX_AGE_MS` when left out. */
+  sessionMaxAgeMs?: number;
+  /**
+   * Where chain reads and sends go, when not to NoirWire's server. Only for
+   * code with no visitor behind it and no server in front of it: a server
+   * itself, or a test against a local validator.
+   */
+  rpcUrl?: string;
+}
+
+/**
+ * Where the app keeps its anonymous session with NoirWire's server: one small
+ * JSON value in plain app storage. Not the vault and never inside the
+ * encrypted wallet record, because requests are made before the wallet is
+ * unlocked, and nothing in it comes from the wallet. A call that throws is
+ * taken as nothing stored, or nothing saved.
+ */
+export interface SessionStore {
+  get(): Promise<string | null>;
+  set(value: string): Promise<void>;
+  remove(): Promise<void>;
 }
 
 /** User input and return-to-foreground events, which the idle lock counts from. */
@@ -67,6 +94,7 @@ export interface Platform {
   activity: Activity;
   track: Track;
   locks: Locks;
+  sessionStore: SessionStore;
 }
 
 let installed: Platform | null = null;

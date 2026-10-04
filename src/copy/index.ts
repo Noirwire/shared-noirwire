@@ -14,5 +14,5 @@ export { mobilePortfolioCopy, portfolioCopy } from "./portfolio.js";
 export { mobileSendCopy, sendCopy } from "./send.js";
 export { mobileSettingsCopy, settingsCopy } from "./settings.js";
 export { mobileTradeCopy, tradeCopy } from "./trade.js";
-export { waitingCopy } from "./waiting.js";
+export { mobileWaitingCopy, waitingCopy } from "./waiting.js";
 export { mobileWalletCopy, walletCopy } from "./wallet.js";

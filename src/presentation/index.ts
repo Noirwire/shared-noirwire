@@ -158,6 +158,7 @@ export {
   IMPORT_LAST_STEP_AFTER_MS,
   type ImportWaitingView,
   STILL_WORKING_AFTER_MS,
+  WAIT_LIMIT_MS,
   WAITING_DELAY_MS,
   type WaitingKind,
   type WaitingSignal,

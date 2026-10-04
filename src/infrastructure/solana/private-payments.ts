@@ -16,8 +16,10 @@ import { connection } from "./client.js";
 import { outcomeWithin, signatureOf } from "./settlement.js";
 import { UnknownOutcomeError } from "./swap/types.js";
 import { ataFor } from "./tokens.js";
-import { relayInit, relayUrl } from "../httpConfig.js";
-import { PRIVATE_PAYMENT_RELAY_PATH, privatePaymentCluster } from "./config.js";
+import { apiUrl } from "../api.js";
+import { authorizedFetch } from "../apiSession.js";
+import { isChainError } from "../../domain/chainError.js";
+import { privatePaymentCluster } from "./config.js";
 import {
   MIN_TRANSFER_RAW,
   privacyFeeFor,
@@ -30,9 +32,9 @@ import {
  * moving USDC from the wallet's funding account into a private account
  * without publishing a direct funding-wallet -> private-account transfer.
  *
- * Called through the app's relay (`/api/private-payments`), not
- * straight from the browser, so MagicBlock never sees the visitor's IP next
- * to the two addresses. The relay passes the request on and keeps nothing:
+ * Called through NoirWire's server, not straight from the app, so
+ * MagicBlock never sees the visitor's IP next to the two addresses. The
+ * server passes the request on and keeps nothing:
  * no storage, and no log of a body or an address. That is a promise about
  * this server rather than something a visitor can check, and the interface
  * says so. MagicBlock itself still sees both addresses, because a transfer
@@ -261,14 +263,13 @@ type BuiltTransaction = {
 };
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(
-    relayUrl(`${PRIVATE_PAYMENT_RELAY_PATH}${path}`),
-    relayInit({
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }),
-  );
+  // Only ever an unsigned transaction to check, or a nudge: nothing signed leaves here.
+  const response = await authorizedFetch(apiUrl("privatePayments", path), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    asksAgain: true,
+  });
 
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
@@ -369,14 +370,11 @@ export async function submitTransfer(
 
   let refusal: string | null = null;
   try {
-    const response = await fetch(
-      relayUrl(`${PRIVATE_PAYMENT_RELAY_PATH}/v1/transaction/send`),
-      relayInit({
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }),
-    );
+    const response = await authorizedFetch(apiUrl("privatePayments", "/v1/transaction/send"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
     const payload = (await response.json().catch(() => null)) as {
       signature?: string;
       error?: string | { message?: string };
@@ -390,7 +388,9 @@ export async function submitTransfer(
         message ??
         `The private payment service returned ${response.status}.`;
     }
-  } catch {
+  } catch (error) {
+    // NoirWire's server would not take the request, so the service never had the transfer.
+    if (isChainError(error, "notAvailableNow")) throw error;
     /* no answer at all: settled against the chain below */
   }
   if (!signature) {

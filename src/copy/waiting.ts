@@ -21,4 +21,29 @@ export const waitingCopy = {
     review: "Still preparing your review. Nothing has been sent.",
     action: stillWorkingOnAction,
   },
+  /** What a wait that ran past its limit (`WAIT_LIMIT_MS`) ends with, by what was being waited for. */
+  overdue: {
+    check: "We couldn't check this. Nothing was sent. Try again.",
+    review: "We couldn't prepare your review. Nothing was sent. Try again.",
+    action:
+      "This is taking much longer than it should. It may still go through. You can close this and check Activity before trying again.",
+    save: "Saving your wallet is taking much longer than it should. It is still being saved. Keep this tab open.",
+  },
+  /** Why a dialog with an action under way will not close. */
+  actionHeld: "This is still being carried out, so it can't be closed yet.",
+  /** The app before it has checked what it is connected to. */
+  gettingReady: "Getting things ready...",
+} as const;
+
+/** What the phone says differently when a wait ran past its limit, and for its own reads. Everything else is `waitingCopy`. */
+export const mobileWaitingCopy = {
+  overdue: {
+    action:
+      "This is taking longer than it should. It may still go through, so check the balance and Activity before doing it again.",
+    prices:
+      "We couldn't load prices. They are missing or out of date here, and are asked for again every half minute.",
+    chart: "We couldn't load this chart.",
+    earn: "We couldn't update what is in Earn. What you see may be out of date.",
+    fundingBalance: "We couldn't read your funding wallet's balance.",
+  },
 } as const;

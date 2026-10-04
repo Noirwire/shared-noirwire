@@ -122,6 +122,11 @@ export const mobileWalletCopy = {
     prompt: "Unlock NoirWire",
   },
 
+  newPassword: {
+    /** The phone checks a password with no connection, so it never says to check one. */
+    checkFailed: "Could not check this password. Type it again.",
+  },
+
   resetConfirm: {
     warning: resetWarning("phone"),
   },

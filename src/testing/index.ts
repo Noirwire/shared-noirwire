@@ -1,9 +1,12 @@
+import { keepSessionWith, type SessionKeeper } from "../infrastructure/apiSession.js";
 import {
   inProcessLocks,
+  installPlatform,
   type Activity,
   type Env,
   type Locks,
   type Platform,
+  type SessionStore,
   type Track,
   type VaultRepository,
 } from "../platform.js";
@@ -73,7 +76,71 @@ export function memoryVault(
 }
 
 export function testEnv(overrides: Partial<Env> = {}): Env {
-  return { network: "devnet", referralAccount: null, feeBps: 0, ...overrides };
+  return {
+    network: "devnet",
+    referralAccount: null,
+    feeBps: 0,
+    apiBaseUrl: TEST_API_URL,
+    ...overrides,
+  };
+}
+
+/** Where a test's requests are addressed. Nothing answers there: `fakeApi` does. */
+export const TEST_API_URL = "https://api.noirwire.test";
+
+/** A session store in memory, for tests: what is stored is on `value`. */
+export function memorySessionStore(initial: string | null = null): SessionStore & {
+  value: string | null;
+} {
+  const store = {
+    value: initial,
+    get: async () => store.value,
+    set: async (next: string) => {
+      store.value = next;
+    },
+    remove: async () => {
+      store.value = null;
+    },
+  };
+  return store;
+}
+
+export type FakeSession = SessionKeeper & {
+  /** The token every request carries until the next renewal or drop. */
+  current: string;
+  /** How many times a new token was asked for after the server turned one down. */
+  renewals: number;
+  /** How many times the session was dropped. */
+  drops: number;
+};
+
+/**
+ * A session that asks nobody: its token is `test-token-1`, and each renewal
+ * of that token, and each drop, moves it on to the next number. Install it with `keepSessionWith`,
+ * or let `installTestPlatform` do so.
+ */
+export function fakeSession(): FakeSession {
+  let issued = 1;
+  const next = () => {
+    issued += 1;
+    session.current = `test-token-${issued}`;
+  };
+  const session: FakeSession = {
+    current: "test-token-1",
+    renewals: 0,
+    drops: 0,
+    token: async () => session.current,
+    async renew(refused: string) {
+      session.renewals += 1;
+      if (refused === session.current) next();
+      return session.current;
+    },
+    async drop() {
+      session.drops += 1;
+      next();
+    },
+  };
+  return session;
 }
 
 /** An activity source a test drives by hand: `fire()` stands for a tap or a return to the app. */
@@ -109,8 +176,28 @@ export function memoryPlatform(overrides: Partial<Platform> = {}): Platform {
     activity: manualActivity(),
     track: recordingTrack().track,
     locks,
+    sessionStore: memorySessionStore(),
     ...overrides,
   };
 }
+
+/**
+ * Everything a consumer's test needs so that nothing reaches the network to
+ * start with: every port in memory and a fake session in place of the
+ * session routes. Hands back both, to inspect. Requests to the server itself are
+ * answered with `fakeApi`.
+ */
+export function installTestPlatform(overrides: Partial<Platform> = {}): {
+  platform: Platform;
+  session: FakeSession;
+} {
+  const platform = memoryPlatform(overrides);
+  const session = fakeSession();
+  installPlatform(platform);
+  keepSessionWith(session);
+  return { platform, session };
+}
+
+export { type ApiCall, type ApiHandler, type FakeApi, fakeApi } from "./fakeApi.js";
 
 export { signAsClient, unsignedTransaction } from "./signing.js";

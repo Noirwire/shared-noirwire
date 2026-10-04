@@ -31,6 +31,12 @@ export const appCopy = {
     retry: "Try again",
   },
 
+  /** The app with no connection: a page that cannot be opened, and a wallet that is ready for when it can. */
+  offline: {
+    blocked: "That page can't be opened while you're offline. You are still on this one.",
+    walletReady: "Your wallet is saved and unlocked. It opens as soon as you're back online.",
+  },
+
   dialogClose: "Close",
 
   status: {

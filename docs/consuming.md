@@ -17,6 +17,46 @@ The install steps, the exports map and the peer dependency versions are in [READ
 - The stock catalog is a JSON module imported with `with { type: "json" }`. Turbopack and Babel 7.26 or later read that syntax by default.
 - `package.json` names `dist/infrastructure/solana/buffer-polyfill.js` as the one file with a side effect: it puts the `buffer` package's `Buffer` on the global object before the Solana libraries need it, and a bundler must not drop it.
 
+## The server and the session
+
+Every request goes to NoirWire's server, at `apiBaseUrl` in the environment, and carries an anonymous session the package keeps by itself. An app supplies two things, both in [README.md](../README.md#what-an-app-must-install): the settings `envFrom` reads, and a `sessionStore`.
+
+- **Web:** `apiBaseUrl` is `/api` with `platform: "web"`, and the host rewrites `/api/:path*` to the server, so the page's `connect-src` stays `'self'`. An absolute `https://` origin works too, if the content security policy allows it. The session store is one `localStorage` key:
+
+  ```ts
+  const KEY = "noirwire.session";
+  const sessionStore = {
+    get: async () => localStorage.getItem(KEY),
+    set: async (value: string) => localStorage.setItem(KEY, value),
+    remove: async () => localStorage.removeItem(KEY),
+  };
+  ```
+
+  `locks` must be the cross-tab implementation the wallet already uses: two tabs renewing one session at once would otherwise spend the same refresh token twice.
+
+- **Mobile:** `apiBaseUrl` is the server's origin, `https://api.noirwire.com`; a development build may name `http://localhost:8787` or, from an Android emulator, `http://10.0.2.2:8787`, with `development: true`. A path is refused. The session store is the app's plain key-value storage, not the device keystore: the value is no secret worth a biometric prompt, and it is read before the wallet is unlocked.
+
+The store must not be the vault, and the value must not go into the wallet record. The session is a quota bucket, not an identity: it is not derived from the wallet, it is replaced every day, and `resetWallet()` drops it. An app does nothing for any of that.
+
+An app's own requests to the server, such as counting a usage event, go through the same two functions, so they carry the session and are addressed the same way:
+
+```ts
+import { apiUrl, authorizedFetch } from "@noirwire/shared/infrastructure";
+
+await authorizedFetch(apiUrl("events"), {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(event),
+  asksAgain: true, // counting an event moves nothing, so it may be sent again after a 401
+});
+```
+
+A request that cannot be made as the app (the server turned the session down twice, or no session could be had) throws a `ChainError` with the code `notAvailableNow`. `chainErrorMessage` and `failureMessage` word it for a person; a screen never says more than that.
+
+## An app's tests
+
+`installTestPlatform()` from `@noirwire/shared/testing` installs every port in memory and a fake session, so a test starts with nothing that reaches the network. `fakeApi(routes)` answers the server's paths. Both are described in [src/testing/README.md](../src/testing/README.md). A test that installed `memoryPlatform()` and called `configureHttp` before now calls `installTestPlatform(overrides)` instead.
+
 ## What an app's vault must pass on
 
 The store announces a lock to the other tabs by writing a counter under `noirwire.wallet.lock` (`LOCK_SIGNAL_KEY`). An app's `VaultRepository.subscribe` must report changes to that key as it does the wallet's own, or a lock in one tab will not reach the others.
