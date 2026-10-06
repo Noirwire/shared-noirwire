@@ -71,8 +71,20 @@ export function createPortfolioReads(
     return portfolio.holdings.reduce((sum, holding) => sum + holdingValue(holding), 0);
   }
 
+  /** What the funding wallet holds, by symbol, leaving out what it holds none of. */
+  function fundingHoldings(wallet: Wallet) {
+    return [
+      { symbol: "SOL", amount: wallet.funding.sol },
+      ...Object.entries(wallet.funding.tokens).map(([symbol, amount]) => ({ symbol, amount })),
+    ].filter((holding) => holding.amount > 0);
+  }
+
+  /** Everything the person has here: every active portfolio, and what waits in the funding wallet. */
   function totalValue(wallet: Wallet) {
-    return activePortfolios(wallet).reduce((sum, portfolio) => sum + portfolioValue(portfolio), 0);
+    return (
+      activePortfolios(wallet).reduce((sum, portfolio) => sum + portfolioValue(portfolio), 0) +
+      fundingHoldings(wallet).reduce((sum, held) => sum + held.amount * price(held.symbol), 0)
+    );
   }
 
   /**
@@ -161,14 +173,13 @@ export function createPortfolioReads(
 
   /** A dollar total needs a current price for every non-cash asset it includes. */
   function hasCurrentValuation(wallet: Wallet, updatedAt: number | null): boolean {
-    if (updatedAt === null) {
-      return activePortfolios(wallet).every((portfolio) =>
-        portfolio.holdings.every((holding) => holding.amount <= 0 || holding.symbol === "USDC"),
-      );
-    }
-    return activePortfolios(wallet).every((portfolio) =>
-      portfolio.holdings.every((holding) => holding.amount <= 0 || isLivePrice(holding.symbol)),
-    );
+    const held = [
+      ...activePortfolios(wallet).flatMap((portfolio) => portfolio.holdings),
+      ...fundingHoldings(wallet),
+    ].filter((holding) => holding.amount > 0);
+    return updatedAt === null
+      ? held.every((holding) => holding.symbol === "USDC")
+      : held.every((holding) => isLivePrice(holding.symbol));
   }
 
   return {

@@ -179,6 +179,28 @@ describe("portfolioValue / totalValue", () => {
     const wallet = makeWallet([active, archived]);
     expect(totalValue(wallet)).toBe(10);
   });
+
+  it("totalValue counts what waits in the funding wallet, each token at its own price", () => {
+    liveOverrides.set("SOL", { usd: 100, change24h: 0 });
+    const wallet = {
+      ...makeWallet([makePortfolio({ holdings: [makeHolding({ symbol: "USDC", amount: 10 })] })]),
+      funding: { address: "funding", sol: 0.5, tokens: { USDC: 2 } },
+    };
+    expect(totalValue(wallet)).toBe(10 + 2 + 0.5 * 100);
+  });
+
+  it("a total that counts the funding wallet needs a live price for what it holds there", () => {
+    const wallet = {
+      ...makeWallet([]),
+      funding: { address: "funding", sol: 0.5, tokens: { USDC: 2 } },
+    };
+    expect(portfolioOverview(wallet, Date.now()).valued).toBe(false);
+    liveOverrides.set("SOL", { usd: 100, change24h: 0 });
+    expect(portfolioOverview(wallet, Date.now()).valued).toBe(true);
+    expect(
+      portfolioOverview({ ...wallet, funding: { ...wallet.funding, sol: 0 } }, null).valued,
+    ).toBe(true);
+  });
 });
 
 describe("activePortfolios / archivedPortfolios", () => {

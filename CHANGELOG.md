@@ -4,6 +4,12 @@ All notable changes to this package are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The apps pin an exact tag; see [README.md](README.md#releasing) for how a tag becomes a release.
 
+## [0.6.1] - 2026-10-06
+
+Home's total value is everything the person has in the wallet: every active portfolio, what is in Earn, and now what waits in the funding wallet too (its USDC, its SOL and any other token, each at its own price). Money that has arrived and not yet been moved into a portfolio no longer leaves the total at zero. "Ready to invest" is unchanged: it counts cash inside portfolios only. A total that counts SOL or a tracker in the funding wallet needs a live price for it, by the same rule as a portfolio's holdings.
+
+Nothing for the apps to change: `homeView` and `portfolioOverview` keep their shapes.
+
 ## [0.6.0] - 2026-10-04
 
 An unknown balance is never shown as a zero. A wallet unlocked while NoirWire could not be reached showed "$0.00" for its total, its cash and every portfolio, beside a notice that the figures "may be out of date": a person reads that as a real zero balance. Until balances have loaded once, every figure worked out from them is now null, the types say so, and the screen carries one line with a retry. Also here: Costs states prices only, the chart hint follows the pointer and not the platform, Home says when Earn does not run, and a testing note for the header, Welcome and About.

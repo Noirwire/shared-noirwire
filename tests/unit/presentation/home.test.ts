@@ -128,6 +128,9 @@ describe("homeView", () => {
     });
     expect(view.actionsQuiet).toBe(true);
     expect(view.secondary?.target).toEqual({ to: "fund" });
+    const withoutIt = homeView(reads, testWallet(), UPDATED_AT, undefined, NOTHING_ARCHIVED, FRESH);
+    expect(view.total.value).not.toBe(withoutIt.total.value);
+    expect(view.cash.value).toBe(withoutIt.cash.value);
   });
 
   it("lists archived portfolios apart, and keeps them out of the total", () => {
@@ -299,7 +302,8 @@ describe("homeView", () => {
 
     it("keeps the last figures, with the stale notice, when a later refresh fails", () => {
       const view = home(recordRead(READ, false, UPDATED_AT + 1_000), funded);
-      expect(view.total.value).toBe("$140.00");
+      // The portfolio's 140 and the 5 USDC waiting in the funding wallet.
+      expect(view.total.value).toBe("$145.00");
       expect(view.cash.value).toBe("$40.00");
       expect(view.portfolios[0].value).toBe("$140.00");
       expect(view.waiting).not.toBeNull();
