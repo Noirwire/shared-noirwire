@@ -117,7 +117,6 @@ export function activityValue(
   };
 }
 
-/** Where an entry happened: its portfolio's name, or "Main wallet" for an entry of the main wallet. */
 function portfolioName(wallet: Wallet, id: string): string {
   if (id === FUNDING) return fundingCopy.wallet.title;
   return (
@@ -151,7 +150,6 @@ export function asArrived(entry: Activity): Activity {
   return { ...entry, amount: arrived, usd: entry.usd * (arrived / entry.amount) };
 }
 
-/** How a row words its entry: what happened, where, and whether it was money in or out there. */
 type RowWords = { title: string; caption: string; icon: ActivityIcon; incoming: boolean };
 
 function rowOf(reads: Reads, recorded: Activity, words: RowWords): ActivityRowView {

@@ -74,7 +74,6 @@ export const activityCopy = {
     value: "Value",
   },
   portfolioFallback: "Portfolio",
-  /** A move into a portfolio, as the main wallet's own list words it. */
   movedToPortfolio: "Moved to portfolio",
   notPriced: "Not priced",
   /** A stock amount recorded before shown amounts were, which is a count of raw tokens. */

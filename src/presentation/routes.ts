@@ -41,11 +41,6 @@ export function fundingReceiveParams(reveal: boolean): { portfolio: string; reve
   return reveal ? { portfolio: FUNDING_PARAM, reveal: "1" } : { portfolio: FUNDING_PARAM };
 }
 
-/** The send sheet opened for the funding wallet. */
-export function fundingSendParams(): { portfolio: string } {
-  return { portfolio: FUNDING_PARAM };
-}
-
 /** A portfolio's own screen opened at its public view. */
 export function publicViewParams(): { view: "public" } {
   return { view: "public" };
@@ -75,15 +70,6 @@ export function pieOrderParams(
 /** The portfolio a sheet acts for, or null when none is given or it is not a portfolio id. */
 export function readPortfolioParam(value: Param): string | null {
   return isAddressFreeParam(value) && value !== FUNDING_PARAM ? value : null;
-}
-
-/**
- * What a send sheet sends from: a portfolio's id, or `FUNDING_PARAM` for the
- * funding wallet, which is what the send use case takes for it. Null when
- * none is given or it is shaped like an address.
- */
-export function readSendSource(value: Param): string | null {
-  return isAddressFreeParam(value) ? value : null;
 }
 
 /** Whether a sheet was opened for the funding wallet. */

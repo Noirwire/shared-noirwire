@@ -11,7 +11,7 @@ export const privateMoveTiming = "It usually arrives within a minute and can tak
 
 /** Said on both platforms under the amount of a private move. */
 const privateMoveFooter =
-  "A private move breaks the public link between your main wallet and this portfolio. It does not hide the amount, and the settlement service sees both addresses. It does not see your IP address: the request goes through NoirWire's own server first, which keeps only a basic record that a request was made, not your address or what's in it. Privacy from the public record, not from the service.";
+  "A private move breaks the public link between your main wallet and this portfolio. It does not hide the amount, and the settlement service sees both addresses. It does not see your IP address: the request goes through NoirWire's own server first, which keeps only a basic record that a request was made, not your address or what's in it. Privacy from the public record, not from the service. Private moves are powered by MagicBlock.";
 
 /**
  * The main wallet, and moving money from it into a portfolio, privately or
@@ -19,7 +19,6 @@ const privateMoveFooter =
  * they share, money arrives there, and portfolios stay separate from it.
  */
 export const fundingCopy = {
-  /** The main wallet's own page, and the name it goes by wherever it is listed. */
   wallet: {
     title: "Main wallet",
     balance: "Balance",
@@ -79,6 +78,11 @@ export const fundingCopy = {
   confirmPrivate: "Move privately",
 
   moving: (amount: string, portfolio: string) => `Moving ${amount} into ${portfolio}`,
+
+  /** The service has the transfer, and its parts have not all landed yet. */
+  onItsWayTitle: "On its way",
+  onItsWay: (amount: string, portfolio: string) =>
+    `${amount} is on its way to ${portfolio}. It arrives in parts, usually within a minute.`,
 
   arrivedTitle: "Funds arrived",
   arrived: (amount: string, portfolio: string) =>

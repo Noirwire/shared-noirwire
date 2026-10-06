@@ -13,6 +13,16 @@ A move to a portfolio is called arrived only once all of it is there. The settle
 For both apps:
 
 - [ ] **Move to portfolio**: `awaitPrivateArrival(deps, { portfolioId, symbol, balanceBefore, amount })` takes the `amount` that was moved, the same number passed to `fundPrivately`. It resolves once the balance has risen by all of it. When the window ends with only part of it there it resolves to the balance as it stands, and null still means nothing arrived.
+- [ ] **Move to portfolio, the wait**: `fundingOutcomeView` takes a new outcome, `"onItsWay"`. Show it as soon as `fundPrivately` answers `submitted`, in place of the progress stages: it names the amount that was moved and can be closed. Keep awaiting the arrival behind it, and change to `"done"` when it resolves, or `"pending"` on null.
+- [ ] **Routes**: `fundingSendParams` and `readSendSource` are gone: neither app called them. A send from the main wallet passes `FUNDING` as its source.
+
+### Changed
+
+- The private move's footer on both platforms ends "Private moves are powered by MagicBlock."
+
+### Fixed
+
+- A read of the main wallet's balances that was on its way while an action stored a newer balance no longer writes the older number back over it.
 
 ## [0.7.0] - 2026-10-06
 

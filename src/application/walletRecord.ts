@@ -73,7 +73,6 @@ export function fundingBalance(funding: Wallet["funding"], symbol: string): numb
   return symbol === "SOL" ? funding.sol : funding.tokens[symbol];
 }
 
-/** The wallet with its funding wallet's balance of `symbol` set to `amount`. */
 export function withFundingBalance(wallet: Wallet, symbol: string, amount: number): Wallet {
   const { funding } = wallet;
   return {
@@ -85,7 +84,6 @@ export function withFundingBalance(wallet: Wallet, symbol: string, amount: numbe
   };
 }
 
-/** Whether any action, of the funding wallet or of any portfolio, is reserved or not yet settled. */
 export function anyActionPending(wallet: Wallet): boolean {
   return (
     wallet.funding.pendingAction !== undefined ||

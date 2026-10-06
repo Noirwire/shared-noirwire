@@ -327,7 +327,12 @@ type FundingOutcomeView = {
 
 /** How a move of money ended, as far as this screen can tell. */
 export function fundingOutcomeView(state: {
-  outcome: "done" | "unknown" | "pending";
+  /**
+   * `onItsWay`: the service accepted a private move and its parts are still
+   * landing. The screen says so at once and can be closed; it becomes `done`
+   * when the last part is there, or `pending` when the window ends first.
+   */
+  outcome: "onItsWay" | "done" | "unknown" | "pending";
   asset: string;
   privateRoute: boolean;
   /** What was asked to move. */
@@ -344,13 +349,22 @@ export function fundingOutcomeView(state: {
 }): FundingOutcomeView {
   const { asset, portfolioLabel } = state;
   const mobile = state.platform === "mobile";
+  const fees =
+    state.privateRoute && state.fee > 0 ? copy.feesCharged(exactAmount(asset, state.fee)) : "";
   switch (state.outcome) {
+    case "onItsWay":
+      return {
+        title: copy.onItsWayTitle,
+        body: `${copy.onItsWay(symbolAmount(asset, state.amount), portfolioLabel)}${fees}`,
+        observerLink: null,
+        close: commonCopy.done,
+        alert: false,
+        tone: "success",
+      };
     case "done":
       return {
         title: copy.arrivedTitle,
-        body: `${(state.balancesUnread ? copy.movedUnread : mobile ? mobileCopy.arrived : copy.arrived)(symbolAmount(asset, state.balancesUnread ? state.amount : state.arrived), portfolioLabel)}${
-          state.privateRoute && state.fee > 0 ? copy.feesCharged(exactAmount(asset, state.fee)) : ""
-        }`,
+        body: `${(state.balancesUnread ? copy.movedUnread : mobile ? mobileCopy.arrived : copy.arrived)(symbolAmount(asset, state.balancesUnread ? state.amount : state.arrived), portfolioLabel)}${fees}`,
         observerLink: !state.privateRoute
           ? null
           : mobile
@@ -462,7 +476,6 @@ export type FundingWalletView = {
   send: FundingWalletAction;
   receive: FundingWalletAction;
   addMoney: FundingWalletAction;
-  /** Money that arrived, moves into portfolios and sends, newest first. */
   activity: ActivityRowView[];
 };
 

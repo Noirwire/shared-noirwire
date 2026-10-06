@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { FUNDING } from "../../../src/application/pendingActions.js";
 import {
   fundingReceiveParams,
-  fundingSendParams,
   isAddressFreeParam,
   pieOrderParams,
   portfolioParams,
@@ -11,7 +9,6 @@ import {
   readPortfolioParam,
   readPublicView,
   readReceiveTarget,
-  readSendSource,
   readSide,
   readsFunding,
   tradeParams,
@@ -24,7 +21,6 @@ describe("route parameters", () => {
     expect(portfolioParams("acc_1")).toEqual({ portfolio: "acc_1" });
     expect(fundingReceiveParams(false)).toEqual({ portfolio: "funding" });
     expect(fundingReceiveParams(true)).toEqual({ portfolio: "funding", reveal: "1" });
-    expect(fundingSendParams()).toEqual({ portfolio: "funding" });
     expect(publicViewParams()).toEqual({ view: "public" });
     expect(tradeParams({ side: "sell", symbol: "NVDAx", portfolioId: "acc_1" })).toEqual({
       side: "sell",
@@ -44,10 +40,6 @@ describe("route parameters", () => {
     expect(readPortfolioParam("funding")).toBeNull();
     expect(readPortfolioParam(ADDRESS)).toBeNull();
     expect(readsFunding("funding")).toBe(true);
-    expect(readSendSource("acc_1")).toBe("acc_1");
-    expect(readSendSource("funding")).toBe(FUNDING);
-    expect(readSendSource(ADDRESS)).toBeNull();
-    expect(readSendSource(undefined)).toBeNull();
     expect(readPublicView("public")).toBe(true);
     expect(readPublicView(undefined)).toBe(false);
     expect(readSide("sell")).toBe("sell");

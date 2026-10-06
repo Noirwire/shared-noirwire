@@ -214,7 +214,6 @@ export {
 export {
   FUNDING_PARAM,
   fundingReceiveParams,
-  fundingSendParams,
   isAddressFreeParam,
   pieOrderParams,
   portfolioParams,
@@ -223,7 +222,6 @@ export {
   readPortfolioParam,
   readPublicView,
   readReceiveTarget,
-  readSendSource,
   readSide,
   readsFunding,
   tradeParams,

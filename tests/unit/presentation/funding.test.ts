@@ -337,6 +337,19 @@ describe("fundingWalletView", () => {
 describe("fundingOutcomeView", () => {
   const base = { asset: "USDC", amount: 10, arrived: 10, fee: 0.21, portfolioLabel: "Investing" };
 
+  it("says the amount that was moved is on its way, before any of it has been read back", () => {
+    expect(
+      fundingOutcomeView({ ...base, arrived: 0, outcome: "onItsWay", privateRoute: true }),
+    ).toEqual({
+      title: "On its way",
+      body: "10.00 USDC is on its way to Investing. It arrives in parts, usually within a minute. 0.21 USDC in fees was charged on top.",
+      observerLink: null,
+      close: "Done",
+      alert: false,
+      tone: "success",
+    });
+  });
+
   it("says the funds arrived, with the fees charged on a private transfer", () => {
     expect(fundingOutcomeView({ ...base, outcome: "done", privateRoute: true })).toEqual({
       title: "Funds arrived",

@@ -101,7 +101,7 @@ export const LEAST_CASH_FOR_COST = 0.01;
  * signs or sends.
  */
 export async function planNetworkCost(need: Need, chain: CostChain): Promise<NetworkCost> {
-  const { owner, lamportsNeeded, cashFree, relayer, solPrice } = need;
+  const { lamportsNeeded, cashFree, relayer } = need;
   if (lamportsNeeded <= 0) return { kind: "covered" };
 
   // Decided before the relayer is asked. A portfolio with no cash cannot
@@ -130,12 +130,7 @@ export async function planNetworkCost(need: Need, chain: CostChain): Promise<Net
     };
   }
 
-  const balance = await readWithRetries(() => chain.balance(owner));
-  const shortfall = await readWithRetries(() => chain.shortfall(balance, lamportsNeeded));
-  if (shortfall !== null || !solPrice) {
-    return { kind: "unavailable" };
-  }
-  return { kind: "ownSol", usd: (lamportsNeeded / LAMPORTS_PER_SOL) * solPrice };
+  return (await planOwnSolCost(need, chain)) ?? { kind: "unavailable" };
 }
 
 /**

@@ -181,9 +181,7 @@ export function sendRecipientRefusal(review: {
     : copy.unsendable[review.recipient];
 }
 
-/** What a send leaves from, as its sheet reads it: a portfolio, or the main wallet. */
 export type SendSourceView = {
-  /** The sheet's title. */
   title: string;
   /** The name it goes by in `sendResultView`: the portfolio's, or "your main wallet". */
   name: string;

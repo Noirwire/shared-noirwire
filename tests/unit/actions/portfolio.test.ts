@@ -287,6 +287,8 @@ describe("money arriving in the funding wallet", () => {
     });
     await t.refresh.fundingBalances();
     expect(t.arrivals()).toEqual([]);
+    // The older read does not put the 40 back either.
+    expect(t.h.wallet().funding.tokens.USDC).toBe(60);
   });
 
   it("writes nothing from the read an action makes itself after it lands", async () => {

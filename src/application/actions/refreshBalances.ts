@@ -135,21 +135,26 @@ export function createBalanceRefresh(deps: BalanceDeps) {
     return refreshingAll;
   }
 
-  /**
-   * What `balances` shows arrived in the funding wallet from outside: each
-   * asset it now holds more of than was stored, by the difference. Nothing
-   * for an asset whose stored balance changed while the read was on its way:
-   * the read may be from before that change, and would undo it.
-   */
+  function unchangedSince(
+    seen: Wallet["funding"],
+    stored: Wallet["funding"],
+    balances: Record<string, number>,
+  ): [symbol: string, balance: number][] {
+    return Object.entries(balances).filter(
+      ([symbol]) => fundingBalance(seen, symbol) === fundingBalance(stored, symbol),
+    );
+  }
+
   function arrivals(
     seen: Wallet["funding"],
     stored: Wallet["funding"],
     balances: Record<string, number>,
   ): { symbol: string; amount: number }[] {
-    return Object.entries(balances).flatMap(([symbol, balance]) => {
+    return unchangedSince(seen, stored, balances).flatMap(([symbol, balance]) => {
       const held = fundingBalance(stored, symbol) ?? 0;
-      if ((fundingBalance(seen, symbol) ?? 0) !== held || !(balance > held)) return [];
-      return [{ symbol, amount: Math.round((balance - held) * SOL_UNIT) / SOL_UNIT }];
+      return balance > held
+        ? [{ symbol, amount: Math.round((balance - held) * SOL_UNIT) / SOL_UNIT }]
+        : [];
     });
   }
 
@@ -173,22 +178,18 @@ export function createBalanceRefresh(deps: BalanceDeps) {
     const quietBefore = !anyActionPending(current);
     const balances = await chain.cashBalances(address).catch(() => null);
     if (!balances) return false;
-    const { SOL: sol, ...tokens } = balances;
     if (!hasFunds(seen) && Object.values(balances).some((amount) => amount > 0)) {
       deps.track("deposit_detected");
     }
     store.update((wallet) => {
       if (wallet.funding.address !== address) return wallet;
       const firstRead = wallet.imported === true && !wallet.funding.balancesRead;
-      const read: Wallet = {
-        ...wallet,
-        funding: {
-          ...wallet.funding,
-          sol,
-          tokens: { ...wallet.funding.tokens, ...tokens },
-          ...(wallet.imported ? { balancesRead: true as const } : {}),
-        },
-      };
+      const read = unchangedSince(seen, wallet.funding, balances).reduce<Wallet>(
+        (next, [symbol, balance]) => withFundingBalance(next, symbol, balance),
+        wallet.imported
+          ? { ...wallet, funding: { ...wallet.funding, balancesRead: true } }
+          : wallet,
+      );
       if (firstRead || !quietBefore || anyActionPending(wallet)) return read;
       return arrivals(seen, wallet.funding, balances).reduce(
         (next, { symbol, amount }) =>

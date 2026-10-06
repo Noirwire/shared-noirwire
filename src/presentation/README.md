@@ -152,13 +152,13 @@ A send takes its source by id: a portfolio's, or `FUNDING` for the main wallet. 
 
 Both apps build and read links with the helpers in `routes.ts`, so a link means the same on either platform:
 
-| Parameter                | Where                                                                                     | Helpers                                                                                        |
-| ------------------------ | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `portfolio=<id>`         | every sheet that acts for a portfolio: fund, receive, send, trade, pie order, pie builder | `portfolioParams`, `tradeParams`, `pieOrderParams`, `readPortfolioParam`                       |
-| `portfolio=funding`      | a sheet acting for the funding wallet: its receive sheet, and a send of its own           | `FUNDING_PARAM`, `fundingReceiveParams`, `fundingSendParams`, `readsFunding`, `readSendSource` |
-| `reveal=1`               | the funding wallet's receive sheet, opening with the address shown                        | `fundingReceiveParams`, `readReceiveTarget`                                                    |
-| `view=public`            | a portfolio's own screen, opened at its public view                                       | `publicViewParams`, `readPublicView`                                                           |
-| `side`, `symbol`, `mode` | the trade sheet and the pie order sheet                                                   | `tradeParams`, `readSide`, `pieOrderParams`, `readPieMode`                                     |
+| Parameter                | Where                                                                                     | Helpers                                                                  |
+| ------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `portfolio=<id>`         | every sheet that acts for a portfolio: fund, receive, send, trade, pie order, pie builder | `portfolioParams`, `tradeParams`, `pieOrderParams`, `readPortfolioParam` |
+| `portfolio=funding`      | a sheet acting for the funding wallet: its receive sheet, and a send of its own           | `FUNDING_PARAM`, `fundingReceiveParams`, `readsFunding`                  |
+| `reveal=1`               | the funding wallet's receive sheet, opening with the address shown                        | `fundingReceiveParams`, `readReceiveTarget`                              |
+| `view=public`            | a portfolio's own screen, opened at its public view                                       | `publicViewParams`, `readPublicView`                                     |
+| `side`, `symbol`, `mode` | the trade sheet and the pie order sheet                                                   | `tradeParams`, `readSide`, `pieOrderParams`, `readPieMode`               |
 
 A route is logged, restored and shared in ways an app does not control, so a parameter is only ever an id, a tracker symbol or one of these words. Every reader refuses a value shaped like an address (`isAddressFreeParam`).
 
