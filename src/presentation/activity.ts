@@ -1,6 +1,8 @@
+import { FUNDING } from "../application/pendingActions.js";
 import type { ScreenReads } from "../application/screenReads.js";
 import { activityCopy, mobileActivityCopy } from "../copy/activity.js";
 import { commonCopy } from "../copy/common.js";
+import { fundingCopy } from "../copy/funding.js";
 import type { AppPlatform } from "../domain/appPlatform.js";
 import { dateAndTime, sinceDate, spokenDay, usd } from "../domain/format.js";
 import { resolvePortfolioIcon, type PortfolioIcon } from "../domain/portfolioIcon.js";
@@ -17,8 +19,8 @@ type Reads = Pick<ScreenReads, "asset" | "isPosition">;
 export type ActivityFilter = "all" | "funding" | "transfers" | "trades" | "earn";
 
 const FILTER_KINDS: Record<ActivityFilter, readonly ActivityKind[]> = {
-  all: ["fund", "send", "buy", "sell", "earnDeposit", "earnWithdraw"],
-  funding: ["fund"],
+  all: ["deposit", "fund", "send", "buy", "sell", "earnDeposit", "earnWithdraw"],
+  funding: ["deposit", "fund"],
   transfers: ["send"],
   trades: ["buy", "sell"],
   earn: ["earnDeposit", "earnWithdraw"],
@@ -32,6 +34,7 @@ export const ACTIVITY_FILTERS: readonly { id: ActivityFilter; label: string }[] 
 export type ActivityIcon = "in" | "out" | "bought" | "sold" | "earn";
 
 const ICON: Record<ActivityKind, ActivityIcon> = {
+  deposit: "in",
   fund: "in",
   send: "out",
   buy: "bought",
@@ -40,8 +43,12 @@ const ICON: Record<ActivityKind, ActivityIcon> = {
   earnWithdraw: "earn",
 };
 
-/** Money in, sells and returns from Earn add to a portfolio's cash; the rest takes from it. */
+/**
+ * Money in, sells and returns from Earn add to the cash of the portfolio (or
+ * of the main wallet) the entry belongs to; the rest takes from it.
+ */
 const INCOMING: Record<ActivityKind, boolean> = {
+  deposit: true,
   fund: true,
   sell: true,
   earnWithdraw: true,
@@ -92,10 +99,17 @@ export function entryAmount(
   return activityAmountOf(entry, reads.isPosition(entry.symbol));
 }
 
-/** The dollar value at the time with its sign, or "Not priced" when there was no live price. */
-export function activityValue(entry: Pick<Activity, "kind" | "usd">): ActivityValue {
+/**
+ * The dollar value at the time with its sign, or "Not priced" when there was
+ * no live price. `incoming` is whether it added to where it is listed: by
+ * the entry's kind unless said, since a move into a portfolio is money out
+ * on the main wallet's own list.
+ */
+export function activityValue(
+  entry: Pick<Activity, "kind" | "usd">,
+  incoming: boolean = INCOMING[entry.kind],
+): ActivityValue {
   if (!(entry.usd > 0)) return { text: activityCopy.notPriced, tone: "faint", priced: false };
-  const incoming = INCOMING[entry.kind];
   return {
     text: `${incoming ? "+" : "-"}${usd(entry.usd)}`,
     tone: incoming ? "safe" : "ink",
@@ -103,7 +117,9 @@ export function activityValue(entry: Pick<Activity, "kind" | "usd">): ActivityVa
   };
 }
 
+/** Where an entry happened: its portfolio's name, or "Main wallet" for an entry of the main wallet. */
 function portfolioName(wallet: Wallet, id: string): string {
+  if (id === FUNDING) return fundingCopy.wallet.title;
   return (
     wallet.portfolios.find((portfolio) => portfolio.id === id)?.label ??
     activityCopy.portfolioFallback
@@ -135,21 +151,22 @@ export function asArrived(entry: Activity): Activity {
   return { ...entry, amount: arrived, usd: entry.usd * (arrived / entry.amount) };
 }
 
-export function activityRow(reads: Reads, wallet: Wallet, recorded: Activity): ActivityRowView {
+/** How a row words its entry: what happened, where, and whether it was money in or out there. */
+type RowWords = { title: string; caption: string; icon: ActivityIcon; incoming: boolean };
+
+function rowOf(reads: Reads, recorded: Activity, words: RowWords): ActivityRowView {
   const entry = asArrived(recorded);
-  const name = portfolioName(wallet, entry.portfolioId);
-  const title = activityTitle(reads, entry);
-  const caption = entry.kind === "send" ? activityCopy.sentCaption(name) : name;
-  const value = activityValue(entry);
+  const { title, caption, icon, incoming } = words;
+  const value = activityValue(entry, incoming);
   const amount = entryAmount(reads, entry);
   const cost = chargedOf(recorded);
   const networkCost = cost > 0 ? activityCopy.networkCost(costFigure(cost)) : null;
   const spokenValue = value.priced
-    ? `${INCOMING[entry.kind] ? activityCopy.plus : activityCopy.minus} ${usd(entry.usd)}`
+    ? `${incoming ? activityCopy.plus : activityCopy.minus} ${usd(entry.usd)}`
     : value.text;
   return {
     id: entry.id,
-    icon: ICON[entry.kind],
+    icon,
     title,
     caption,
     value,
@@ -159,6 +176,37 @@ export function activityRow(reads: Reads, wallet: Wallet, recorded: Activity): A
       .filter((part) => part !== null)
       .join(", "),
   };
+}
+
+export function activityRow(reads: Reads, wallet: Wallet, recorded: Activity): ActivityRowView {
+  const name = portfolioName(wallet, recorded.portfolioId);
+  return rowOf(reads, recorded, {
+    title: activityTitle(reads, recorded),
+    caption: recorded.kind === "send" ? activityCopy.sentCaption(name) : name,
+    icon: ICON[recorded.kind],
+    incoming: INCOMING[recorded.kind],
+  });
+}
+
+/**
+ * The main wallet's own list, newest first: money that arrived in it, its
+ * sends, and every move into a portfolio. A move is recorded once, on the
+ * portfolio it went to, and is shown here from the main wallet's side: money
+ * out, to that portfolio.
+ */
+export function fundingActivity(reads: Reads, wallet: Wallet): ActivityRowView[] {
+  return newestFirst(
+    wallet.activity.filter((entry) => entry.portfolioId === FUNDING || entry.kind === "fund"),
+  ).map((entry) =>
+    entry.portfolioId === FUNDING
+      ? activityRow(reads, wallet, entry)
+      : rowOf(reads, entry, {
+          title: activityCopy.movedToPortfolio,
+          caption: portfolioName(wallet, entry.portfolioId),
+          icon: "out",
+          incoming: false,
+        }),
+  );
 }
 
 /** Newest first. */
@@ -269,6 +317,7 @@ export type ActivityDetailView = {
   headline: string;
   headlineTone: ActivityValue["tone"];
   portfolio: { id: string; name: string; icon: PortfolioIcon } | null;
+  /** Said where there is no portfolio to open: "Main wallet" for an entry of the main wallet. */
   portfolioFallback: string;
   date: string;
   /** What the action was for: 10.00 USDC withdrawn, 5.00 USDC sent. */
@@ -302,7 +351,8 @@ export function activityDetailView(
     portfolio: portfolio
       ? { id: portfolio.id, name: portfolio.label, icon: resolvePortfolioIcon(portfolio.icon) }
       : null,
-    portfolioFallback: activityCopy.portfolioFallback,
+    portfolioFallback:
+      entry.portfolioId === FUNDING ? fundingCopy.wallet.title : activityCopy.portfolioFallback,
     date: dateAndTime(entry.at),
     amount,
     arrived: entry === recorded ? null : entryAmount(reads, entry),

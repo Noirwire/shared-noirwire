@@ -31,6 +31,7 @@ export const activityCopy = {
   },
   entry: (kind: ActivityKind, symbol: string) => {
     switch (kind) {
+      case "deposit":
       case "fund":
         return "Money arrived";
       case "send":
@@ -48,6 +49,7 @@ export const activityCopy = {
   /** The desktop table's wording, which capitalises its first letter by style. */
   tableEntry: (kind: ActivityKind, symbol: string) => {
     switch (kind) {
+      case "deposit":
       case "fund":
         return "Money arrived";
       case "send":
@@ -72,6 +74,8 @@ export const activityCopy = {
     value: "Value",
   },
   portfolioFallback: "Portfolio",
+  /** A move into a portfolio, as the main wallet's own list words it. */
+  movedToPortfolio: "Moved to portfolio",
   notPriced: "Not priced",
   /** A stock amount recorded before shown amounts were, which is a count of raw tokens. */
   rawTokens: (amount: string) => `${amount} (raw tokens)`,

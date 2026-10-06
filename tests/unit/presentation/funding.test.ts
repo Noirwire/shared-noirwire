@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
+import type { LivePrice } from "../../../src/application/catalog.js";
 import { fundingDraft, type FundingInput } from "../../../src/application/funding.js";
+import { recordRead } from "../../../src/domain/freshness.js";
+import type { Activity, Wallet } from "../../../src/domain/wallet.js";
+import type { HomeFreshness } from "../../../src/presentation/freshness.js";
 import {
   fundingAmountView,
   fundingFooter,
@@ -7,8 +11,20 @@ import {
   fundingProgressView,
   fundingReviewView,
   fundingTitle,
+  fundingWalletView,
   type FundingAmountState,
 } from "../../../src/presentation/funding.js";
+import {
+  FIRST_READ_FAILED,
+  FIRST_READ_PENDING,
+  FRESH,
+  READ,
+  TEST_PRICES,
+  UPDATED_AT,
+  activity,
+  testReads,
+  testWallet,
+} from "../support/screens.js";
 
 const draft = (overrides: Partial<FundingInput> = {}) =>
   fundingDraft({
@@ -73,7 +89,7 @@ describe("fundingAmountView", () => {
   it("offers the presets it can afford and states the private route's costs", () => {
     const view = amountView();
     expect(view.lead).toBe(
-      "Move USDC into this portfolio without publishing a transfer between your funding wallet and it. Available 20.00 USDC.",
+      "Move USDC into this portfolio without publishing a transfer between your main wallet and it. Available 20.00 USDC.",
     );
     expect(view.noPrivateRoute).toBeNull();
     expect(view.presets).toEqual([
@@ -83,7 +99,7 @@ describe("fundingAmountView", () => {
     expect(view.otherAmount).toBe("Other amount in USDC");
     expect(view.next).toEqual({ label: "Continue", disabled: true });
     expect(view.costs).toBe(
-      "Costs a 0.1% privacy fee plus a flat 0.20 USDC relay fee, both charged in USDC by the settlement service on top of the amount. The relay fee pays the network costs, so your funding wallet needs no SOL. The smallest private move is 0.50 USDC. It usually arrives within a minute and can take a few.",
+      "Costs a 0.1% privacy fee plus a flat 0.20 USDC relay fee, both charged in USDC by the settlement service on top of the amount. The relay fee pays the network costs, so your main wallet needs no SOL. The smallest private move is 0.50 USDC. It usually arrives within a minute and can take a few.",
     );
     expect(view.empty).toBeNull();
   });
@@ -107,7 +123,7 @@ describe("fundingAmountView", () => {
       "A private move has to be at least 0.50 USDC.",
     );
     expect(amountView({}, { amountText: "19.9" }).unaffordable).toBe(
-      "With fees this takes 20.1199 USDC from your funding wallet, more than it holds. Enter a smaller amount.",
+      "With fees this takes 20.1199 USDC from your main wallet, more than it holds. Enter a smaller amount.",
     );
     expect(amountView({}, { amountText: "10" }).next).toEqual({
       label: "Continue",
@@ -133,17 +149,17 @@ describe("fundingAmountView", () => {
     expect(form.total.value).toBe("25.225 USDC");
   });
 
-  it("points an empty funding wallet to its deposit address", () => {
+  it("points an empty main wallet to its own address", () => {
     expect(amountView({ fundingBalance: 0 }, { fundingBalance: 0 }).empty).toEqual({
-      before: "Your USDC funding balance is empty. ",
-      link: "Show your funding wallet address",
+      before: "Your main wallet holds no USDC. ",
+      link: "Show your main wallet address",
       after: " to add money first.",
     });
   });
 });
 
 describe("fundingReviewView", () => {
-  it("lists everything that leaves the funding wallet, exactly", () => {
+  it("lists everything that leaves the main wallet, exactly", () => {
     const view = fundingReviewView({
       draft: draft(),
       asset: "USDC",
@@ -152,14 +168,14 @@ describe("fundingReviewView", () => {
       pending: { blocked: false },
     });
     expect(view.lead).toBe(
-      "Review what leaves your funding wallet before moving money into Investing.",
+      "Review what leaves your main wallet before moving money into Investing.",
     );
     expect(view.terms).toEqual([
       { label: "Arrives in Investing", value: "10.00 USDC" },
       { label: "Privacy fee (0.1%)", value: "0.01 USDC" },
       { label: "Relay fee", value: "0.20 USDC" },
     ]);
-    expect(view.total).toEqual({ label: "Total leaving your funding wallet", value: "10.21 USDC" });
+    expect(view.total).toEqual({ label: "Total leaving your main wallet", value: "10.21 USDC" });
     expect(view.note).toBe(
       "No SOL is needed. If the transfer would take more than this total, it is not signed.",
     );
@@ -190,6 +206,134 @@ describe("fundingProgressView", () => {
   });
 });
 
+describe("fundingWalletView", () => {
+  const SOL_PRICED = { ...TEST_PRICES, SOL: { usd: 200, change24h: 0 } };
+  const holding = (usdc: number, sol = 0, entries: Activity[] = []) =>
+    testWallet((wallet) => ({
+      ...wallet,
+      funding: { ...wallet.funding, sol, tokens: { USDC: usdc, NVDAx: 4 } },
+      activity: entries,
+    }));
+  const page = (
+    wallet: Wallet,
+    freshness: Partial<HomeFreshness> = {},
+    prices: Record<string, LivePrice> = SOL_PRICED,
+  ) => fundingWalletView(testReads(prices), wallet, UPDATED_AT, { ...FRESH, ...freshness });
+
+  it("waits, with no figure and nothing to press but Receive and Add money, while the first read is under way", () => {
+    const view = page(holding(25, 0.5), { balances: FIRST_READ_PENDING });
+    expect(view).toMatchObject({
+      title: "Main wallet",
+      total: { label: "Balance", value: null },
+      assets: [],
+      empty: null,
+      loading: true,
+      unavailable: null,
+      stale: null,
+      move: { disabled: true, reason: null },
+      send: { disabled: true, reason: null },
+      receive: { disabled: false },
+      addMoney: { disabled: false },
+    });
+    expect(JSON.stringify(view)).not.toContain("$0.00");
+  });
+
+  it("says balances could not be loaded, with a retry, after a failed first read", () => {
+    const view = page(holding(25), { balances: FIRST_READ_FAILED });
+    expect(view.unavailable).toEqual({
+      text: "We couldn't load your balances. Check your connection and try again.",
+      retry: "Try again",
+    });
+    expect(view).toMatchObject({ loading: false, stale: null, empty: null, assets: [] });
+    expect(view.total.value).toBeNull();
+    expect(view.move).toMatchObject({ disabled: true, reason: view.unavailable?.text });
+    expect(view.send).toMatchObject({ disabled: true, reason: view.unavailable?.text });
+  });
+
+  it("says an empty wallet is empty once that was read, and leads to adding money", () => {
+    const view = page(holding(0));
+    expect(view.empty).toBe("Your main wallet is empty. Add money to get started.");
+    expect(view.total.value).toBe("$0.00");
+    expect(view.assets).toEqual([{ symbol: "USDC", amount: "0.00 USDC", value: "$0.00" }]);
+    expect(view.move).toEqual({
+      label: "Move to portfolio",
+      target: { to: "fund" },
+      disabled: true,
+      reason: "Add money to your main wallet first.",
+    });
+    expect(view.send).toEqual({
+      label: "Send",
+      target: { to: "send" },
+      disabled: true,
+      reason: "Nothing to send yet.",
+    });
+    expect(view.receive).toEqual({
+      label: "Receive",
+      target: { to: "receive" },
+      disabled: false,
+      reason: null,
+    });
+    expect(view.addMoney).toEqual({
+      label: "Add money",
+      target: { to: "addMoney" },
+      disabled: false,
+      reason: null,
+    });
+    expect(view.activity).toEqual([]);
+  });
+
+  it("shows one balance over its USDC and SOL, its four actions and what it did, newest first", () => {
+    const entries = [
+      activity({ id: "in", portfolioId: "funding", kind: "deposit", at: 1_000 }),
+      activity({ id: "moved", portfolioId: "acc_1", kind: "fund", amount: 60, usd: 60, at: 2_000 }),
+      activity({ id: "out", portfolioId: "funding", kind: "send", amount: 15, usd: 15, at: 3_000 }),
+      activity({ id: "buy", portfolioId: "acc_1", kind: "buy", symbol: "NVDAx", at: 4_000 }),
+    ];
+    const view = page(holding(25, 0.5, entries));
+    expect(view.total).toEqual({ label: "Balance", value: "$125.00" });
+    // A tracker that sits at its address is not listed and not counted.
+    expect(view.assets).toEqual([
+      { symbol: "USDC", amount: "25.00 USDC", value: "$25.00" },
+      { symbol: "SOL", amount: "0.5000 SOL", value: "$100.00" },
+    ]);
+    expect(view).toMatchObject({ empty: null, loading: false, unavailable: null, stale: null });
+    const actions = [view.move, view.send, view.receive, view.addMoney];
+    expect(actions.map((action) => action.disabled)).toEqual([false, false, false, false]);
+    expect(view.activity.map((row) => [row.id, row.title, row.value.text])).toEqual([
+      ["out", "Sent", "-$15.00"],
+      ["moved", "Moved to portfolio", "-$60.00"],
+      ["in", "Money arrived", "+$100.00"],
+    ]);
+  });
+
+  it("can send SOL it holds while there is no USDC to move", () => {
+    const view = page(holding(0, 0.5));
+    expect(view.empty).toBeNull();
+    expect(view.move.disabled).toBe(true);
+    expect(view.send).toMatchObject({ disabled: false, reason: null });
+  });
+
+  it("draws no total and no SOL value while SOL has no live price, and never a part of the sum", () => {
+    const view = page(holding(25, 0.5), {}, TEST_PRICES);
+    expect(view.total.value).toBeNull();
+    expect(view.assets).toEqual([
+      { symbol: "USDC", amount: "25.00 USDC", value: "$25.00" },
+      { symbol: "SOL", amount: "0.5000 SOL", value: null },
+    ]);
+    // With USDC alone nothing needs a price.
+    expect(page(holding(25), {}, TEST_PRICES).total.value).toBe("$25.00");
+  });
+
+  it("keeps the last figures, with the notice, when a later refresh fails", () => {
+    const failed = recordRead(READ, false, UPDATED_AT + 1_000);
+    const view = page(holding(25), { now: UPDATED_AT + 1_000, balances: failed });
+    expect(view.total.value).toBe("$25.00");
+    expect(view.stale).toBe("We couldn't update your balances. What you see may be out of date.");
+    expect(view.unavailable).toBeNull();
+    expect(view.move.disabled).toBe(false);
+  });
+});
+
 describe("fundingOutcomeView", () => {
   const base = { asset: "USDC", amount: 10, arrived: 10, fee: 0.21, portfolioLabel: "Investing" };
 
@@ -216,7 +360,7 @@ describe("fundingOutcomeView", () => {
       alert: true,
     });
     expect(unknown.body).toBe(
-      "The transfer of 10.00 USDC was sent, but we could not confirm that it arrived. It may still arrive. Do not send it again yet: check your funding wallet’s USDC balance first. If it has gone down, the money is on its way to Investing and needs nothing more from you.",
+      "The transfer of 10.00 USDC was sent, but we could not confirm that it arrived. It may still arrive. Do not send it again yet: check your main wallet’s USDC balance first. If it has gone down, the money is on its way to Investing and needs nothing more from you.",
     );
     expect(fundingOutcomeView({ ...base, outcome: "pending", privateRoute: true })).toMatchObject({
       title: "Still settling",

@@ -17,10 +17,12 @@ export type Holding = {
 };
 
 /**
- * What an activity entry records: money arriving in a portfolio, a send out
- * of it, a trade, or cash lent into Earn and returned from it.
+ * What an activity entry records: money arriving in the funding wallet from
+ * outside, money arriving in a portfolio, a send, a trade, or cash lent into
+ * Earn and returned from it.
  */
 export const ACTIVITY_KINDS = [
+  "deposit",
   "fund",
   "send",
   "buy",
@@ -52,6 +54,10 @@ export const MAX_ACTIVITY_ENTRIES = 500;
 
 export type Activity = {
   id: string;
+  /**
+   * The portfolio it happened in, or "funding" for the funding wallet: money
+   * that arrived there from outside, and a send out of it.
+   */
   portfolioId: string;
   at: number;
   kind: ActivityKind;
@@ -165,11 +171,17 @@ type FundingWallet = {
    */
   tokens: Record<string, number>;
   /**
-   * A funding action (moving money into a portfolio) that is reserved or not
-   * yet settled on chain, exactly as `Portfolio.pendingAction` is for a
-   * portfolio's own actions.
+   * An action of the funding wallet (moving money into a portfolio, or a send
+   * of its own) that is reserved or not yet settled on chain, exactly as
+   * `Portfolio.pendingAction` is for a portfolio's own actions.
    */
   pendingAction?: PendingAction;
+  /**
+   * Set on an imported wallet once its SOL and cash have been read from the
+   * chain here. Until then its stored balances are not a read, so what the
+   * first read finds was already there and is not recorded as arriving.
+   */
+  balancesRead?: true;
 };
 
 /**

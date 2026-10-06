@@ -1,5 +1,8 @@
+import { FUNDING } from "../application/pendingActions.js";
+import type { ScreenReads } from "../application/screenReads.js";
 import type { SendDraft } from "../application/send.js";
 import { commonCopy } from "../copy/common.js";
+import { mobileFundingCopy } from "../copy/funding.js";
 import { mobileSendCopy as mobileCopy, sendCopy as copy } from "../copy/send.js";
 import { smallestAmount } from "../domain/amount.js";
 import type { AppPlatform } from "../domain/appPlatform.js";
@@ -7,6 +10,7 @@ import { symbolAmount, usd } from "../domain/format.js";
 import type { ReadFreshness } from "../domain/freshness.js";
 import type { NetworkCost } from "../domain/networkCost.js";
 import type { RecipientClass, Unsendable } from "../domain/recipients.js";
+import type { Wallet } from "../domain/wallet.js";
 import { balancesView, type Figure } from "./freshness.js";
 import { groupsOfFour } from "./importFindings.js";
 import { networkCostView, type NetworkCostView } from "./networkCost.js";
@@ -51,6 +55,12 @@ export type SendFormState = {
   recipientUnreadable?: boolean;
   /** How current the app's balance read is: nothing is sent from a balance never read. */
   balances: ReadFreshness;
+  /**
+   * Set when the send leaves the main wallet (`sendSourceView` hands it
+   * over): the addresses of this wallet's own portfolios, which it reaches
+   * through Move to portfolio and never by a send.
+   */
+  funding?: { ownPortfolios: readonly string[] };
 };
 
 type SendFormView = {
@@ -78,20 +88,28 @@ type SendFormView = {
 /** The form a send starts from: what is wrong with what was typed, and whether it can be reviewed. */
 export function sendFormView(state: SendFormState): SendFormView {
   const { draft, symbol, unitsPerHeld } = state;
-  const recipientError =
-    !state.recipientTouched || draft.validRecipient
-      ? null
-      : state.destination === state.ownAddress
-        ? copy.ownAddress
-        : state.offCurve
-          ? state.offCurveMessage
-          : copy.invalidAddress;
+  const mainWallet = state.funding ? copy.mainWallet : null;
+  // The main wallet's own portfolios are reached through Move to portfolio,
+  // which keeps them apart from it in public. A send to one is never reviewed.
+  const toOwnPortfolio = Boolean(state.funding?.ownPortfolios.includes(state.destination));
+  const recipientError = !state.recipientTouched
+    ? null
+    : toOwnPortfolio
+      ? copy.mainWallet.useMove
+      : draft.validRecipient
+        ? null
+        : state.destination === state.ownAddress
+          ? (mainWallet?.ownAddress ?? copy.ownAddress)
+          : state.offCurve
+            ? state.offCurveMessage
+            : copy.invalidAddress;
   const mobile = state.platform === "mobile";
   const words = mobile ? { ...copy, ...mobileCopy } : copy;
   const amountWrong = state.amountTouched && (!draft.validAmount || draft.amount > draft.held);
   const balances = balancesView(state.balances);
   const canReview =
     balances.known &&
+    !toOwnPortfolio &&
     draft.validRecipient &&
     draft.validAmount &&
     draft.amount <= draft.held &&
@@ -119,12 +137,16 @@ export function sendFormView(state: SendFormState): SendFormView {
         ? draft.tooPrecise && state.decimals !== undefined
           ? commonCopy.tooPrecise(`${smallestAmount(state.decimals)} ${symbol}`)
           : draft.amount > draft.held
-            ? words.moreThanHeld
+            ? (mainWallet?.moreThanHeld ?? words.moreThanHeld)
             : words.invalidAmount
         : null,
     canReview,
     reviewLabel,
-    explainer: mobile ? mobileCopy.explainer : copy.explainer(state.network, symbol),
+    explainer: mainWallet
+      ? mainWallet.explainer(mobile ? commonCopy.solana : state.network)
+      : mobile
+        ? mobileCopy.explainer
+        : copy.explainer(state.network, symbol),
     recipientLabel: words.recipientLabel,
     recipientPlaceholder: words.recipientPlaceholder,
     pasteWarning: state.pastedForeign ? words.pasteWarning : null,
@@ -145,16 +167,78 @@ export function sendFormView(state: SendFormState): SendFormView {
 
 /**
  * Why a review of a send cannot go ahead because of who it is to: the
- * recipient cannot receive, or could not be checked. Null for a wallet. A
+ * recipient cannot receive, could not be checked, or is one of the person's
+ * own portfolios and the send is from the main wallet. Null for a wallet. A
  * screen shows this in place of the review, whatever the cost says.
  */
 export function sendRecipientRefusal(review: {
-  recipient: Unsendable | "unreadable" | null;
+  recipient: Unsendable | "unreadable" | "ownPortfolio" | null;
 }): string | null {
   if (review.recipient === null) return null;
+  if (review.recipient === "ownPortfolio") return copy.mainWallet.useMove;
   return review.recipient === "unreadable"
     ? copy.recipientUnreadable
     : copy.unsendable[review.recipient];
+}
+
+/** What a send leaves from, as its sheet reads it: a portfolio, or the main wallet. */
+export type SendSourceView = {
+  /** The sheet's title. */
+  title: string;
+  /** The name it goes by in `sendResultView`: the portfolio's, or "your main wallet". */
+  name: string;
+  /** Its own address, which it cannot send to. */
+  ownAddress: string;
+  /** An archived portfolio sends nothing. */
+  archived: boolean;
+  /** What it can send, the first choice first, each with what it holds of it as stored. */
+  assets: readonly { symbol: string; label: string; held: number }[];
+  /** Said in place of the form when there is nothing in it to send. */
+  empty: string;
+  /** Set for the main wallet: what `sendFormView` takes as `funding`. */
+  funding?: { ownPortfolios: readonly string[] };
+};
+
+/**
+ * Where a send leaves from, by the id its sheet was opened with: a
+ * portfolio's, or `FUNDING` for the main wallet. The main wallet is for
+ * money: it sends its USDC and its SOL, and nothing else that may sit at its
+ * address. Null when the id names neither.
+ */
+export function sendSourceView(
+  reads: Pick<ScreenReads, "isPosition">,
+  wallet: Wallet,
+  sourceId: string,
+  platform: AppPlatform = "web",
+): SendSourceView | null {
+  if (sourceId === FUNDING) {
+    const { funding } = wallet;
+    return {
+      title: copy.mainWallet.title,
+      name: copy.mainWallet.name,
+      ownAddress: funding.address,
+      archived: false,
+      assets: [
+        { symbol: CASH, label: commonCopy.cash, held: funding.tokens[CASH] ?? 0 },
+        { symbol: "SOL", label: "SOL", held: funding.sol },
+      ].filter((asset) => asset.held > 0),
+      empty: mobileFundingCopy.empty,
+      funding: { ownPortfolios: wallet.portfolios.map((portfolio) => portfolio.address) },
+    };
+  }
+  const portfolio = wallet.portfolios.find((entry) => entry.id === sourceId);
+  if (!portfolio) return null;
+  return {
+    title: platform === "mobile" ? mobileCopy.title(portfolio.label) : copy.title,
+    name: portfolio.label,
+    ownAddress: portfolio.address,
+    archived: portfolio.archivedAt !== null,
+    assets: sendAssets(portfolio.holdings, reads.isPosition).map((asset) => ({
+      ...asset,
+      held: portfolio.holdings.find((holding) => holding.symbol === asset.symbol)?.amount ?? 0,
+    })),
+    empty: copy.empty,
+  };
 }
 
 /** What can be sent from a portfolio: its cash, then one choice per tracker held. */
@@ -207,6 +291,8 @@ export type SendReviewState = {
   platform?: AppPlatform;
   /** Nothing is confirmed while the device is offline. Online when absent. */
   online?: boolean;
+  /** The send leaves the main wallet, which pays its own network cost. A portfolio when absent. */
+  fromFunding?: boolean;
 };
 
 type Term = { label: string; value: string };
@@ -236,7 +322,10 @@ type SendReviewView = {
   costReason: readonly string[];
   /** Why it cannot be met right now. */
   costNotNow: string | null;
-  /** The portfolio needs more cash for the network cost, and the action that moves money in. */
+  /**
+   * The sender needs more cash for the network cost, and the action that gets
+   * money in: "Move to portfolio" for a portfolio, "Add money" for the main wallet.
+   */
   needsCash: { text: string; action: string } | null;
   /** What is still to do before Send can be pressed. */
   reason: string | null;
@@ -256,6 +345,7 @@ export function sendReviewView(state: SendReviewState): SendReviewView {
     cost: state.cost,
     pending: state.pending,
     submitting: state.submitting,
+    fromFunding: state.fromFunding,
   });
   const mobile = state.platform === "mobile";
   const solFee = String(state.solFee);
@@ -286,11 +376,11 @@ export function sendReviewView(state: SendReviewState): SendReviewView {
       tail: destination.slice(-6),
     },
     terms: [
-      mobile
-        ? symbol === CASH
+      !mobile || symbol === "SOL"
+        ? { label: copy.asset, value: symbol }
+        : symbol === CASH
           ? { label: mobileCopy.cash, value: CASH }
-          : { label: mobileCopy.tracker, value: symbol }
-        : { label: copy.asset, value: symbol },
+          : { label: mobileCopy.tracker, value: symbol },
       { label: copy.amount, value: amountOf(symbol, unitsPerHeld, sendAmount) },
       ...(liveValue === null
         ? []
@@ -308,7 +398,7 @@ export function sendReviewView(state: SendReviewState): SendReviewView {
     ],
     cashNote:
       sendAmount < draft.rawAmount
-        ? copy.cashPaysCost(
+        ? (state.fromFunding ? copy.mainWallet.cashPaysCost : copy.cashPaysCost)(
             amountOf(symbol, unitsPerHeld, draft.rawAmount - sendAmount),
             amountOf(symbol, unitsPerHeld, sendAmount),
             amountOf(symbol, unitsPerHeld, draft.rawAmount),

@@ -26,7 +26,7 @@ export function classifyRecipient(
   if (!wallet) return { kind: "new" };
 
   const own = [
-    { address: wallet.funding.address, label: "Funding wallet", which: "funding" as const },
+    { address: wallet.funding.address, label: "Main wallet", which: "funding" as const },
     ...wallet.portfolios.map((portfolio) => ({
       address: portfolio.address,
       label: portfolio.label,

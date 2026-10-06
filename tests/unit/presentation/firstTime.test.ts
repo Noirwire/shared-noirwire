@@ -111,7 +111,7 @@ describe("costsView", () => {
 describe("addMoneyView", () => {
   const view = addMoneyView(testWallet(), { tradeFeeBps: 50 });
 
-  it("is three steps with the person's own funding wallet address in the second, already shown", () => {
+  it("is three steps with the person's own main wallet address in the second, already shown", () => {
     expect(view.steps.map((step) => step.address !== null)).toEqual([false, true, false]);
     expect(view.steps[1].address).toMatchObject({ address: FUNDING_ADDRESS, captureAllowed: true });
     expect(view.steps[1].address?.lines.join(" ").replaceAll(" ", "")).toBe(FUNDING_ADDRESS);
@@ -235,12 +235,12 @@ describe("noMoneyView", () => {
   it("says it on the first tap and leads to adding money when none has arrived", () => {
     expect(noMoney(testWallet(), "acc_1")).toEqual({
       title: "No money in this portfolio yet",
-      detail: "Your money arrives in your funding wallet. Then you move it into a portfolio.",
+      detail: "Your money arrives in your main wallet. Then you move it into a portfolio.",
       action: { label: "Add money", target: { to: "addMoney" } },
     });
   });
 
-  it("leads to moving it in when USDC is waiting in the funding wallet", () => {
+  it("leads to moving it in when USDC is waiting in the main wallet", () => {
     expect(noMoney(funded(40), "acc_1")).toEqual({
       title: "No money in this portfolio yet",
       detail: "Move money into this portfolio first.",

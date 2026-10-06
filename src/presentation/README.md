@@ -138,18 +138,27 @@ The same read gates what can be done. An action that needs a known balance (send
 | `portfolioChoices`, `noMoneyView`                      | a last argument, `balances`                      | each `caption`; `noMoneyView` answers null                                           |
 | `earnScreenView`, `earnPortfolioView`, `earnSheetView` | `balances` in the state                          | each row's `cash`; the sheet's `available`                                           |
 | `fundingAmountView`, `choosePortfolioView`             | `readFailed` beside `fundingBalance`; `balances` | `available.value`, and the lead names no amount; each row's `cash`                   |
+| `fundingWalletView`                                    | `freshness.balances`, as `homeView` does         | `total.value`; `assets` is empty; Move to portfolio and Send are disabled            |
+
+## The main wallet
+
+The main wallet is the person's own public wallet: money arrives there, and it is a wallet in its own right. In code it is still `funding` everywhere (`wallet.funding`, `FUNDING`, `fundingWalletView`); only the words changed.
+
+`fundingWalletView(reads, wallet, updatedAt, freshness)` is its page on both platforms: one balance in dollars over its USDC and SOL lines (SOL only when it holds some), the four actions (`move`, `send`, `receive`, `addMoney`, each with a `target`, `disabled` and a `reason`), and `activity`: money that arrived, moves into portfolios and its own sends, newest first, in the Activity screen's row shape. It is for money, so a tracker that sits at its address is not listed, counted or offered in Send. `homeView(...).fundingWallet` is its row on Home, leading to the page.
+
+A send takes its source by id: a portfolio's, or `FUNDING` for the main wallet. `sendSourceView(reads, wallet, sourceId, platform)` answers what the sheet needs of either (title, name, own address, what it can send), and its `funding` goes to `sendFormView`. A send from the main wallet to one of the person's own portfolios is never reviewed: the form says to use Move to portfolio, which keeps the two apart in public. `sendReviewView` takes `fromFunding` so the cost names who pays it.
 
 ## Route parameters
 
 Both apps build and read links with the helpers in `routes.ts`, so a link means the same on either platform:
 
-| Parameter                | Where                                                                                     | Helpers                                                                  |
-| ------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `portfolio=<id>`         | every sheet that acts for a portfolio: fund, receive, send, trade, pie order, pie builder | `portfolioParams`, `tradeParams`, `pieOrderParams`, `readPortfolioParam` |
-| `portfolio=funding`      | a sheet acting for the funding wallet                                                     | `FUNDING_PARAM`, `fundingReceiveParams`, `readsFunding`                  |
-| `reveal=1`               | the funding wallet's receive sheet, opening with the address shown                        | `fundingReceiveParams`, `readReceiveTarget`                              |
-| `view=public`            | a portfolio's own screen, opened at its public view                                       | `publicViewParams`, `readPublicView`                                     |
-| `side`, `symbol`, `mode` | the trade sheet and the pie order sheet                                                   | `tradeParams`, `readSide`, `pieOrderParams`, `readPieMode`               |
+| Parameter                | Where                                                                                     | Helpers                                                                                        |
+| ------------------------ | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `portfolio=<id>`         | every sheet that acts for a portfolio: fund, receive, send, trade, pie order, pie builder | `portfolioParams`, `tradeParams`, `pieOrderParams`, `readPortfolioParam`                       |
+| `portfolio=funding`      | a sheet acting for the funding wallet: its receive sheet, and a send of its own           | `FUNDING_PARAM`, `fundingReceiveParams`, `fundingSendParams`, `readsFunding`, `readSendSource` |
+| `reveal=1`               | the funding wallet's receive sheet, opening with the address shown                        | `fundingReceiveParams`, `readReceiveTarget`                                                    |
+| `view=public`            | a portfolio's own screen, opened at its public view                                       | `publicViewParams`, `readPublicView`                                                           |
+| `side`, `symbol`, `mode` | the trade sheet and the pie order sheet                                                   | `tradeParams`, `readSide`, `pieOrderParams`, `readPieMode`                                     |
 
 A route is logged, restored and shared in ways an app does not control, so a parameter is only ever an id, a tracker symbol or one of these words. Every reader refuses a value shaped like an address (`isAddressFreeParam`).
 

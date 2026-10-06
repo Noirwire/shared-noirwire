@@ -4,6 +4,58 @@ All notable changes to this package are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The apps pin an exact tag; see [README.md](README.md#releasing) for how a tag becomes a release.
 
+## [0.7.0] - 2026-10-06
+
+The funding wallet is now called the main wallet, and it is a wallet in its own right. It is the person's own public wallet: money arrives there, it has a page of its own with one balance, its USDC and SOL, its activity and four actions, and it can send. Money for one of the person's own portfolios still only goes through Move to portfolio, which keeps the two apart in public. In code it is still `funding` everywhere: no type, field, function, route parameter or stored key was renamed.
+
+### Breaking
+
+For both apps:
+
+- [ ] **The name**: every string that said "funding wallet" says "main wallet". Update any app test that asserts the old wording, and any string the app wrote itself. The table under Changed lists the lines that changed beyond the name.
+- [ ] **Activity kinds**: `ActivityKind` has a new `"deposit"` (money that arrived in the main wallet). Add it to any record or switch keyed on the kind. An entry's `portfolioId` can be `FUNDING`: `activityRow` and `activityDetailView` already name it "Main wallet" (`portfolioFallback` on the detail, with `portfolio` null), so draw the fallback where there is no portfolio to open.
+- [ ] **The main wallet page**: `fundingWalletView(reads, wallet, updatedAt, freshness)` replaces `fundingWalletView({ balance, readFailed })`. Draw `total` (null: draw nothing), `assets` under it, `empty` when not null, the four actions `move`, `send`, `receive`, `addMoney` (each `{ label, target, disabled, reason }`), and `activity`. `loading`, `unavailable` and `stale` are drawn as on Home. Gone: `waiting`, `balance`, `balanceLabel`, `lead`, `readFailed`, `move.quiet`, and `mobileFundingCopy.page`.
+- [ ] **Reading it**: open the page, and the Move sheet, with `money().refresh.fundingBalances()`, not `refresh.funding(address, "USDC")`. Only the full read writes "Money arrived" into Activity; the single-asset read is the one an action makes after it lands and never does.
+- [ ] **Home**: draw `view.fundingWallet` (`label`, `value`, `target: { to: "fundingWallet" }`) as a row that opens the page. `HomeTarget` has the new member. The "is in your main wallet" notice and its action are as they were.
+- [ ] **Send**: open the sheet for the main wallet with `fundingSendParams()` and read its source with `readSendSource` (`readPortfolioParam` still answers null for it). Take `sendSourceView(reads, wallet, sourceId, platform)` for the title, the name, the own address, the assets with what is held, and `empty`. Pass its `funding` to `sendFormView`, `fromFunding: true` to `sendReviewView`, its `name` to `sendResultView`, and the same id as `portfolioId` to `reviewSend` and `send`. Reserve and read pending under `FUNDING`.
+- [ ] **Send, refusals**: `reviewSend(...).recipient` can be `"ownPortfolio"`: show `sendRecipientRefusal(review)` on the form, as for a recipient that cannot receive. When the review's `needsCash` is shown for the main wallet its action is "Add money": open the add-money sheet, not Move.
+- [ ] **Refusal reasons**: `RefusalReason` has `"moreThanFunding"` and `"ownPortfolioFromFunding"`; `refusalMessage` words both.
+
+For the web app:
+
+- [ ] `SendDialog` and `walletActions.send` / `reviewSend` are the call sites above; build the main wallet's page and its Home row.
+
+For the mobile app:
+
+- [ ] `FundingWalletScreen` (the new view, and `fundingBalances()` on opening), `useFundFlow` (its opening read), `useSendFlow` and `SendScreen` (the source), `usePendingBlock(FUNDING)` and `HomeScreen` (the row) are the call sites above.
+- [ ] `useSendFlow` keeps `unsendable` as `Unsendable | null`: handle `"ownPortfolio"` before setting it.
+
+### Added
+
+- Money that arrives in the main wallet from outside is written into Activity as "Money arrived", by the difference a balance refresh finds, valued at the current price. Nothing is written while any action is unsettled, from an action's own read, or from the first read of a restored wallet.
+- `send` and `reviewSend` take `FUNDING` as the source: the main wallet sends its USDC and its SOL with its own key, pays the network from its own SOL when it holds enough, and is priced with the relayer when it does not.
+- `fundingWalletView`, `fundingWalletValue`, `fundingActivity`, `sendSourceView`, `fundingSendParams`, `readSendSource`, `HomeView.fundingWallet`, and the types `FundingWalletView`, `FundingWalletAction`, `FundingWalletTarget`, `SendSourceView`.
+- `fundingCopy.wallet`, `sendCopy.mainWallet`, `networkCostCopy.mainWallet`, `errorsCopy.send.moreThanMainWallet`, `errorsCopy.send.useMove`, `activityCopy.movedToPortfolio`.
+
+### Fixed
+
+- An action reserved for the main wallet that landed without this device seeing it wrote no activity entry. A send from the main wallet that lands unseen is now recorded once the chain shows it.
+
+### Changed
+
+| Where                                                   | Was                                                                                       | Is                                                                        |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| every string                                            | "funding wallet", "Funding wallet"                                                        | "main wallet", "Main wallet"                                              |
+| `portfolioCopy.addMoney.arrived`                        | "{amount} USDC has arrived in your funding wallet. Move it to a portfolio before buying." | "{amount} USDC is in your main wallet. Move it to a portfolio to invest." |
+| `settingsCopy.funding.lead`                             | "Money sent here must be moved into a portfolio before you can invest."                   | "Your money arrives here. Move it to a portfolio to invest."              |
+| `fundingCopy.emptyBefore`                               | "Your {asset} funding balance is empty. "                                                 | "Your main wallet holds no {asset}. "                                     |
+| `pendingActionCopy.subject.funding`, `.balance.funding` | "... from the funding wallet", "the funding wallet's balance"                             | "... from your main wallet", "your main wallet's balance"                 |
+| onboarding `reunitedIntro`, `importedIntro`             | "Opened the funding wallet at ...", "The funding wallet is at ..."                        | "Opened your main wallet at ...", "Your main wallet is at ..."            |
+| `classifyRecipient` own label                           | "Funding wallet"                                                                          | "Main wallet"                                                             |
+| `mobileFundingCopy.page`                                | the old page's words                                                                      | removed; the page reads `fundingCopy.wallet`                              |
+
+A record written by this version holds entries an earlier version does not know (`deposit`, and an entry of the main wallet), and an earlier version refuses to open it. Do not run an older build against a wallet this one has written to.
+
 ## [0.6.1] - 2026-10-06
 
 Home's total value is everything the person has in the wallet: every active portfolio, what is in Earn, and now what waits in the funding wallet too (its USDC, its SOL and any other token, each at its own price). Money that has arrived and not yet been moved into a portfolio no longer leaves the total at zero. "Ready to invest" is unchanged: it counts cash inside portfolios only. A total that counts SOL or a tracker in the funding wallet needs a live price for it, by the same rule as a portfolio's holdings.

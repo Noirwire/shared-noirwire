@@ -40,7 +40,7 @@ export const onboardingCopy = {
     title: "Invest in US stock trackers. Privately.",
     lines: [
       "Trackers follow share prices like Apple, Tesla or the S&P 500. You do not own the shares.",
-      "Each portfolio is separate from your funding wallet. Trades themselves are public.",
+      "Each portfolio is separate from your main wallet. Trades themselves are public.",
     ],
     create: "Create a wallet",
     restore: "Restore a wallet",
@@ -134,16 +134,16 @@ export const onboardingCopy = {
           ? "Both sets have been used, so choose the one you mean to open here."
           : "Neither set has been used yet. If this phrase comes from another wallet app, such as Phantom or Solflare, choose the second. If it was created in NoirWire, choose the first."
       }`,
-    schemeFunding: (address: string, found: string) => `Funding wallet ${address} · ${found}`,
+    schemeFunding: (address: string, found: string) => `Main wallet ${address} · ${found}`,
     nothingFound: "Nothing found yet",
     tokenBalances: "Token balances",
     portfolios: (count: number) => plural(count, "portfolio"),
     reunitedTitle: "Wallet restored",
     importedTitle: "Wallet restored",
     reunitedIntro: (address: string, found: string) =>
-      `Opened the funding wallet at ${address}. Found: ${found}.`,
+      `Opened your main wallet at ${address}. Found: ${found}.`,
     importedIntro: (address: string) =>
-      `Nothing was found for these addresses yet. The funding wallet is at ${address}. Add money whenever you're ready.`,
+      `Nothing was found for these addresses yet. Your main wallet is at ${address}. Add money whenever you're ready.`,
     discovered: (count: number) => `Found ${plural(count, "portfolio")} this phrase already had.`,
     otherSet: "Open the other set instead",
     /** Asked for from the result of an import, when a portfolio the person expects is not there. */
@@ -236,9 +236,9 @@ export const mobileOnboardingCopy = {
     found: (count: number) => `Found ${plural(count, "portfolio")} this phrase already had.`,
     foundBalances: "Found token balances this phrase already had.",
     nothing: newEmptyWallet,
-    showAddress: "Show my funding wallet address",
+    showAddress: "Show my main wallet address",
     hideAddress: "Hide",
-    addressLabel: "Funding wallet address",
+    addressLabel: "Main wallet address",
   },
   password: {
     intro: passwordRule("on this phone"),

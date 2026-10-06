@@ -22,7 +22,7 @@ export const settingsCopy = {
       title: "Security and recovery",
       help: "Keep access to your wallet and protect its recovery phrase.",
     },
-    wallet: { title: "Wallet details", help: "Check what is held in your funding wallet." },
+    wallet: { title: "Wallet details", help: "Check what is held in your main wallet." },
     privacy: {
       title: "Privacy",
       help: "Understand what is public and control usage analytics.",
@@ -76,12 +76,12 @@ export const settingsCopy = {
   },
 
   funding: {
-    title: "Funding wallet",
+    title: "Main wallet",
     description: "Balance and address for adding funds",
-    lead: "Money sent here must be moved into a portfolio before you can invest.",
+    lead: "Your money arrives here. Move it to a portfolio to invest.",
     assets: "USDC and network fees",
-    advanced: "Advanced: funding wallet address",
-    copyDescribe: "Copy funding wallet address",
+    advanced: "Advanced: main wallet address",
+    copyDescribe: "Copy main wallet address",
   },
 
   /** What things cost, as a row in Settings and wherever "What does it cost?" leads. */
@@ -110,7 +110,7 @@ export const settingsCopy = {
     relay:
       "Your keys and recovery phrase never leave this browser. Network requests go through NoirWire's own server, so the network provider, Jupiter and MagicBlock never see your IP address. The server keeps only a basic record that a request happened and whether it worked, a short-lived count to stop overuse, and an anonymous pass that isn't tied to your name or wallet and changes every day. You have to trust it keeps nothing more. Those providers still see the addresses themselves, and requests made moments apart can let them guess that two addresses belong together.",
     relayer:
-      "Actions paid through NoirWire's relayer show the same relayer address and payment account for every NoirWire portfolio. An observer can tell that a portfolio uses NoirWire and can group NoirWire portfolios as a set. That does not link them to a person, to your funding wallet or to each other directly.",
+      "Actions paid through NoirWire's relayer show the same relayer address and payment account for every NoirWire portfolio. An observer can tell that a portfolio uses NoirWire and can group NoirWire portfolios as a set. That does not link them to a person, to your main wallet or to each other directly.",
     phraseMainnet:
       "Anyone with your recovery phrase can take everything in every portfolio. Never share it, never type it into another site, and never reuse it for another wallet.",
     phraseTestNetwork: (network: string, tokens: string) =>
@@ -197,7 +197,7 @@ export const mobileSettingsCopy = {
       },
       {
         title: "What private funding does",
-        body: "Private funding makes a portfolio harder to link back to your funding wallet. It does not make it invisible: amounts and timing may still let someone infer a connection.",
+        body: "Private funding makes a portfolio harder to link back to your main wallet. It does not make it invisible: amounts and timing may still let someone infer a connection.",
       },
       {
         title: "What stays on this phone",
@@ -211,7 +211,7 @@ export const mobileSettingsCopy = {
         lines: [
           "Sees your IP address and, in transit, every address the app asks about.",
           "Keeps only a basic record that a request happened and whether it worked, a short-lived count to stop overuse, and an anonymous pass that isn't tied to your name or wallet and changes every day. You have to trust it keeps nothing more.",
-          "It could link your funding wallet to a portfolio if it kept more than that. It does not.",
+          "It could link your main wallet to a portfolio if it kept more than that. It does not.",
         ],
       },
       {
@@ -226,14 +226,14 @@ export const mobileSettingsCopy = {
         name: "Jupiter",
         lines: [
           "Does not see your IP address.",
-          "Sees the portfolio that trades or lends. Never your funding wallet.",
+          "Sees the portfolio that trades or lends. Never your main wallet.",
         ],
       },
       {
         name: "MagicBlock, the private funding service",
         lines: [
           "Does not see your IP address.",
-          "Sees your funding wallet and the portfolio together. A private transfer cannot be built without naming both.",
+          "Sees your main wallet and the portfolio together. A private transfer cannot be built without naming both.",
         ],
       },
       {
@@ -241,7 +241,7 @@ export const mobileSettingsCopy = {
         lines: [
           "Does not see your IP address.",
           "Sees the portfolio that sends or lends, and who it sends to.",
-          "Every action it pays for names the same relayer on chain, so an observer can tell a portfolio uses NoirWire and can group NoirWire portfolios as a set. That does not link them to you, to your funding wallet or to each other.",
+          "Every action it pays for names the same relayer on chain, so an observer can tell a portfolio uses NoirWire and can group NoirWire portfolios as a set. That does not link them to you, to your main wallet or to each other.",
         ],
       },
     ],
@@ -263,7 +263,7 @@ export const mobileSettingsCopy = {
       },
       {
         title: "What stays public",
-        body: "Every trade, transfer and balance of a portfolio is public on chain, with its amount and time. Private funding makes a portfolio harder to link to your funding wallet. It does not hide what the portfolio does, and amounts and timing can still let someone infer a link.",
+        body: "Every trade, transfer and balance of a portfolio is public on chain, with its amount and time. Private funding makes a portfolio harder to link to your main wallet. It does not hide what the portfolio does, and amounts and timing can still let someone infer a link.",
       },
       {
         title: "Lending through Earn",

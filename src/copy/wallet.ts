@@ -6,7 +6,7 @@ export const notSaved = (platformNoun: string) =>
 
 /** A reset deletes the wallet from where it is kept. `platformNoun` is "browser" or "phone". */
 const resetWarning = (platformNoun: string) =>
-  `This deletes the wallet from this ${platformNoun}. Your recovery phrase is the only way back in. Without it, everything in your funding wallet and in every portfolio is gone for good, and nobody can restore it.`;
+  `This deletes the wallet from this ${platformNoun}. Your recovery phrase is the only way back in. Without it, everything in your main wallet and in every portfolio is gone for good, and nobody can restore it.`;
 
 /** The stored wallet cannot be read. `where` is "in this browser" or "on this phone". */
 const damaged = (where: string) =>

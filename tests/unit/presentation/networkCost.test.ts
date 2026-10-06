@@ -53,7 +53,7 @@ describe("networkCostView", () => {
     expect(shown.explanation).toEqual([]);
     expect(shown.details).toEqual({
       summary: "Network cost: 0.03 USDC. What is this?",
-      body: "Every action has a small network cost. NoirWire's relayer pays it, and this portfolio pays the relayer back exactly 0.031234 USDC, from its USDC, in the same transaction. The cost moves with the market: if it has risen by the time you confirm, nothing is sent and you are shown the new cost first. A transaction paid this way shows publicly that this portfolio uses NoirWire. It does not show your funding wallet or your other portfolios.",
+      body: "Every action has a small network cost. NoirWire's relayer pays it, and this portfolio pays the relayer back exactly 0.031234 USDC, from its USDC, in the same transaction. The cost moves with the market: if it has risen by the time you confirm, nothing is sent and you are shown the new cost first. A transaction paid this way shows publicly that this portfolio uses NoirWire. It does not show your main wallet or your other portfolios.",
     });
     expect(shown.confirmDisabled).toBe(false);
   });

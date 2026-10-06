@@ -20,8 +20,13 @@ import { readWithRetries } from "./retries.js";
  *
  * There is no fourth way. When none of the three applies the action cannot
  * be done at that moment and the review says so, plainly, with nothing
- * charged. The funding wallet never pays: a fee it paid would name both
- * addresses in one transaction.
+ * charged. The funding wallet never pays for a portfolio: a fee it paid would
+ * name both addresses in one transaction.
+ *
+ * A send of the funding wallet's own is the other way round. It is the
+ * public wallet and may hold SOL of its own, so it pays the network itself
+ * when it can (`planOwnSolCost`), and is priced with the relayer like a
+ * portfolio only when it cannot.
  */
 
 /** What a confirmed action tells the run about the review it was confirmed on. */
@@ -130,6 +135,23 @@ export async function planNetworkCost(need: Need, chain: CostChain): Promise<Net
   if (shortfall !== null || !solPrice) {
     return { kind: "unavailable" };
   }
+  return { kind: "ownSol", usd: (lamportsNeeded / LAMPORTS_PER_SOL) * solPrice };
+}
+
+/**
+ * The cost of an action `owner` pays for out of its own SOL, or null when it
+ * holds too little or there is no live price to state the cost in dollars
+ * with: a cost that cannot be shown is not charged.
+ */
+export async function planOwnSolCost(
+  need: Pick<Need, "owner" | "lamportsNeeded" | "solPrice">,
+  chain: CostChain,
+): Promise<NetworkCost | null> {
+  const { owner, lamportsNeeded, solPrice } = need;
+  if (!solPrice) return null;
+  const balance = await readWithRetries(() => chain.balance(owner));
+  const shortfall = await readWithRetries(() => chain.shortfall(balance, lamportsNeeded));
+  if (shortfall !== null) return null;
   return { kind: "ownSol", usd: (lamportsNeeded / LAMPORTS_PER_SOL) * solPrice };
 }
 

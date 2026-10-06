@@ -39,7 +39,9 @@ import { logged, mapPortfolio, randomId } from "./walletRecord.js";
 
 /**
  * The scope an action is reserved in: a portfolio's id, or `FUNDING` for
- * the funding wallet, whose action is moving money into a portfolio.
+ * the funding wallet, whose actions are moving money into a portfolio and
+ * sending for itself. An activity entry of the funding wallet carries it as
+ * its `portfolioId`.
  */
 export const FUNDING = "funding";
 
@@ -280,7 +282,7 @@ export function createPendingActions(deps: PendingActionsDeps) {
 
     await store.update((wallet) => {
       const cleared = applied(wallet, portfolioId, sent.id, { type: "chainChecked", outcome });
-      return outcome === "landed" && sent.activity && cleared !== wallet && portfolioId !== FUNDING
+      return outcome === "landed" && sent.activity && cleared !== wallet
         ? logged(cleared, { portfolioId, ...sent.activity }, deps.prices)
         : cleared;
     });

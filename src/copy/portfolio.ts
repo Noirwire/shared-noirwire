@@ -13,7 +13,7 @@ const staysLocal = (place: string) =>
 
 /** Home's combined total is added up only where the wallet is kept. */
 const addedUpHere = (place: string) =>
-  `This total is added up ${place}. Nothing public ties your portfolios to each other or to your funding wallet, and NoirWire's server never receives the sum.`;
+  `This total is added up ${place}. Nothing public ties your portfolios to each other or to your main wallet, and NoirWire's server never receives the sum.`;
 
 /** A portfolio's public view, as far as the place the wallet is kept knows. */
 const publicViewWords = (place: string) => ({
@@ -97,7 +97,7 @@ export const portfolioCopy = {
     togetherExplained: addedUpHere("in this browser"),
     findTrackers: "Find trackers",
     /** Under Home's one button while the wallet is empty. */
-    moneyArrives: "Your money arrives in your funding wallet. Then you move it into a portfolio.",
+    moneyArrives: "Your money arrives in your main wallet. Then you move it into a portfolio.",
     lookAtTrackers: "Look at trackers first",
     portfolioLine: {
       holdings: (ready: string, count: number) =>
@@ -337,12 +337,12 @@ export const portfolioCopy = {
     privateTitle: "Not in the public record",
     privateItems: [
       "Your local portfolio name",
-      "Its relationship to your funding wallet",
+      "Its relationship to your main wallet",
       "Which other NoirWire portfolios you control",
     ],
     relayed: staysLocal("in this browser"),
     relayer:
-      "When NoirWire's relayer pays a network cost for this portfolio, that transaction names the relayer, so an observer can tell this address uses NoirWire. It does not name your funding wallet or your other portfolios.",
+      "When NoirWire's relayer pays a network cost for this portfolio, that transaction names the relayer, so an observer can tell this address uses NoirWire. It does not name your main wallet or your other portfolios.",
     clue: "Funding can still create a clue. Reusing a known address or moving a distinctive amount moments later may let an observer infer a connection.",
   },
 
@@ -356,23 +356,23 @@ export const portfolioCopy = {
     copyDescribe: "Copy portfolio address",
     publicNote:
       "A transfer straight to this address is public and ties the sender to this portfolio. To move in your own money, use Move to portfolio instead.",
-    fundingTitle: "Your funding wallet address",
+    fundingTitle: "Your main wallet address",
     fundingNotice: "This first transfer is public and may link the sending address to you.",
     portfolioTitle: (name: string) => `Receive in ${name}`,
-    hiddenFunding: "Your funding wallet address is hidden.",
+    hiddenFunding: "Your main wallet address is hidden.",
     showAddress: "Show address",
     copied: "Copied",
-    qrFunding: "QR code of your funding wallet address",
+    qrFunding: "QR code of your main wallet address",
     qrPortfolio: (name: string) => `QR code of ${name}'s address`,
     afterArrival: "Once it arrives, choose a portfolio and tap Move to portfolio.",
     archived: "This portfolio is archived. Restore it before receiving into it.",
   },
 
-  /** Bringing money in from outside: the explainer, its three steps and the funding wallet's address. */
+  /** Bringing money in from outside: the explainer, its three steps and the main wallet's address. */
   addMoney: {
     title: "Add digital dollars",
     arrived: (amount: string) =>
-      `${amount} USDC has arrived in your funding wallet. Move it to a portfolio before buying.`,
+      `${amount} USDC is in your main wallet. Move it to a portfolio to invest.`,
     moveTo: (portfolio: string) => `Move to ${portfolio}`,
     steps: {
       get: {
@@ -381,7 +381,7 @@ export const portfolioCopy = {
           `USDC is a digital dollar: 1 USDC = $1. Many apps sell it. Buy it there, then send it on the ${network} network. You do not need an account with us.`,
       },
       send: {
-        title: "Send it to your funding wallet",
+        title: "Send it to your main wallet",
         detail: (network: string) =>
           `Copy the address below. In the other app choose USDC and the ${network} network, and check the address before sending. This transfer is public.`,
       },
@@ -389,14 +389,14 @@ export const portfolioCopy = {
         title: "Move it into a portfolio",
         /** `cost` is what a private move costs, from the fee constants: "0.1% + $0.20". */
         detail: (cost: string) =>
-          `When it arrives, choose a portfolio and tap Move to portfolio. A private move is not linked to your funding wallet in the public record. It costs ${cost}. ${privateMoveTiming}`,
+          `When it arrives, choose a portfolio and tap Move to portfolio. A private move is not linked to your main wallet in the public record. It costs ${cost}. ${privateMoveTiming}`,
       },
     },
     network: (network: string) => `Network: ${network}`,
     onlyUsdc: (network: string) =>
       `Only send USDC on ${network}. Other assets or networks may be lost.`,
     copyAddress: "Copy address",
-    copyDescribe: "Copy funding wallet address",
+    copyDescribe: "Copy main wallet address",
     costsLink: "What does it cost?",
   },
 
@@ -425,7 +425,7 @@ export const mobilePortfolioCopy = {
     notOnChainTitle: "Not in the public record",
     notOnChain: [
       "Your portfolio name",
-      "Its relationship to your funding wallet",
+      "Its relationship to your main wallet",
       "Which other NoirWire portfolios you control",
     ],
     relayed: staysLocal("on this phone"),

@@ -87,8 +87,11 @@ const REPLACED_NAMES: [RegExp, string][] = [
   [/private transfer/i, 'the noun is "private move"'],
   [/move money here/i, 'the button is "Move to portfolio"'],
   [/add money privately/i, 'the confirm is "Move privately"'],
-  [/funding address/i, 'the thing is the "funding wallet"; an address is what is copied'],
-  [/deposit address/i, 'the thing is the "funding wallet"'],
+  [
+    /funding (wallet|address|balance)/i,
+    'the thing is the "main wallet"; an address is what is copied',
+  ],
+  [/deposit address/i, 'the thing is the "main wallet"'],
   [/\bcash\b/, '"Cash" is only a row label; the money is USDC'],
   [/\bstocks\b/i, 'what a person holds is a "tracker"'],
   [/indicative/i, 'a shown price is "Approximate"'],
@@ -358,7 +361,14 @@ describe("per-platform copy", () => {
     expect(replacedNamesIn({ lead: "Fund it through the private route." })).toHaveLength(1);
     expect(replacedNamesIn({ tag: "Indicative", shelf: "Stocks" })).toHaveLength(2);
     expect(replacedNamesIn({ step: "Buy it on an exchange you already use." })).toHaveLength(1);
+    expect(replacedNamesIn({ row: "Funding wallet" })).toHaveLength(1);
     expect(replacedNamesIn({ label: "Cash", button: "Move to portfolio" })).toEqual([]);
+  });
+
+  it("calls the wallet money arrives in the main wallet everywhere, the Privacy and Risks pages included", () => {
+    const all = strings([WEB, PHONE]);
+    expect(all.filter((text) => /funding wallet/i.test(text))).toEqual([]);
+    expect(all.some((text) => /main wallet/i.test(text))).toBe(true);
   });
 
   it("never leads with what NoirWire lacks or cannot do in the main path", () => {

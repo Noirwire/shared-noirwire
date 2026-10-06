@@ -1,15 +1,21 @@
 import type { FundingDraft } from "../application/funding.js";
+import type { ScreenReads } from "../application/screenReads.js";
 import { commonCopy } from "../copy/common.js";
 import { fundingCopy as copy, mobileFundingCopy as mobileCopy } from "../copy/funding.js";
+import { portfolioCopy } from "../copy/portfolio.js";
 import { smallestAmount } from "../domain/amount.js";
 import type { AppPlatform } from "../domain/appPlatform.js";
-import { symbolAmount } from "../domain/format.js";
+import { symbolAmount, usd } from "../domain/format.js";
 import type { ReadFreshness } from "../domain/freshness.js";
 import { PRIVACY_FEE_BPS, SETTLEMENT_DELAY_MS } from "../domain/privateTransfer.js";
+import type { Wallet } from "../domain/wallet.js";
+import { fundingActivity, type ActivityRowView } from "./activity.js";
 import {
   balancesUnavailable,
   balancesView,
+  freshnessView,
   type Figure,
+  type HomeFreshness,
   type UnavailableView,
 } from "./freshness.js";
 
@@ -419,24 +425,133 @@ export function fundingWalletRow(balance: number | undefined) {
   };
 }
 
-/** The funding wallet's own page: what is waiting to be moved, and where to send more. */
-export function fundingWalletView(state: {
-  /** Null until the first read on opening has answered. */
-  balance: number | null;
-  readFailed: boolean;
-}) {
-  const page = mobileCopy.page;
-  const { balance } = state;
-  const empty = balance !== null && balance <= 0;
-  const shown = balance === null ? null : symbolAmount("USDC", balance);
+/** Where a control on the main wallet's page leads. The app maps each to a sheet or screen. */
+export type FundingWalletTarget =
+  { to: "fund" } | { to: "send" } | { to: "receive" } | { to: "addMoney" };
+
+export type FundingWalletAction = {
+  label: string;
+  target: FundingWalletTarget;
+  disabled: boolean;
+  /** Why it cannot be pressed, where there is something to say, else null. */
+  reason: string | null;
+};
+
+export type FundingWalletView = {
+  title: string;
+  /**
+   * Everything the main wallet holds, in dollars. Null until balances have
+   * been read once, and while SOL it holds has no live price: nothing is
+   * drawn, never a zero and never a part of the sum.
+   */
+  total: { label: string; value: Figure };
+  /**
+   * Its USDC, and its SOL when it holds some. Empty until balances have been
+   * read once. A `value` is null while there is no live price for it.
+   */
+  assets: readonly { symbol: string; amount: string; value: Figure }[];
+  /** Said once balances are read and it holds nothing. */
+  empty: string | null;
+  /** Balances or prices have never been read, and nothing has failed: the page waits. */
+  loading: boolean;
+  /** Balances have never been read and the read failed: the one line, with its retry. */
+  unavailable: UnavailableView | null;
+  /** Balances or prices that did load may be out of date. */
+  stale: string | null;
+  move: FundingWalletAction;
+  send: FundingWalletAction;
+  receive: FundingWalletAction;
+  addMoney: FundingWalletAction;
+  /** Money that arrived, moves into portfolios and sends, newest first. */
+  activity: ActivityRowView[];
+};
+
+const CASH = "USDC";
+
+/**
+ * What the main wallet's USDC and SOL are worth together, or null while the
+ * SOL it holds has no live price. The main wallet is for money, so nothing
+ * else that may sit at its address is counted here.
+ */
+export function fundingWalletValue(
+  reads: Pick<ScreenReads, "price" | "isLivePrice">,
+  wallet: Wallet,
+  updatedAt: number | null,
+): number | null {
+  const { sol, tokens } = wallet.funding;
+  const cash = tokens[CASH] ?? 0;
+  if (sol <= 0) return cash;
+  return updatedAt !== null && reads.isLivePrice("SOL") ? cash + sol * reads.price("SOL") : null;
+}
+
+/**
+ * The main wallet's own page: one balance, what it is made of, what can be
+ * done from it and what it did. Loading, unavailable and stale follow Home's
+ * rule (`homeView`): until balances have been read once every figure is
+ * null and nothing can be moved or sent.
+ */
+export function fundingWalletView(
+  reads: ScreenReads,
+  wallet: Wallet,
+  updatedAt: number | null,
+  freshness: HomeFreshness,
+): FundingWalletView {
+  const words = copy.wallet;
+  const balances = balancesView(freshness.balances);
+  const { known } = balances;
+  const fresh = freshnessView(freshness.now, [
+    ...(known ? [{ read: freshness.balances, notice: "balances" as const }] : []),
+    { read: freshness.prices, notice: "prices" },
+  ]);
+  const { sol } = wallet.funding;
+  const cash = wallet.funding.tokens[CASH] ?? 0;
+  const total = fundingWalletValue(reads, wallet, updatedAt);
+  const holdsNothing = cash <= 0 && sol <= 0;
   return {
-    title: page.title,
-    waiting: page.waiting,
-    balance: shown,
-    balanceLabel: shown === null ? null : page.balanceLabel(shown),
-    lead: empty ? page.empty : page.lead,
-    readFailed: state.readFailed ? page.readFailed : null,
-    move: { label: page.move, quiet: empty, disabled: empty || balance === null },
-    addMoney: page.addMoney,
+    title: words.title,
+    total: { label: words.balance, value: known && total !== null ? usd(total) : null },
+    assets: known
+      ? [
+          { symbol: CASH, amount: symbolAmount(CASH, cash), value: usd(cash) },
+          ...(sol > 0
+            ? [
+                {
+                  symbol: "SOL",
+                  amount: symbolAmount("SOL", sol),
+                  value: total === null ? null : usd(total - cash),
+                },
+              ]
+            : []),
+        ]
+      : [],
+    empty: known && holdsNothing ? words.empty : null,
+    loading: balances.loading || (known && fresh.loading),
+    unavailable: balances.unavailable,
+    stale: balances.unavailable ? null : fresh.stale,
+    move: {
+      label: copy.titlePrivate,
+      target: { to: "fund" },
+      disabled: !known || cash <= 0,
+      reason: known ? (cash <= 0 ? words.addMoneyFirst : null) : balances.reason,
+    },
+    send: {
+      label: portfolioCopy.detail.send,
+      target: { to: "send" },
+      disabled: !known || holdsNothing,
+      reason: known ? (holdsNothing ? portfolioCopy.detail.sendDisabled : null) : balances.reason,
+    },
+    receive: {
+      label: portfolioCopy.detail.receive,
+      target: { to: "receive" },
+      disabled: false,
+      reason: null,
+    },
+    addMoney: {
+      label: portfolioCopy.home.addMoney,
+      target: { to: "addMoney" },
+      disabled: false,
+      reason: null,
+    },
+    activity: fundingActivity(reads, wallet),
   };
 }

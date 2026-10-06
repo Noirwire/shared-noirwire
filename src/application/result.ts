@@ -33,6 +33,10 @@ export type RefusalReason =
   | "notTransferable"
   | "sendNotCompleted"
   | "moreThanOnchain"
+  /** The same, of a send from the funding wallet. */
+  | "moreThanFunding"
+  /** A send from the funding wallet to one of this wallet's own portfolios, which is what Move is for. */
+  | "ownPortfolioFromFunding"
   | "tradingMainnetOnly"
   | "notTradable"
   | "earnMainnetOnly";

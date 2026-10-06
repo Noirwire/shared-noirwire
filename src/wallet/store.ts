@@ -1,4 +1,5 @@
 import { getPlatform } from "../platform.js";
+import { FUNDING } from "../application/pendingActions.js";
 import { walletCopy } from "../copy/wallet.js";
 import { dropSession } from "../infrastructure/apiSession.js";
 import { deriveKeypair, FUNDING_DERIVATION_INDEX } from "../infrastructure/solana/keys.js";
@@ -192,6 +193,7 @@ function isStoredWallet(value: unknown): value is StoredWallet {
     !nonnegative(value.funding.sol) ||
     !isTokenBalanceMap(value.funding.tokens) ||
     (value.funding.pendingAction !== undefined && !isPendingAction(value.funding.pendingAction)) ||
+    (value.funding.balancesRead !== undefined && value.funding.balancesRead !== true) ||
     !Array.isArray(value.accounts) ||
     !Array.isArray(value.activity) ||
     !Array.isArray(value.watchlist) ||
@@ -234,7 +236,7 @@ function isStoredWallet(value: unknown): value is StoredWallet {
       record(entry) &&
       text(entry.id) &&
       text(entry.accountId) &&
-      portfolioIds.has(entry.accountId) &&
+      (portfolioIds.has(entry.accountId) || entry.accountId === FUNDING) &&
       nonnegative(entry.at) &&
       ACTIVITY_KINDS.some((kind) => kind === entry.kind) &&
       text(entry.symbol) &&

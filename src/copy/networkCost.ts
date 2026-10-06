@@ -53,7 +53,20 @@ export const networkCostCopy = {
     openedFirstSeveral:
       ". The accounts are opened first, then your orders are priced and placed, with one confirmation.",
     movesWithMarket:
-      " The cost moves with the market: if it has risen by the time you confirm, nothing is sent and you are shown the new cost first. A transaction paid this way shows publicly that this portfolio uses NoirWire. It does not show your funding wallet or your other portfolios.",
+      " The cost moves with the market: if it has risen by the time you confirm, nothing is sent and you are shown the new cost first. A transaction paid this way shows publicly that this portfolio uses NoirWire. It does not show your main wallet or your other portfolios.",
+  },
+
+  /** The same sentences when the main wallet pays for a send of its own. */
+  mainWallet: {
+    fromOwnSol: (usd: string | null) =>
+      `${usd === null ? "less than 0.01 USD" : `about ${usd} USD`}, paid from your main wallet's SOL balance`,
+    needsCash: (needed: string, underOneCent: boolean, free: string) =>
+      `Your main wallet needs ${underOneCent ? "" : "at least "}${needed} to pay the network cost, and would have ${free} to spare. `,
+    addMoney: "Add money",
+    paysBack: (exactFee: string) =>
+      `Every action has a small network cost. NoirWire's relayer pays it, and your main wallet pays the relayer back exactly ${exactFee} USDC, `,
+    movesWithMarket:
+      " The cost moves with the market: if it has risen by the time you confirm, nothing is sent and you are shown the new cost first. A transaction paid this way shows publicly that your main wallet uses NoirWire. It does not show your portfolios.",
   },
 
   /** The line a review shows when it states the cost in a sentence of its own. */

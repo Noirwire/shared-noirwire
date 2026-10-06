@@ -1,17 +1,19 @@
 import type { NetworkCost } from "../../domain/networkCost.js";
 import type { Unsendable } from "../../domain/recipients.js";
-import { planSendCost, type CostAgreed, type CostChain } from "../networkCost.js";
+import type { Portfolio, Wallet } from "../../domain/wallet.js";
+import { planOwnSolCost, planSendCost, type CostAgreed, type CostChain } from "../networkCost.js";
+import { FUNDING } from "../pendingActions.js";
 import type { RelayerQuote, Signer, StillUnlocked } from "../ports.js";
 import { readWithRetries } from "../retries.js";
 import { refused, refusedFor, type Attempt } from "../result.js";
 import {
-  activePortfolio,
-  holdingIn,
+  fundingBalance,
   logged,
   mapPortfolio,
   othersOf,
   positive,
   setRealHolding,
+  withFundingBalance,
 } from "../walletRecord.js";
 import {
   costChangedOf,
@@ -73,6 +75,52 @@ export type SendDeps<K extends Signer> = ActionDeps<K> & { chain: SendChain<K> }
 export type SendInput = { symbol: string; amount: number; to: string };
 
 /**
+ * Where a send leaves from: a portfolio, by its id, or the funding wallet,
+ * as `FUNDING`. The funding wallet is for cash: it sends its cash and its
+ * SOL, and `held` knows of nothing else there.
+ */
+type Source = {
+  address: string;
+  /** False for an archived portfolio, which sends nothing. */
+  active: boolean;
+  /** Set for a portfolio. The funding wallet signs with its own key. */
+  portfolio?: Portfolio;
+  /** What it holds of `symbol`, as stored, or undefined for an asset it cannot send. */
+  held(symbol: string): number | undefined;
+};
+
+function sourceOf(wallet: Wallet | null, id: string, cashSymbol: string): Source | undefined {
+  if (!wallet) return undefined;
+  if (id === FUNDING) {
+    const { funding } = wallet;
+    return {
+      address: funding.address,
+      active: true,
+      held: (symbol) =>
+        symbol === "SOL" || symbol === cashSymbol ? fundingBalance(funding, symbol) : undefined,
+    };
+  }
+  const portfolio = wallet.portfolios.find((entry) => entry.id === id);
+  return (
+    portfolio && {
+      address: portfolio.address,
+      active: portfolio.archivedAt === null,
+      portfolio,
+      held: (symbol) => portfolio.holdings.find((holding) => holding.symbol === symbol)?.amount,
+    }
+  );
+}
+
+/**
+ * Whether a send from `id` to `recipient` is the funding wallet paying one
+ * of this wallet's own portfolios, archived ones included. That is what Move
+ * to portfolio is for: a plain send would join the two addresses in public.
+ */
+function toOwnPortfolioFromFunding(wallet: Wallet | null, id: string, recipient: string): boolean {
+  return id === FUNDING && Boolean(wallet?.portfolios.some((entry) => entry.address === recipient));
+}
+
+/**
  * The review of a send: its network cost, and the amount that will really be
  * sent. Sending all of a portfolio's cash while its network cost has to come
  * out of that cash sends the rest.
@@ -80,11 +128,18 @@ export type SendInput = { symbol: string; amount: number; to: string };
  * A portfolio that cannot pay the network itself has the relayer priced
  * first, unless `withoutRelayer`: a review made again because the relayer
  * just failed must not offer it straight back.
+ *
+ * `portfolioId` is `FUNDING` for a send from the funding wallet. One to a
+ * portfolio of this wallet is answered as `ownPortfolio` before anything is
+ * read or priced.
  */
 export async function reviewSend<K extends Signer>(
   deps: Pick<SendDeps<K>, "store" | "prices" | "chain">,
   input: { portfolioId: string; send: SendInput; withoutRelayer: boolean },
 ): Promise<SendReview> {
+  if (toOwnPortfolioFromFunding(deps.store.snapshot(), input.portfolioId, input.send.to.trim())) {
+    return { cost: { kind: "unavailable" }, amount: input.send.amount, recipient: "ownPortfolio" };
+  }
   const recipient = await recipientOf(deps.chain, input.send.to);
   // A recipient that cannot receive, or could not be read, is the whole
   // answer: no cost is worked out for a send that will not be made.
@@ -98,19 +153,20 @@ export async function reviewSend<K extends Signer>(
  * What a review of a send answers: its cost, the amount that will really be
  * sent, and what the network said of the recipient. The recipient is part of
  * every review, so no screen can show one for an address nobody checked:
- * null for a wallet, why it cannot receive, or "unreadable" when the network
- * could not be asked.
+ * null for a wallet, why it cannot receive, "unreadable" when the network
+ * could not be asked, or "ownPortfolio" when the funding wallet would be
+ * sending to a portfolio of this wallet.
  */
 export type SendReview = {
   cost: NetworkCost;
   amount: number;
-  recipient: Unsendable | "unreadable" | null;
+  recipient: Unsendable | "unreadable" | "ownPortfolio" | null;
 };
 
 async function recipientOf<K extends Signer>(
   chain: SendChain<K>,
   to: string,
-): Promise<SendReview["recipient"]> {
+): Promise<Unsendable | "unreadable" | null> {
   if (!chain.isRecipientAddress(to.trim())) return "offCurve";
   try {
     return await chain.checkRecipient(to.trim());
@@ -126,29 +182,36 @@ async function reviewCost<K extends Signer>(
   const { send, withoutRelayer } = input;
   const { chain } = deps;
   const token = chain.token(send.symbol);
-  const portfolio = deps.store
-    .snapshot()
-    ?.portfolios.find((entry) => entry.id === input.portfolioId);
+  const source = sourceOf(deps.store.snapshot(), input.portfolioId, chain.cashSymbol);
   // Sending SOL pays its own way out of the amount.
-  if (!token || !portfolio) return { cost: { kind: "covered" }, amount: send.amount };
+  if (!token || !source) return { cost: { kind: "covered" }, amount: send.amount };
   let lamports: number;
   try {
     lamports = await readWithRetries(() => token.sendLamports(send.to));
   } catch {
     return { cost: { kind: "unavailable" }, amount: send.amount };
   }
-  const owner = portfolio.address;
+  const owner = source.address;
+  const solPrice = deps.prices.price("SOL") || undefined;
   try {
+    // The funding wallet pays the network itself when it holds the SOL to.
+    // Only when it cannot is it priced with the relayer, as a portfolio is.
+    const ownSol = source.portfolio
+      ? null
+      : await planOwnSolCost({ owner, lamportsNeeded: lamports, solPrice }, chain.cost).catch(
+          () => null,
+        );
+    if (ownSol) return { cost: ownSol, amount: send.amount };
     return await planSendCost(
       {
         owner,
         lamportsNeeded: lamports,
         isCash: token.symbol === chain.cashSymbol,
         amount: send.amount,
-        held: holdingIn(portfolio, token.symbol).amount,
-        cashHeld: holdingIn(portfolio, chain.cashSymbol).amount,
+        held: source.held(token.symbol) ?? 0,
+        cashHeld: source.held(chain.cashSymbol) ?? 0,
         decimals: token.decimals,
-        solPrice: deps.prices.price("SOL") || undefined,
+        solPrice,
         relayerQuote: withoutRelayer
           ? undefined
           : () => token.quoteRelayed(owner, send.to, send.amount),
@@ -164,6 +227,12 @@ async function reviewCost<K extends Signer>(
  * Sends SOL or any registered token from this portfolio's own balance to
  * `to`. A symbol with no registry entry has no mint and therefore nothing to
  * send.
+ *
+ * `portfolioId` is `FUNDING` for a send from the funding wallet, of its cash
+ * or its SOL. It signs with its own key, is reserved under `FUNDING` and is
+ * written into Activity there. Money for one of this wallet's own portfolios
+ * is refused here: it goes through Move to portfolio, which keeps the two
+ * addresses apart in public.
  */
 export async function send<K extends Signer>(
   deps: SendDeps<K>,
@@ -174,27 +243,30 @@ export async function send<K extends Signer>(
   const handle = chain.asset(input.send.symbol);
   if (!handle) return refusedFor("notTransferable", input.send.symbol);
 
-  // Plan and guard: an active portfolio sending no more than it holds, to a
-  // real address that is not its own.
+  // Plan and guard: an active portfolio, or the funding wallet, sending no
+  // more than it holds, to a real address that is not its own.
   const session = openSession(deps.session);
   if ("kind" in session) return session;
-  const portfolio = activePortfolio(session.wallet, id);
-  const holding = portfolio?.holdings.find((h) => h.symbol === input.send.symbol);
+  const source = sourceOf(session.wallet, id, chain.cashSymbol);
+  const held = source?.held(input.send.symbol);
   const amount = input.send.amount;
   const recipient = input.send.to.trim();
+  if (toOwnPortfolioFromFunding(session.wallet, id, recipient)) {
+    return refused("ownPortfolioFromFunding");
+  }
   if (
-    !portfolio ||
-    !holding ||
+    !source?.active ||
+    held === undefined ||
     !positive(amount) ||
-    amount > holding.amount ||
+    amount > held ||
     !chain.isRecipientAddress(recipient) ||
-    recipient === portfolio.address
+    recipient === source.address
   ) {
     return refused("sendNotCompleted");
   }
 
-  const owner = session.portfolioSigner(portfolio);
   const funder = session.fundingSigner();
+  const owner = source.portfolio ? session.portfolioSigner(source.portfolio) : funder;
   if (!owner || !funder) return refused(session.refusal());
   const ownerAddress = owner.publicKey.toBase58();
   // What the relayer is paid, when the review showed it paying: cash that
@@ -206,7 +278,7 @@ export async function send<K extends Signer>(
   // Reserve, with the activity entry to write should it land unseen.
   const reservation = await deps.pending.reserve(
     id,
-    portfolio.address,
+    source.address,
     deps.words.send(handle.symbol, amount),
     {
       kind: "send",
@@ -225,14 +297,20 @@ export async function send<K extends Signer>(
   const resync = async () => {
     const balance = await handle.balance(ownerAddress);
     deps.store.update((current) =>
-      mapPortfolio(current, id, (entry) => setRealHolding(prices, entry, handle.symbol, balance)),
+      source.portfolio
+        ? mapPortfolio(current, id, (entry) =>
+            setRealHolding(prices, entry, handle.symbol, balance),
+          )
+        : withFundingBalance(current, handle.symbol, balance),
     );
     return balance;
   };
 
   try {
     realBalance = await handle.balance(ownerAddress);
-    if (amount > realBalance) return refused("moreThanOnchain");
+    if (amount > realBalance) {
+      return refused(source.portfolio ? "moreThanOnchain" : "moreThanFunding");
+    }
 
     // Sign and submit. Sending SOL pays its own way out of the amount.
     // Anything else has its network cost paid by the relayer when the review
@@ -246,7 +324,7 @@ export async function send<K extends Signer>(
         to: recipient,
         amount,
         reviewedFeeRaw: network.relayerFeeRaw,
-        keepOut: othersOf(session.wallet, portfolio, recipient),
+        keepOut: othersOf(session.wallet, source, recipient),
         stillUnlocked: session.live,
       });
     } else {
@@ -267,7 +345,7 @@ export async function send<K extends Signer>(
   // Settle. From here the send has landed, so nothing below may report it as
   // failed: that would invite sending it again. When the balance cannot be
   // read back yet, what was held less what was sent stands in until a
-  // refresh replaces it. A portfolio pays its own fee, so sending all of its
+  // refresh replaces it. The sender pays its own fee, so sending all of its
   // SOL delivers the balance less that fee.
   const sent =
     handle.symbol === "SOL" && amount === realBalance ? amount - chain.networkFeeSol : amount;
@@ -277,12 +355,16 @@ export async function send<K extends Signer>(
   void deps.store
     .update((current) =>
       logged(
-        mapPortfolio(current, id, (entry) => {
-          const sentFrom = setRealHolding(prices, entry, handle.symbol, newBalance);
-          // The cost was paid in cash. When cash is not what was sent, nothing
-          // above read it back, so it is taken off here until a refresh does.
-          return isCash ? sentFrom : withCashMoved(prices, sentFrom, chain.cashSymbol, -cost);
-        }),
+        source.portfolio
+          ? mapPortfolio(current, id, (entry) => {
+              const sentFrom = setRealHolding(prices, entry, handle.symbol, newBalance);
+              // The cost was paid in cash. When cash is not what was sent, nothing
+              // above read it back, so it is taken off here until a refresh does.
+              return isCash ? sentFrom : withCashMoved(prices, sentFrom, chain.cashSymbol, -cost);
+            })
+          : // The funding wallet sends cash or SOL only, and a relayer is paid
+            // only on a send of cash: its cost is already in the balance above.
+            withFundingBalance(current, handle.symbol, newBalance),
         {
           portfolioId: id,
           kind: "send",

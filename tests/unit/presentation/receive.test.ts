@@ -18,11 +18,11 @@ describe("receiveView", () => {
       });
     expect(view(false)).toMatchObject({
       kind: "address",
-      title: "Your funding wallet address",
+      title: "Your main wallet address",
       notice: "This first transfer is public and may link the sending address to you.",
-      masked: { text: "Your funding wallet address is hidden.", show: "Show address" },
+      masked: { text: "Your main wallet address is hidden.", show: "Show address" },
       address: FUNDING_ADDRESS,
-      qrLabel: "QR code of your funding wallet address",
+      qrLabel: "QR code of your main wallet address",
       notes: [
         "Only send USDC on Solana. Other assets or networks may be lost.",
         "Once it arrives, choose a portfolio and tap Move to portfolio.",

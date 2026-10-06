@@ -5,12 +5,12 @@ import {
 } from "../../../src/presentation/pendingAction.js";
 
 describe("pendingActionNote", () => {
-  it("says the last action is not confirmed yet, for a portfolio and for the funding wallet", () => {
+  it("says the last action is not confirmed yet, for a portfolio and for the main wallet", () => {
     expect(pendingActionNote("portfolio", "a send of 5.00 USDC", "waiting")).toBe(
       "Your last action from this portfolio (a send of 5.00 USDC) is not confirmed yet. It may still go through, so nothing can be confirmed here until that is known. This is checked for you.",
     );
     expect(pendingActionNote("funding", "moving 5.00 USDC into Investing", "waiting")).toBe(
-      "Your last move of money from the funding wallet (moving 5.00 USDC into Investing) is not confirmed yet. It may still go through, so nothing can be confirmed here until that is known. This is checked for you.",
+      "Your last move of money from your main wallet (moving 5.00 USDC into Investing) is not confirmed yet. It may still go through, so nothing can be confirmed here until that is known. This is checked for you.",
     );
   });
 
@@ -19,7 +19,7 @@ describe("pendingActionNote", () => {
       "We could not confirm whether your last action from this portfolio (a sale of NVDAx) went through. Check this portfolio's balance; you can clear this once you have.",
     );
     expect(pendingActionNote("funding", "x", "unresolved")).toContain(
-      "Check the funding wallet's balance;",
+      "Check your main wallet's balance;",
     );
   });
 

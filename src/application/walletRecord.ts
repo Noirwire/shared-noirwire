@@ -68,6 +68,31 @@ export function hasFunds(funding: Wallet["funding"]) {
   return funding.sol > 0 || Object.values(funding.tokens).some((amount) => amount > 0);
 }
 
+/** What the funding wallet holds of `symbol`, as stored: its SOL, or a token. Undefined for a token it has no record of. */
+export function fundingBalance(funding: Wallet["funding"], symbol: string): number | undefined {
+  return symbol === "SOL" ? funding.sol : funding.tokens[symbol];
+}
+
+/** The wallet with its funding wallet's balance of `symbol` set to `amount`. */
+export function withFundingBalance(wallet: Wallet, symbol: string, amount: number): Wallet {
+  const { funding } = wallet;
+  return {
+    ...wallet,
+    funding:
+      symbol === "SOL"
+        ? { ...funding, sol: amount }
+        : { ...funding, tokens: { ...funding.tokens, [symbol]: amount } },
+  };
+}
+
+/** Whether any action, of the funding wallet or of any portfolio, is reserved or not yet settled. */
+export function anyActionPending(wallet: Wallet): boolean {
+  return (
+    wallet.funding.pendingAction !== undefined ||
+    wallet.portfolios.some((portfolio) => portfolio.pendingAction !== undefined)
+  );
+}
+
 /** Puts `next` in place of the portfolio's holding of the same symbol, or adds it. */
 export function setHolding(portfolio: Portfolio, next: Holding) {
   const holdings = portfolio.holdings.some((holding) => holding.symbol === next.symbol)
@@ -114,15 +139,19 @@ export function setRealHolding(
 }
 
 /**
- * The addresses a relayer-paid transaction of `portfolio` must not name: the
- * funding wallet and every other portfolio, archived ones included, because
- * one transaction naming two of them joins them on chain. A recipient the
- * user chose among them is left out; the review warns about that link and
- * has it acknowledged.
+ * The addresses a relayer-paid transaction of `source` (a portfolio, or the
+ * funding wallet sending for itself) must not name: the funding wallet and
+ * every other portfolio, archived ones included, because one transaction
+ * naming two of them joins them on chain. A recipient the user chose among
+ * them is left out; the review warns about that link and has it acknowledged.
  */
-export function othersOf(wallet: Wallet, portfolio: Portfolio, recipient?: string): string[] {
+export function othersOf(
+  wallet: Wallet,
+  source: { address: string },
+  recipient?: string,
+): string[] {
   return [wallet.funding.address, ...wallet.portfolios.map((entry) => entry.address)].filter(
-    (address) => address !== portfolio.address && address !== recipient,
+    (address) => address !== source.address && address !== recipient,
   );
 }
 
@@ -150,7 +179,7 @@ export function walletUsage(wallet: Wallet, prices: Pick<PriceReader, "isPositio
     trades: tradeBand(wallet.activity.filter((e) => e.kind === "buy" || e.kind === "sell").length),
     funded: yesNo(funded),
     invested: yesNo(invested),
-    has_funded: yesNo(funded || did("fund")),
+    has_funded: yesNo(funded || did("fund", "deposit")),
     has_traded: yesNo(invested || did("buy", "sell")),
   } as const;
 }

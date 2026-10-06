@@ -1,5 +1,6 @@
 import type { ScreenReads } from "../application/screenReads.js";
 import { commonCopy } from "../copy/common.js";
+import { fundingCopy } from "../copy/funding.js";
 import { portfolioCopy } from "../copy/portfolio.js";
 import { deltaText, shares, tokenAmount, usd } from "../domain/format.js";
 import type { Wallet } from "../domain/wallet.js";
@@ -11,11 +12,15 @@ import {
   type HomeFreshness,
   type UnavailableView,
 } from "./freshness.js";
+import { fundingWalletValue } from "./funding.js";
 import { portfolioRowView, toneOf, type ChangeTone, type PortfolioRowView } from "./portfolio.js";
 
 /** Where a Home control leads. The app maps each to a screen or sheet. */
 export type HomeTarget =
-  { to: "markets" } | { to: "fund"; portfolioId?: string } | { to: "addMoney" };
+  | { to: "markets" }
+  | { to: "fund"; portfolioId?: string }
+  | { to: "addMoney" }
+  | { to: "fundingWallet" };
 
 export type HomeAction = { label: string; target: HomeTarget };
 
@@ -77,6 +82,12 @@ export type HomeView = {
   empty: boolean;
   /** USDC sitting in the funding wallet, waiting to be moved into a portfolio. */
   waiting: { text: string; action: HomeAction | null } | null;
+  /**
+   * The main wallet's row: its name, what its USDC and SOL are worth, and
+   * its own page. The figure is null until balances have been read once, and
+   * while SOL it holds has no live price.
+   */
+  fundingWallet: { label: string; value: Figure; target: HomeTarget };
   primary: HomeAction;
   /** Null while the wallet is empty: the one button there is "Add money". */
   secondary: HomeAction | null;
@@ -233,6 +244,7 @@ export function homeView(
     target: known && usdc > 0 ? { to: "fund" } : { to: "addMoney" },
   };
   const archived = reads.archivedPortfolios(wallet);
+  const fundingValue = fundingWalletValue(reads, wallet, updatedAt);
 
   return {
     stale: balances.unavailable ? null : fresh.stale,
@@ -247,6 +259,11 @@ export function homeView(
         : { label: home.earning, value: earn === null ? commonCopy.unavailable : usd(earn) },
     empty,
     waiting,
+    fundingWallet: {
+      label: fundingCopy.wallet.title,
+      value: known && fundingValue !== null ? usd(fundingValue) : null,
+      target: { to: "fundingWallet" },
+    },
     primary: empty
       ? { label: home.addMoney, target: { to: "addMoney" } }
       : { label: home.findTrackers, target: { to: "markets" } },

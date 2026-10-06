@@ -86,7 +86,7 @@ export const tradeCopy = {
       "xStocks are not offered in the United States, to US persons or in the issuer's prohibited countries.",
   },
   publicTrade:
-    "Your trade, amount and timing are public. A private move can reduce the link to your funding wallet; it does not hide this trade.",
+    "Your trade, amount and timing are public. A private move can reduce the link to your main wallet; it does not hide this trade.",
 
   chooseTracker: (side: "buy" | "sell") => `${side === "buy" ? "Buy" : "Sell"} a tracker`,
   trackerLabel: "Tracker",

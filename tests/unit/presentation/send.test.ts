@@ -1,12 +1,22 @@
 import { describe, expect, it } from "vitest";
+import { FUNDING } from "../../../src/application/pendingActions.js";
 import { sendDraft, type SendInput } from "../../../src/application/send.js";
 import {
   sendFormView,
+  sendRecipientRefusal,
+  sendResultView,
   sendReviewView,
+  sendSourceView,
   type SendFormState,
   type SendReviewState,
 } from "../../../src/presentation/send.js";
-import { READ } from "../support/screens.js";
+import {
+  FUNDING_ADDRESS,
+  PORTFOLIO_ADDRESS,
+  READ,
+  testReads,
+  testWallet,
+} from "../support/screens.js";
 
 const OWN = "OwnAddress1111111111111111111111111111111111";
 const TO = "Recipient1111111111111111111111111111111WXYZ";
@@ -141,6 +151,137 @@ describe("sendFormView", () => {
   });
 });
 
+describe("sending from the main wallet", () => {
+  const reads = testReads();
+  const wallet = testWallet((w) => ({
+    ...w,
+    funding: { ...w.funding, sol: 0.5, tokens: { USDC: 25, NVDAx: 4 } },
+    portfolios: [
+      {
+        ...w.portfolios[0],
+        holdings: [
+          { symbol: "USDC", amount: 40, cost: 40 },
+          { symbol: "NVDAx", amount: 2, cost: 150 },
+          { symbol: "SOL", amount: 0.1, cost: 10 },
+        ],
+      },
+    ],
+  }));
+  const source = sendSourceView(reads, wallet, FUNDING)!;
+
+  it("is a source of its own: its title, its address, and its USDC and SOL only", () => {
+    expect(source).toEqual({
+      title: "Send from main wallet",
+      name: "your main wallet",
+      ownAddress: FUNDING_ADDRESS,
+      archived: false,
+      assets: [
+        { symbol: "USDC", label: "Cash", held: 25 },
+        { symbol: "SOL", label: "SOL", held: 0.5 },
+      ],
+      empty: "Your main wallet is empty.",
+      funding: { ownPortfolios: [PORTFOLIO_ADDRESS] },
+    });
+    expect(sendSourceView(reads, testWallet(), FUNDING)?.assets).toEqual([]);
+  });
+
+  it("leaves a portfolio as the source it was, by platform", () => {
+    expect(sendSourceView(reads, wallet, "acc_1")).toEqual({
+      title: "Send from portfolio",
+      name: "Investing",
+      ownAddress: PORTFOLIO_ADDRESS,
+      archived: false,
+      assets: [
+        { symbol: "USDC", label: "Cash", held: 40 },
+        { symbol: "NVDAx", label: "NVDAx", held: 2 },
+      ],
+      empty: "This portfolio is empty.",
+    });
+    expect(sendSourceView(reads, wallet, "acc_1", "mobile")?.title).toBe("Send from Investing");
+    expect(sendSourceView(reads, wallet, "nope")).toBeNull();
+  });
+
+  it("will not review a send to one of the person's own portfolios, and says to use Move to portfolio", () => {
+    const toOwn = form(
+      { funding: source.funding, ownAddress: FUNDING_ADDRESS, destination: PORTFOLIO_ADDRESS },
+      { ownAddress: FUNDING_ADDRESS, destination: PORTFOLIO_ADDRESS },
+    );
+    expect(toOwn.recipientError).toBe(
+      "This address is one of your own portfolios. Use Move to portfolio, which keeps the portfolio separate from your main wallet.",
+    );
+    expect(toOwn.canReview).toBe(false);
+    expect(toOwn.review.disabled).toBe(true);
+    // The same address from a portfolio is reviewed, with its link warning, as before.
+    expect(
+      form({ destination: PORTFOLIO_ADDRESS }, { destination: PORTFOLIO_ADDRESS }),
+    ).toMatchObject({ recipientError: null, canReview: true });
+    expect(sendRecipientRefusal({ recipient: "ownPortfolio" })).toBe(toOwn.recipientError);
+  });
+
+  it("speaks of the main wallet, not of a portfolio, in the form", () => {
+    const view = form({ funding: source.funding });
+    expect(view.canReview).toBe(true);
+    expect(view.explainer).toMatch(
+      /^A real transfer on Solana, straight from your main wallet to the recipient\./,
+    );
+    expect(
+      form(
+        { funding: source.funding, ownAddress: FUNDING_ADDRESS, destination: FUNDING_ADDRESS },
+        { ownAddress: FUNDING_ADDRESS, destination: FUNDING_ADDRESS },
+      ).recipientError,
+    ).toBe("Choose an address other than your main wallet's own.");
+    expect(form({ funding: source.funding }, { amountText: "500" }).amountError).toBe(
+      "More than your main wallet holds",
+    );
+    const onPhone = form({ funding: source.funding, platform: "mobile" });
+    expect(JSON.stringify(onPhone)).not.toMatch(/this portfolio/i);
+  });
+
+  it("says who pays the network cost in the review, and where the money for it comes from", () => {
+    expect(review({ fromFunding: true, sendAmount: 9.96 }).cashNote).toBe(
+      "0.04 USDC from your main wallet pays the network cost, so 9.96 USDC is sent, not 10.00 USDC.",
+    );
+    const ownSol = review({ fromFunding: true, cost: { kind: "ownSol", usd: 0.2 } });
+    expect(ownSol.terms.at(-1)).toEqual({
+      label: "Network cost",
+      value: "about 0.20 USD, paid from your main wallet's SOL balance",
+    });
+    expect(ownSol.confirm.disabled).toBe(false);
+    const relayed = review({
+      fromFunding: true,
+      cost: { kind: "relayer", fee: 0.02, feeRaw: 20_000n, opens: null, count: 1 },
+    });
+    expect(relayed.networkCost.details?.body).toBe(
+      "Every action has a small network cost. NoirWire's relayer pays it, and your main wallet pays the relayer back exactly 0.020000 USDC, from its USDC, in the same transaction. The cost moves with the market: if it has risen by the time you confirm, nothing is sent and you are shown the new cost first. A transaction paid this way shows publicly that your main wallet uses NoirWire. It does not show your portfolios.",
+    );
+    const short = review({
+      fromFunding: true,
+      cost: { kind: "needsCash", cash: 0.04, free: 0.01 },
+    });
+    expect(short.needsCash).toEqual({
+      text: "Your main wallet needs at least 0.04 USDC to pay the network cost, and would have 0.01 USDC to spare.",
+      action: "Add money",
+    });
+    expect(short.confirm.disabled).toBe(true);
+    // A portfolio's review is worded as it was.
+    expect(review({ cost: { kind: "needsCash", cash: 0.04, free: 0.01 } }).needsCash?.action).toBe(
+      "Move to portfolio",
+    );
+  });
+
+  it("names SOL as an asset on the phone, and says how it ended in the main wallet's name", () => {
+    const sol = review({ fromFunding: true, symbol: "SOL", platform: "mobile" });
+    expect(sol.terms[0]).toEqual({ label: "Asset", value: "SOL" });
+    expect(sol.terms.at(-1)?.value).toBe("0.000005 SOL, on top of the amount");
+    expect(sendResultView("landed", "10.00 USDC", source.name).body).toBe(
+      "To the address you entered. It has left your main wallet.",
+    );
+    expect(sendResultView("unknown", "10.00 USDC", source.name).body).toBe(
+      "This was sent but could not be confirmed. It may still go through. Check your main wallet's balance before trying again.",
+    );
+  });
+});
+
 describe("sendReviewView", () => {
   it("lists the terms, with the dollar value when there is a live price", () => {
     const view = review();
@@ -179,12 +320,12 @@ describe("sendReviewView", () => {
     expect(review().cashNote).toBeNull();
   });
 
-  it("warns about linking the portfolio to the funding wallet or another portfolio", () => {
+  it("warns about linking the portfolio to the main wallet or another portfolio", () => {
     expect(
       review({ recipient: { kind: "own", which: "funding", label: "Funding" } }).linkWarning,
     ).toEqual({
       title: "This links the two addresses publicly.",
-      body: "Anyone can then see that this portfolio and your funding wallet belong to the same person.",
+      body: "Anyone can then see that this portfolio and your main wallet belong to the same person.",
       accept: "I understand this links them",
     });
     expect(

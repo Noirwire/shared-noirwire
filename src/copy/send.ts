@@ -1,6 +1,6 @@
 import type { Unsendable } from "../domain/recipients.js";
 
-/** Sending from a portfolio to an address. */
+/** Sending from a portfolio, or from the main wallet (`mainWallet`), to an address. */
 export const sendCopy = {
   title: "Send from portfolio",
   empty: "This portfolio is empty.",
@@ -17,7 +17,7 @@ export const sendCopy = {
   invalidAmount: "Enter an amount, like 12.50.",
   review: "Review",
   explainer: (network: string, symbol: string) =>
-    `Real transfer on ${network}, straight from this portfolio's own ${symbol} balance to the recipient. It cannot be reversed. Before sending, the address is checked to be a wallet and not a token, a token account or a program; who owns it is not verified. This portfolio pays its own network cost, including opening the recipient's account for this asset when they have none, because paying from the funding wallet would publicly link the two. The cost is a few cents, taken from its USDC as part of the send, and the review shows the amount first.`,
+    `Real transfer on ${network}, straight from this portfolio's own ${symbol} balance to the recipient. It cannot be reversed. Before sending, the address is checked to be a wallet and not a token, a token account or a program; who owns it is not verified. This portfolio pays its own network cost, including opening the recipient's account for this asset when they have none, because paying from your main wallet would publicly link the two. The cost is a few cents, taken from its USDC as part of the send, and the review shows the amount first.`,
 
   reviewTitle: "Review send",
   recipientAddress: "Recipient address",
@@ -35,7 +35,7 @@ export const sendCopy = {
   linksTitle: "This links the two addresses publicly.",
   linksBody: (other: string) =>
     `Anyone can then see that this portfolio and your ${other} belong to the same person.`,
-  fundingWallet: "funding wallet",
+  fundingWallet: "main wallet",
   otherPortfolio: (label: string) => `other portfolio (${label})`,
   acceptLink: "I understand this links them",
   firstTime:
@@ -82,6 +82,25 @@ export const sendCopy = {
   unknownTitle: "Sent, but not confirmed",
   unknownBody: (portfolio: string) =>
     `This was sent but could not be confirmed. It may still go through. Check ${portfolio}'s balance before trying again.`,
+
+  /**
+   * What a send says differently when it leaves the main wallet. It is the
+   * public wallet, so it pays its own network cost, and money for one of the
+   * person's own portfolios goes through Move to portfolio.
+   */
+  mainWallet: {
+    title: "Send from main wallet",
+    /** The name it goes by inside a sentence: "It has left your main wallet." */
+    name: "your main wallet",
+    ownAddress: "Choose an address other than your main wallet's own.",
+    useMove:
+      "This address is one of your own portfolios. Use Move to portfolio, which keeps the portfolio separate from your main wallet.",
+    moreThanHeld: "More than your main wallet holds",
+    explainer: (network: string) =>
+      `A real transfer on ${network}, straight from your main wallet to the recipient. It cannot be reversed. The address is checked to be a wallet and not a token, a token account or a program; who owns it is not verified. The review shows the network cost first.`,
+    cashPaysCost: (kept: string, sent: string, typed: string) =>
+      `${kept} from your main wallet pays the network cost, so ${sent} is sent, not ${typed}.`,
+  },
 } as const;
 
 /**

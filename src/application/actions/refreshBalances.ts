@@ -1,9 +1,22 @@
 import { reconcileTrackers, sameTrackerAmounts } from "../../domain/holdings.js";
+import type { Wallet } from "../../domain/wallet.js";
+import { FUNDING } from "../pendingActions.js";
 import { activePortfolios } from "../portfolio.js";
 import type { PriceReader, Track, WalletStore } from "../ports.js";
 import { readWithRetries } from "../retries.js";
-import { hasFunds, mapPortfolio, setRealHolding } from "../walletRecord.js";
+import {
+  anyActionPending,
+  fundingBalance,
+  hasFunds,
+  logged,
+  mapPortfolio,
+  setRealHolding,
+  withFundingBalance,
+} from "../walletRecord.js";
 import type { Refresh } from "./common.js";
+
+/** The smallest amount of SOL, the finest unit of anything the funding wallet's read returns. */
+const SOL_UNIT = 1_000_000_000;
 
 /** What re-reading balances asks of the chain. Reading needs only an address; nothing is signed. */
 export type BalanceChain = {
@@ -20,7 +33,7 @@ export type BalanceChain = {
 export type BalanceDeps = {
   store: WalletStore;
   chain: BalanceChain;
-  prices: Pick<PriceReader, "price" | "isPosition">;
+  prices: PriceReader;
   track: Track;
   /** The portfolios in an order that says nothing about when each was created. */
   shuffle<T>(items: T[]): T[];
@@ -52,18 +65,10 @@ export function createBalanceRefresh(deps: BalanceDeps) {
     if (before?.address === address && !hasFunds(before) && balance > 0) {
       deps.track("deposit_detected");
     }
+    // No arrival is written from here: this is the read an action makes
+    // after it lands, and what it finds is that action's own doing.
     store.update((wallet) =>
-      wallet.funding.address !== address
-        ? wallet
-        : symbol === "SOL"
-          ? { ...wallet, funding: { ...wallet.funding, sol: balance } }
-          : {
-              ...wallet,
-              funding: {
-                ...wallet.funding,
-                tokens: { ...wallet.funding.tokens, [symbol]: balance },
-              },
-            },
+      wallet.funding.address !== address ? wallet : withFundingBalance(wallet, symbol, balance),
     );
     return balance;
   }
@@ -131,29 +136,76 @@ export function createBalanceRefresh(deps: BalanceDeps) {
   }
 
   /**
+   * What `balances` shows arrived in the funding wallet from outside: each
+   * asset it now holds more of than was stored, by the difference. Nothing
+   * for an asset whose stored balance changed while the read was on its way:
+   * the read may be from before that change, and would undo it.
+   */
+  function arrivals(
+    seen: Wallet["funding"],
+    stored: Wallet["funding"],
+    balances: Record<string, number>,
+  ): { symbol: string; amount: number }[] {
+    return Object.entries(balances).flatMap(([symbol, balance]) => {
+      const held = fundingBalance(stored, symbol) ?? 0;
+      if ((fundingBalance(seen, symbol) ?? 0) !== held || !(balance > held)) return [];
+      return [{ symbol, amount: Math.round((balance - held) * SOL_UNIT) / SOL_UNIT }];
+    });
+  }
+
+  /**
    * Re-reads the funding wallet's SOL and cash balances and stores them, in
    * case they drifted (an external deposit). Reading needs only the address,
    * so nothing is derived from the phrase. Resolves to whether the read came
    * back.
+   *
+   * More of an asset than was stored is written into Activity as money that
+   * arrived, unless it could be this wallet's own doing or was there all
+   * along: nothing is written while any action is reserved or unsettled, nor
+   * from the first read of an imported wallet. A missed arrival is only a
+   * missing line; a false one would report money that never came.
    */
   async function fundingBalances(): Promise<boolean> {
     const current = store.snapshot();
     if (!current) return false;
-    const { address } = current.funding;
+    const seen = current.funding;
+    const { address } = seen;
+    const quietBefore = !anyActionPending(current);
     const balances = await chain.cashBalances(address).catch(() => null);
     if (!balances) return false;
     const { SOL: sol, ...tokens } = balances;
-    if (!hasFunds(current.funding) && Object.values(balances).some((amount) => amount > 0)) {
+    if (!hasFunds(seen) && Object.values(balances).some((amount) => amount > 0)) {
       deps.track("deposit_detected");
     }
-    store.update((wallet) =>
-      wallet.funding.address !== address
-        ? wallet
-        : {
-            ...wallet,
-            funding: { ...wallet.funding, sol, tokens: { ...wallet.funding.tokens, ...tokens } },
-          },
-    );
+    store.update((wallet) => {
+      if (wallet.funding.address !== address) return wallet;
+      const firstRead = wallet.imported === true && !wallet.funding.balancesRead;
+      const read: Wallet = {
+        ...wallet,
+        funding: {
+          ...wallet.funding,
+          sol,
+          tokens: { ...wallet.funding.tokens, ...tokens },
+          ...(wallet.imported ? { balancesRead: true as const } : {}),
+        },
+      };
+      if (firstRead || !quietBefore || anyActionPending(wallet)) return read;
+      return arrivals(seen, wallet.funding, balances).reduce(
+        (next, { symbol, amount }) =>
+          logged(
+            next,
+            {
+              portfolioId: FUNDING,
+              kind: "deposit",
+              symbol,
+              amount,
+              usd: amount * prices.price(symbol),
+            },
+            prices,
+          ),
+        read,
+      );
+    });
     return true;
   }
 

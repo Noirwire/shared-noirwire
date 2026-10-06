@@ -19,7 +19,6 @@ import {
   fundingProgressView,
   fundingReviewView,
   fundingWalletRow,
-  fundingWalletView,
 } from "../../../src/presentation/funding.js";
 import {
   sendAssets,
@@ -53,16 +52,16 @@ describe("moving money in, on the phone", () => {
   it("states the arithmetic in USDC and never names SOL", () => {
     const view = amount("10");
     expect(view.lead).toBe(
-      "Move USDC into Investing without publishing a transfer between your funding wallet and it.",
+      "Move USDC into Investing without publishing a transfer between your main wallet and it.",
     );
-    expect(view.available).toEqual({ label: "Available in funding wallet", value: "100.00 USDC" });
+    expect(view.available).toEqual({ label: "Available in main wallet", value: "100.00 USDC" });
     expect(view.presets.map((preset) => preset.label)).toEqual(["10", "25", "50", "100"]);
     expect(view.terms).toEqual([
       { label: "Arrives in Investing", value: "10.00 USDC" },
       { label: "Privacy fee, 0.1% of the amount", value: "+ 0.01 USDC" },
       { label: "Relay fee, flat", value: "+ 0.20 USDC" },
     ]);
-    expect(view.total).toEqual({ label: "Leaves your funding wallet", value: "10.21 USDC" });
+    expect(view.total).toEqual({ label: "Leaves your main wallet", value: "10.21 USDC" });
     expect(view.next).toEqual({ label: "Review", disabled: false });
     expect(JSON.stringify(view)).not.toMatch(/\bSOL\b/);
   });
@@ -75,8 +74,8 @@ describe("moving money in, on the phone", () => {
     });
     expect(amount("10", 100, false).next.disabled).toBe(true);
     expect(amount("", 0).emptyNotice).toEqual({
-      title: "Your funding wallet is empty.",
-      detail: "Add money to your funding wallet first.",
+      title: "Your main wallet is empty.",
+      detail: "Add money to your main wallet first.",
       action: "Add money",
     });
   });
@@ -92,8 +91,8 @@ describe("moving money in, on the phone", () => {
       online: false,
     });
     expect(view.title).toBe("Review");
-    expect(view.total).toEqual({ label: "Total leaving your funding wallet", value: "10.21 USDC" });
-    expect(view.totalSpoken).toBe("Total leaving your funding wallet, 10 point 21 USDC");
+    expect(view.total).toEqual({ label: "Total leaving your main wallet", value: "10.21 USDC" });
+    expect(view.totalSpoken).toBe("Total leaving your main wallet, 10 point 21 USDC");
     expect(view.note).toBe("If the transfer would take more than this total, it is not signed.");
     expect(view.confirm.disabled).toBe(true);
     expect(JSON.stringify(view)).not.toMatch(/\bSOL\b/);
@@ -153,20 +152,9 @@ describe("moving money in, on the phone", () => {
     });
   });
 
-  it("shows the funding wallet's waiting cash, and moves it only when there is some", () => {
+  it("shows the main wallet's USDC on its Settings row, and nothing until it has been read", () => {
     expect(fundingWalletRow(undefined).value).toBeUndefined();
-    expect(fundingWalletRow(3).value).toBe("3.00 USDC");
-    expect(fundingWalletView({ balance: null, readFailed: false }).move.disabled).toBe(true);
-    expect(fundingWalletView({ balance: 0, readFailed: true })).toMatchObject({
-      lead: "Nothing is waiting. Add money to your funding wallet first.",
-      readFailed:
-        "We couldn't update your balance. What you see may be out of date. Pull down to try again.",
-      move: { quiet: true, disabled: true },
-    });
-    expect(fundingWalletView({ balance: 12, readFailed: false })).toMatchObject({
-      balanceLabel: "12.00 USDC waiting to be moved",
-      move: { quiet: false, disabled: false },
-    });
+    expect(fundingWalletRow(3)).toMatchObject({ label: "Main wallet", value: "3.00 USDC" });
   });
 });
 

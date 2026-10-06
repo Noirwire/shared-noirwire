@@ -26,6 +26,7 @@ export {
   dayHeading,
   entryAmount,
   filterActivity,
+  fundingActivity,
   newestFirst,
   recentActivity,
 } from "./activity.js";
@@ -56,6 +57,9 @@ export {
   type FundingAmountView,
   type FundingProgressView,
   type FundingReviewView,
+  type FundingWalletAction,
+  type FundingWalletTarget,
+  type FundingWalletView,
   PRIVATE_STAGES,
   type StageStatus,
   choosePortfolioView,
@@ -66,6 +70,7 @@ export {
   fundingReviewView,
   fundingTitle,
   fundingWalletRow,
+  fundingWalletValue,
   fundingWalletView,
 } from "./funding.js";
 export { type AboutLink, type AboutView, type BetaView, aboutView, betaView } from "./about.js";
@@ -209,6 +214,7 @@ export {
 export {
   FUNDING_PARAM,
   fundingReceiveParams,
+  fundingSendParams,
   isAddressFreeParam,
   pieOrderParams,
   portfolioParams,
@@ -217,6 +223,7 @@ export {
   readPortfolioParam,
   readPublicView,
   readReceiveTarget,
+  readSendSource,
   readSide,
   readsFunding,
   tradeParams,
@@ -224,6 +231,7 @@ export {
 export {
   type SendFormState,
   type SendReviewState,
+  type SendSourceView,
   type SendStage,
   maxAmountText,
   sendAssets,
@@ -232,6 +240,7 @@ export {
   sendProgressView,
   sendResultView,
   sendReviewView,
+  sendSourceView,
 } from "./send.js";
 export {
   type NoMoneyView,

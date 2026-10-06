@@ -390,6 +390,37 @@ describe("the wallet store", () => {
       expect(written.wallet.activity[0]).not.toHaveProperty("portfolioId");
     });
 
+    it("opens a record whose activity belongs to the funding wallet, and refuses one that names no portfolio", async () => {
+      const arrival = {
+        id: "act_2",
+        accountId: "funding",
+        at: 1_750_000_002_000,
+        kind: "deposit" as const,
+        symbol: "USDC",
+        amount: 25,
+        usd: 25,
+      };
+      const record = storedToday();
+      record.wallet.activity.unshift(arrival);
+      record.wallet.funding.balancesRead = true;
+      await seedStored(window, record);
+      const store = await tab();
+      expect(await store.unlock(PASSWORD)).toBeNull();
+      expect(store.getSnapshot()?.activity[0]).toMatchObject({
+        portfolioId: "funding",
+        kind: "deposit",
+        amount: 25,
+      });
+      expect(store.getSnapshot()?.funding.balancesRead).toBe(true);
+
+      const stray = storedToday();
+      stray.wallet.activity.unshift({ ...arrival, accountId: "acc_gone" });
+      await seedStored(window, stray);
+      const other = await tab();
+      expect(await other.unlock(PASSWORD)).not.toBeNull();
+      expect(other.getSnapshot()).toBeNull();
+    });
+
     it("reads the activity of a v8 wallet under the names it was written with", async () => {
       window.localStorage.setItem(LEGACY_STORAGE_KEY, V8_WALLET_JSON);
       const store = await tab();

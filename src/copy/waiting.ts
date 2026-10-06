@@ -44,6 +44,6 @@ export const mobileWaitingCopy = {
       "We couldn't load prices. They are missing or out of date here, and are asked for again every half minute.",
     chart: "We couldn't load this chart.",
     earn: "We couldn't update what is in Earn. What you see may be out of date.",
-    fundingBalance: "We couldn't read your funding wallet's balance.",
+    fundingBalance: "We couldn't read your main wallet's balance.",
   },
 } as const;

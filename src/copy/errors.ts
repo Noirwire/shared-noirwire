@@ -36,7 +36,7 @@ export const errorsCopy = {
     failed: "We couldn't move this money. Nothing was moved. Try again.",
     notPrivate: (symbol: string) => `${symbol} cannot be moved privately. Use a supported token.`,
     privateNotStarted:
-      "The private move could not be started. Nothing left your funding wallet. Try again.",
+      "The private move could not be started. Nothing left your main wallet. Try again.",
   },
 
   send: {
@@ -44,6 +44,10 @@ export const errorsCopy = {
     notCompleted:
       "This send can't be made. Nothing was sent. Check the amount and the recipient's address.",
     moreThanOnchain: "More than this portfolio holds.",
+    moreThanMainWallet: "More than your main wallet holds.",
+    /** A send from the main wallet to one of the person's own portfolios. */
+    useMove:
+      "This address is one of your own portfolios. Nothing was sent. Use Move to portfolio, which keeps the portfolio separate from your main wallet.",
     failed: "We couldn't complete this send. Nothing was sent. Try again.",
   },
 

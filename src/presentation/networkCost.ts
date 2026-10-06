@@ -12,6 +12,8 @@ export type NetworkCostState = {
   submitting: boolean;
   /** An Earn withdrawal, which pays out of the USDC it returns. */
   withdrawing?: boolean;
+  /** The main wallet pays, for a send of its own. A portfolio when absent. */
+  fromFunding?: boolean;
 };
 
 export type NetworkCostView = {
@@ -21,7 +23,11 @@ export type NetworkCostView = {
   tone: "neutral" | "warning";
   /** Said under the terms: why the cost is as large as it is, or why it cannot be met. */
   explanation: readonly string[];
-  /** A cost the portfolio's cash cannot cover: the sentence around the way to move money in. */
+  /**
+   * A cost the payer's cash cannot cover: the sentence around the way to get
+   * money in. Its link is "Move to portfolio" for a portfolio and "Add money"
+   * for the main wallet.
+   */
   moveMoney: { before: string; link: string; after: string } | null;
   /** A cost the relayer pays: what it is, behind a disclosure. */
   details: { summary: string; body: string } | null;
@@ -43,12 +49,32 @@ function payable(cost: NetworkCost): boolean {
   return cost.kind === "covered" || cost.kind === "relayer" || cost.kind === "ownSol";
 }
 
-function figure(cost: NetworkCost | null): string {
+/** The sentences that name who pays: a portfolio, or the main wallet for a send of its own. */
+const PAYER = {
+  portfolio: {
+    fromOwnSol: copy.fromOwnSol,
+    needsCash: copy.needsCash,
+    moveMoney: copy.moveToPortfolio,
+    paysBack: copy.relayer.paysBack,
+    movesWithMarket: copy.relayer.movesWithMarket,
+  },
+  funding: {
+    fromOwnSol: copy.mainWallet.fromOwnSol,
+    needsCash: copy.mainWallet.needsCash,
+    moveMoney: copy.mainWallet.addMoney,
+    paysBack: copy.mainWallet.paysBack,
+    movesWithMarket: copy.mainWallet.movesWithMarket,
+  },
+} as const;
+
+type Payer = (typeof PAYER)[keyof typeof PAYER];
+
+function figure(cost: NetworkCost | null, payer: Payer): string {
   if (cost === null) return copy.checking;
   if (cost.kind === "covered") return copy.covered;
   if (cost.kind === "relayer") return feeFigure(cost.fee);
   if (cost.kind === "ownSol") {
-    return copy.fromOwnSol(cost.usd < ONE_CENT ? null : cost.usd.toFixed(2));
+    return payer.fromOwnSol(cost.usd < ONE_CENT ? null : cost.usd.toFixed(2));
   }
   return copy.notAvailable;
 }
@@ -61,6 +87,7 @@ function openingReason(opens: Opens | null, count: number): readonly string[] {
 function relayerDetails(
   cost: Extract<NetworkCost, { kind: "relayer" }>,
   withdrawing: boolean,
+  payer: Payer,
 ): NetworkCostView["details"] {
   const several = cost.count > 1;
   const after =
@@ -71,13 +98,14 @@ function relayerDetails(
       : copy.relayer.sameTransaction;
   return {
     summary: copy.relayer.summary(feeFigure(cost.fee)),
-    body: `${copy.relayer.paysBack(cost.fee.toFixed(6))}${withdrawing ? copy.relayer.fromWithdrawal : copy.relayer.fromCash}${after}${copy.relayer.movesWithMarket}`,
+    body: `${payer.paysBack(cost.fee.toFixed(6))}${withdrawing ? copy.relayer.fromWithdrawal : copy.relayer.fromCash}${after}${payer.movesWithMarket}`,
   };
 }
 
 function notes(
   cost: NetworkCost | null,
   withdrawing: boolean,
+  payer: Payer,
 ): Pick<NetworkCostView, "explanation" | "moveMoney" | "details"> {
   const none = { explanation: [], moveMoney: null, details: null };
   if (cost === null || cost.kind === "covered" || cost.kind === "ownSol") return none;
@@ -86,18 +114,18 @@ function notes(
       return {
         explanation: openingReason(cost.opens, cost.count),
         moveMoney: null,
-        details: relayerDetails(cost, withdrawing),
+        details: relayerDetails(cost, withdrawing, payer),
       };
     case "needsCash":
       return {
         ...none,
         moveMoney: {
-          before: copy.needsCash(
+          before: payer.needsCash(
             feeFigure(cost.cash),
             cost.cash < ONE_CENT,
             symbolAmount("USDC", cost.free),
           ),
-          link: copy.moveToPortfolio,
+          link: payer.moveMoney,
           after: copy.orSmaller,
         },
       };
@@ -120,13 +148,15 @@ export function networkCostView({
   pending,
   submitting,
   withdrawing = false,
+  fromFunding = false,
 }: NetworkCostState): NetworkCostView {
   const canPay = cost !== null && payable(cost);
+  const payer = fromFunding ? PAYER.funding : PAYER.portfolio;
   return {
     label: copy.label,
-    value: figure(cost),
+    value: figure(cost, payer),
     tone: cost === null || canPay ? "neutral" : "warning",
-    ...notes(cost, withdrawing),
+    ...notes(cost, withdrawing, payer),
     confirmDisabled: !canPay || pending.blocked || submitting,
   };
 }

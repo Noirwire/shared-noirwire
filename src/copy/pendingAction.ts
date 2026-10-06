@@ -2,18 +2,18 @@
 const notRecordedIn = (place: string) => `This could not be saved ${place}, so nothing was sent.`;
 
 /**
- * What a screen says while a portfolio's last action, or the funding
- * wallet's last move of money, is reserved or not yet settled, and how it
- * ended.
+ * What a screen says while a portfolio's last action, or the main wallet's
+ * last move of money (into a portfolio, or a send), is reserved or not yet
+ * settled, and how it ended.
  */
 export const pendingActionCopy = {
   subject: {
     portfolio: "Your last action from this portfolio",
-    funding: "Your last move of money from the funding wallet",
+    funding: "Your last move of money from your main wallet",
   },
   balance: {
     portfolio: "this portfolio's balance",
-    funding: "the funding wallet's balance",
+    funding: "your main wallet's balance",
   },
   unresolved: (subject: string, what: string, where: string) =>
     `We could not confirm whether ${subject.charAt(0).toLowerCase()}${subject.slice(1)} (${what}) went through. Check ${where}; you can clear this once you have.`,

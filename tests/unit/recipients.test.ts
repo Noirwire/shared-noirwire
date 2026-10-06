@@ -18,7 +18,7 @@ describe("classifyRecipient", () => {
   it("recognizes the wallet's funding and account addresses", () => {
     expect(classifyRecipient(funding, wallet)).toEqual({
       kind: "own",
-      label: "Funding wallet",
+      label: "Main wallet",
       which: "funding",
     });
     expect(classifyRecipient(account, wallet)).toEqual({

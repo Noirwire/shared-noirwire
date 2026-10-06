@@ -3,12 +3,14 @@ import { commonCopy } from "../../../src/copy/common.js";
 import { marketsCopy } from "../../../src/copy/markets.js";
 import { portfolioCopy } from "../../../src/copy/portfolio.js";
 import { STALE_AFTER_MS, recordRead } from "../../../src/domain/freshness.js";
+import type { Wallet } from "../../../src/domain/wallet.js";
 import { homeView } from "../../../src/presentation/home.js";
 import {
   FIRST_READ_FAILED,
   FIRST_READ_PENDING,
   FRESH,
   READ,
+  TEST_PRICES,
   UPDATED_AT,
   activity,
   holding,
@@ -55,7 +57,7 @@ describe("homeView", () => {
     expect(view.primary).toEqual({ label: "Add money", target: { to: "addMoney" } });
     expect(view.secondary).toBeNull();
     expect(view.explanation).toBe(
-      "Your money arrives in your funding wallet. Then you move it into a portfolio.",
+      "Your money arrives in your main wallet. Then you move it into a portfolio.",
     );
     expect(view.portfolios[0]).toMatchObject({ name: "Investing", line: "No investments yet" });
   });
@@ -115,12 +117,12 @@ describe("homeView", () => {
     expect(view.investments[0].value).toBe(commonCopy.priceUnavailable);
   });
 
-  it("puts USDC waiting in the funding wallet first, with the one primary button", () => {
+  it("puts USDC waiting in the main wallet first, with the one primary button", () => {
     const wallet = testWallet((w) => ({ ...w, funding: { ...w.funding, tokens: { USDC: 250 } } }));
     const view = homeView(reads, wallet, UPDATED_AT, undefined, NOTHING_ARCHIVED, FRESH);
     expect(view.empty).toBe(false);
     expect(view.waiting?.text).toBe(
-      "250.00 USDC has arrived in your funding wallet. Move it to a portfolio before buying.",
+      "250.00 USDC is in your main wallet. Move it to a portfolio to invest.",
     );
     expect(view.waiting?.action).toEqual({
       label: "Move to Investing",
@@ -131,6 +133,34 @@ describe("homeView", () => {
     const withoutIt = homeView(reads, testWallet(), UPDATED_AT, undefined, NOTHING_ARCHIVED, FRESH);
     expect(view.total.value).not.toBe(withoutIt.total.value);
     expect(view.cash.value).toBe(withoutIt.cash.value);
+  });
+
+  it("gives the main wallet a row of its own: its name, what it holds in dollars, and its page", () => {
+    const funded = testWallet((w) => ({
+      ...w,
+      funding: { ...w.funding, sol: 0.5, tokens: { USDC: 250 } },
+    }));
+    const priced = testReads({ ...TEST_PRICES, SOL: { usd: 200, change24h: 0 } });
+    const home = (
+      wallet: Wallet,
+      freshness: Parameters<typeof homeView>[5] = FRESH,
+      screenReads = priced,
+    ) => homeView(screenReads, wallet, UPDATED_AT, undefined, NOTHING_ARCHIVED, freshness);
+    expect(home(funded).fundingWallet).toEqual({
+      label: "Main wallet",
+      value: "$350.00",
+      target: { to: "fundingWallet" },
+    });
+    expect(home(testWallet()).fundingWallet.value).toBe("$0.00");
+    // Nothing is known of it until balances are read, and SOL needs a price to be counted.
+    expect(home(funded, { ...FRESH, balances: FIRST_READ_PENDING }).fundingWallet.value).toBeNull();
+    expect(home(funded, { ...FRESH, balances: FIRST_READ_FAILED }).fundingWallet.value).toBeNull();
+    expect(home(funded, FRESH, reads).fundingWallet.value).toBeNull();
+    // The notice and its action are as they were.
+    expect(home(funded).waiting?.action).toEqual({
+      label: "Move to Investing",
+      target: { to: "fund", portfolioId: "acc_1" },
+    });
   });
 
   it("lists archived portfolios apart, and keeps them out of the total", () => {
@@ -302,7 +332,7 @@ describe("homeView", () => {
 
     it("keeps the last figures, with the stale notice, when a later refresh fails", () => {
       const view = home(recordRead(READ, false, UPDATED_AT + 1_000), funded);
-      // The portfolio's 140 and the 5 USDC waiting in the funding wallet.
+      // The portfolio's 140 and the 5 USDC waiting in the main wallet.
       expect(view.total.value).toBe("$145.00");
       expect(view.cash.value).toBe("$40.00");
       expect(view.portfolios[0].value).toBe("$140.00");

@@ -7,6 +7,7 @@ import {
   activityListView,
   activityRow,
   dayHeading,
+  fundingActivity,
 } from "../../../src/presentation/activity.js";
 import { activity, testReads, testWallet } from "../support/screens.js";
 
@@ -94,6 +95,107 @@ describe("activityRow", () => {
       title: "Returned from Earn",
       value: { text: "+$10.00", tone: "safe" },
     });
+  });
+});
+
+describe("the main wallet's activity", () => {
+  const arrival = activity({
+    id: "arrival",
+    portfolioId: "funding",
+    kind: "deposit",
+    amount: 100,
+    usd: 100,
+    at: NOW - 3 * DAY,
+  });
+  const move = activity({
+    id: "move",
+    portfolioId: "acc_1",
+    kind: "fund",
+    amount: 60,
+    usd: 60,
+    at: NOW - 2 * DAY,
+  });
+  const sent = activity({
+    id: "sent",
+    portfolioId: "funding",
+    kind: "send",
+    amount: 15,
+    usd: 15,
+    counterparty: "Dest",
+    at: NOW - DAY,
+  });
+  const buy = activity({ id: "buy", portfolioId: "acc_1", kind: "buy", symbol: "NVDAx", at: NOW });
+  const wallet = withEntries([arrival, move, sent, buy]);
+  const titlesOf = (filter: (typeof ACTIVITY_FILTERS)[number]["id"]) => {
+    const view = activityListView(reads, {
+      wallet,
+      filter,
+      limit: 50,
+      now: NOW,
+      platform: "web",
+    });
+    return view.kind === "list" && view.sections.flatMap((s) => s.rows.map((row) => row.id));
+  };
+
+  it("names an entry of the main wallet as that, never as an unknown portfolio", () => {
+    expect(activityRow(reads, wallet, arrival)).toMatchObject({
+      icon: "in",
+      title: "Money arrived",
+      caption: "Main wallet",
+      value: { text: "+$100.00", tone: "safe" },
+      amount: "100.00 USDC",
+      spoken: "Money arrived, Main wallet, 27 September, plus $100.00, 100.00 USDC",
+    });
+    expect(activityRow(reads, wallet, sent)).toMatchObject({
+      icon: "out",
+      title: "Sent",
+      caption: "To an address you entered · Main wallet",
+      value: { text: "-$15.00", tone: "ink" },
+    });
+    expect(activityDetailView(reads, wallet, "arrival")).toMatchObject({
+      title: "Money arrived",
+      headline: "+$100.00",
+      portfolio: null,
+      portfolioFallback: "Main wallet",
+    });
+    expect(activityDetailView(reads, wallet, "sent")).toMatchObject({
+      portfolio: null,
+      portfolioFallback: "Main wallet",
+      recipient: "Dest",
+    });
+    // An entry whose portfolio is gone keeps the plain fallback.
+    const orphan = activity({ id: "orphan", portfolioId: "gone", kind: "fund" });
+    expect(activityDetailView(reads, withEntries([orphan]), "orphan")?.portfolioFallback).toBe(
+      "Portfolio",
+    );
+  });
+
+  it("files an arrival under Money in and a send from it under Money sent", () => {
+    expect(titlesOf("all")).toEqual(["buy", "sent", "move", "arrival"]);
+    expect(titlesOf("funding")).toEqual(["move", "arrival"]);
+    expect(titlesOf("transfers")).toEqual(["sent"]);
+    expect(titlesOf("trades")).toEqual(["buy"]);
+  });
+
+  it("lists its own arrivals and sends with every move into a portfolio, newest first, a move worded as money out", () => {
+    const rows = fundingActivity(reads, wallet);
+    expect(rows.map((row) => row.id)).toEqual(["sent", "move", "arrival"]);
+    expect(rows[1]).toMatchObject({
+      icon: "out",
+      title: "Moved to portfolio",
+      caption: "Investing",
+      value: { text: "-$60.00", tone: "ink" },
+      amount: "60.00 USDC",
+      spoken: "Moved to portfolio, Investing, 28 September, minus $60.00, 60.00 USDC",
+    });
+    // The same entry on the Activity screen is still money arriving in that portfolio.
+    expect(activityRow(reads, wallet, move)).toMatchObject({
+      icon: "in",
+      title: "Money arrived",
+      caption: "Investing",
+      value: { text: "+$60.00" },
+    });
+    expect(fundingActivity(reads, withEntries([buy]))).toEqual([]);
   });
 });
 
