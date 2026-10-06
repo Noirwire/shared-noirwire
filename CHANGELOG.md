@@ -4,6 +4,16 @@ All notable changes to this package are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The apps pin an exact tag; see [README.md](README.md#releasing) for how a tag becomes a release.
 
+## [0.8.0] - 2026-10-06
+
+A move to a portfolio is called arrived only once all of it is there. The settlement service delivers a private transfer in three parts, seconds apart, and the arrival was called on the first rise in the balance: a move of 10 USDC was reported, and recorded in Activity, as 3.33 USDC, while the other two parts landed a few seconds later.
+
+### Breaking
+
+For both apps:
+
+- [ ] **Move to portfolio**: `awaitPrivateArrival(deps, { portfolioId, symbol, balanceBefore, amount })` takes the `amount` that was moved, the same number passed to `fundPrivately`. It resolves once the balance has risen by all of it. When the window ends with only part of it there it resolves to the balance as it stands, and null still means nothing arrived.
+
 ## [0.7.0] - 2026-10-06
 
 The funding wallet is now called the main wallet, and it is a wallet in its own right. It is the person's own public wallet: money arrives there, it has a page of its own with one balance, its USDC and SOL, its activity and four actions, and it can send. Money for one of the person's own portfolios still only goes through Move to portfolio, which keeps the two apart in public. In code it is still `funding` everywhere: no type, field, function, route parameter or stored key was renamed.

@@ -21,6 +21,8 @@ import {
 
 /** How often the recipient's balance is re-read while a private transfer settles. Each read is a paid request. */
 const ARRIVAL_POLL_MS = 3_000;
+/** Less than the smallest unit of any token moved this way: what two amounts added as decimals may be off by. */
+const ARRIVAL_TOLERANCE = 1e-7;
 
 /**
  * How long to watch for a queued private transfer before calling it pending.
@@ -147,13 +149,19 @@ export async function fundPrivately<K extends Signer>(
 
 /**
  * Settles a queued private transfer by watching it land: polls the
- * recipient's real on-chain balance past where it started. Returns the new
- * balance, or null if the settlement window elapsed without it moving -
- * which is a "still pending", not a failure, and the screen says so.
+ * recipient's real on-chain balance until all of `amount` is there. The
+ * service delivers a transfer in several parts, seconds apart, so the first
+ * rise in the balance is only the first part: calling that the arrival
+ * would report a third of the money as the whole of it.
+ *
+ * Returns the new balance once everything has arrived. When the settlement
+ * window ends with only some of it there, returns the balance as it stands,
+ * and what did arrive is what is recorded. Null when nothing arrived in the
+ * window, which is a "still pending", not a failure, and the screen says so.
  */
 export async function awaitPrivateArrival<K extends Signer>(
   deps: Pick<FundPrivatelyDeps<K>, "store" | "prices" | "track" | "privateToken">,
-  input: { portfolioId: string; symbol: string; balanceBefore: number },
+  input: { portfolioId: string; symbol: string; balanceBefore: number; amount: number },
 ): Promise<number | null> {
   const { portfolioId: id, balanceBefore } = input;
   const { prices } = deps;
@@ -163,37 +171,39 @@ export async function awaitPrivateArrival<K extends Signer>(
   if (!current || !portfolio || !token) return null;
 
   const deadline = Date.now() + SETTLEMENT_TIMEOUT_MS;
+  const complete = balanceBefore + input.amount - ARRIVAL_TOLERANCE;
+  let balance = balanceBefore;
   let nudged = false;
 
-  while (Date.now() < deadline) {
+  while (Date.now() < deadline && balance < complete) {
     await new Promise((resolve) => setTimeout(resolve, ARRIVAL_POLL_MS));
-
-    const balance = await token.balance(portfolio.address).catch(() => balanceBefore);
-    if (balance > balanceBefore) {
-      deps.store.update((wallet) =>
-        logged(
-          mapPortfolio(wallet, id, (entry) => setRealHolding(prices, entry, token.symbol, balance)),
-          {
-            portfolioId: id,
-            kind: "fund",
-            symbol: token.symbol,
-            amount: balance - balanceBefore,
-            usd: (balance - balanceBefore) * prices.price(token.symbol),
-          },
-          prices,
-        ),
-      );
-      deps.track("private_funding_arrived");
-      return balance;
-    }
+    balance = await token.balance(portfolio.address).catch(() => balance);
 
     // One crank nudge partway through, rather than hammering the queue.
-    if (!nudged && Date.now() > deadline - SETTLEMENT_TIMEOUT_MS / 2) {
+    if (!nudged && balance < complete && Date.now() > deadline - SETTLEMENT_TIMEOUT_MS / 2) {
       nudged = true;
       void token.nudgeSettlement();
     }
   }
 
-  deps.track("private_funding_still_pending");
-  return null;
+  if (!(balance > balanceBefore)) {
+    deps.track("private_funding_still_pending");
+    return null;
+  }
+  const arrived = balance - balanceBefore;
+  deps.store.update((wallet) =>
+    logged(
+      mapPortfolio(wallet, id, (entry) => setRealHolding(prices, entry, token.symbol, balance)),
+      {
+        portfolioId: id,
+        kind: "fund",
+        symbol: token.symbol,
+        amount: arrived,
+        usd: arrived * prices.price(token.symbol),
+      },
+      prices,
+    ),
+  );
+  deps.track("private_funding_arrived");
+  return balance;
 }

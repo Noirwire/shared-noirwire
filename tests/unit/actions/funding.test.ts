@@ -237,12 +237,55 @@ describe("funding a portfolio privately", () => {
       portfolioId: "p1",
       symbol: "USDC",
       balanceBefore: 10,
+      amount: 19.7,
     });
     await vi.advanceTimersByTimeAsync(6_000);
     expect(await arrival).toBe(29.7);
     expect(h.holding("p1", "USDC")).toMatchObject({ amount: 29.7 });
     expect(h.wallet().activity[0]).toMatchObject({ kind: "fund", amount: expect.closeTo(19.7, 6) });
     expect(h.track).toHaveBeenCalledWith("private_funding_arrived");
+  });
+
+  it("waits for every part of a transfer delivered in three, and records the whole of it once", async () => {
+    vi.useFakeTimers();
+    const balance = vi
+      .fn()
+      .mockResolvedValueOnce(13.333333)
+      .mockResolvedValueOnce(16.666666)
+      .mockResolvedValue(20);
+    const { h, deps } = privately(privateToken({ balance }));
+    let settled: number | null | undefined;
+    const arrival = awaitPrivateArrival(deps, {
+      portfolioId: "p1",
+      symbol: "USDC",
+      balanceBefore: 10,
+      amount: 10,
+    }).then((value) => (settled = value));
+    await vi.advanceTimersByTimeAsync(6_000);
+    // Two of three parts are there: not an arrival yet, and nothing is recorded.
+    expect(settled).toBeUndefined();
+    expect(h.wallet().activity).toEqual([]);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(await arrival).toBe(20);
+    expect(h.holding("p1", "USDC")).toMatchObject({ amount: 20 });
+    expect(h.wallet().activity).toHaveLength(1);
+    expect(h.wallet().activity[0]).toMatchObject({ kind: "fund", amount: 10 });
+  });
+
+  it("records only what did arrive when the window ends with part of it still on its way", async () => {
+    vi.useFakeTimers();
+    const { h, deps } = privately(privateToken({ balance: vi.fn().mockResolvedValue(13.333333) }));
+    const arrival = awaitPrivateArrival(deps, {
+      portfolioId: "p1",
+      symbol: "USDC",
+      balanceBefore: 10,
+      amount: 10,
+    });
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(await arrival).toBe(13.333333);
+    expect(h.wallet().activity).toHaveLength(1);
+    expect(h.wallet().activity[0].amount).toBeCloseTo(3.333333, 6);
+    expect(h.track).not.toHaveBeenCalledWith("private_funding_still_pending");
   });
 
   it("calls it still pending, not failed, when nothing arrives in the window, nudging the queue once", async () => {
@@ -253,6 +296,7 @@ describe("funding a portfolio privately", () => {
       portfolioId: "p1",
       symbol: "USDC",
       balanceBefore: 10,
+      amount: 5,
     });
     await vi.advanceTimersByTimeAsync(120_000);
     expect(await arrival).toBeNull();
