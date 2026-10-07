@@ -199,6 +199,13 @@ export type Wallet = {
   activity: Activity[];
   watchlist: string[];
   /**
+   * The copy of the wallet's labels this device last synced with their
+   * mirror, as the mirror's own text (see src/domain/profile.ts). Kept here,
+   * in the encrypted record, because it is what tells a label changed on
+   * this device from one changed on another. Absent until a first sync.
+   */
+  syncedProfile?: string;
+  /**
    * Set on a wallet that was imported from its recovery phrase: what it did
    * before, on another device, was never recorded here.
    */

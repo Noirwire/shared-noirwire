@@ -110,10 +110,10 @@ export type MoneyLocks = PendingActionsDeps["locks"];
 
 const address = (value: string) => new PublicKey(value);
 
-const store = { snapshot: getSnapshot, update: updateWallet, isUnlocked, serialised };
+export const store = { snapshot: getSnapshot, update: updateWallet, isUnlocked, serialised };
 
 /** Asked for at the moment of each event, so the platform installed at boot is the one counted with. */
-const track: ActionDeps<Keypair>["track"] = (name, data) =>
+export const track: ActionDeps<Keypair>["track"] = (name, data) =>
   (getPlatform().track as (name: string, data?: object) => void)(name, data);
 
 async function balanceOf(owner: string, symbol: string): Promise<number> {

@@ -12,6 +12,8 @@ Pure rules and types: what a wallet, a portfolio, a holding, an order or a pie i
 
 `importResolution.ts` also holds the three numbers that keep a restore whole: how many unused addresses end an import's scan, the larger gap of the scan a person asks for, and how many never-used portfolios a wallet may have in a row, which is kept under the first.
 
+`profile.ts` is the wallet's own labels (portfolio names, marks, pies, archived state, the watchlist) as the record that mirrors them off the device: its envelope, and the merge of the device's labels with the mirror, field by field, by revision and never by a clock. The device wins a field it changed; a field or a key this version does not know passes through untouched.
+
 **Belongs here:** types, validation, arithmetic, formatting rules (`format.ts`).
 
 **May import:** nothing of ours. No other folder in this package, no platform seam, no library that talks to a network.

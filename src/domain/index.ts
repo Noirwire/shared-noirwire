@@ -61,6 +61,21 @@ export {
   type PortfolioIconTint,
   resolvePortfolioIcon,
 } from "./portfolioIcon.js";
+export {
+  MAX_PROFILE_BYTES,
+  PROFILE_VERSION,
+  type PortfolioLabels,
+  type ProfileChange,
+  type ProfileEnvelope,
+  type ProfileField,
+  type ProfileMerge,
+  decodeProfile,
+  encodeProfile,
+  mayWriteProfile,
+  mergeProfile,
+  profileFieldsOf,
+  withProfileChanges,
+} from "./profile.js";
 export { PRICE_RANGES, type PriceRange, RANGE_SPAN_MS, SERIES_TTL_SECONDS } from "./priceRanges.js";
 export {
   type RecipientClass,

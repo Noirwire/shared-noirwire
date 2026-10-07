@@ -2,7 +2,7 @@ import { MAX_UNUSED_PORTFOLIOS_IN_A_ROW } from "../../domain/importResolution.js
 import type { PortfolioIcon } from "../../domain/portfolioIcon.js";
 import type { PieSlice, Portfolio, Wallet } from "../../domain/wallet.js";
 import type { PieProblem } from "../pie.js";
-import type { OpenSession, Signer, Track, WalletStore } from "../ports.js";
+import type { OpenSession, Session, Signer, Track, WalletStore } from "../ports.js";
 import { refused, type Refused } from "../result.js";
 import { openSession } from "./common.js";
 
@@ -62,6 +62,20 @@ export function canCreatePortfolio(wallet: Wallet, fundingIndex: number): boolea
   return unusedPortfoliosInARow(wallet, fundingIndex) < MAX_UNUSED_PORTFOLIOS_IN_A_ROW;
 }
 
+/**
+ * A new portfolio record at `derivationIndex`, its address taken from the
+ * session's own key there and from nowhere else. Null once locked.
+ */
+export function portfolioAt<K extends Signer>(
+  deps: Pick<CreatePortfolioDeps<K>, "newPortfolio">,
+  session: Session<K>,
+  derivationIndex: number,
+  label: string,
+): Portfolio | null {
+  const key = session.keyAt(derivationIndex);
+  return key ? deps.newPortfolio(label, key.publicKey.toBase58(), derivationIndex) : null;
+}
+
 const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 /**
@@ -113,10 +127,9 @@ export async function createPortfolio<K extends Signer>(
       tooManyUnused = !canCreatePortfolio(current, deps.fundingIndex);
       if (nameTaken || tooManyUnused) return current;
       const index = nextDerivationIndex(current, deps.fundingIndex);
-      const key = session.keyAt(index);
+      const created = portfolioAt(deps, session, index, label);
       // Locked while this was waiting its turn: the wallet is left as it is.
-      if (!key) return current;
-      const created = deps.newPortfolio(label, key.publicKey.toBase58(), index);
+      if (!created) return current;
       // This can run a second time against a newer stored record: the
       // index is chosen again, the id handed to the caller stays.
       portfolio = {

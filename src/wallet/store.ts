@@ -197,7 +197,8 @@ function isStoredWallet(value: unknown): value is StoredWallet {
     !Array.isArray(value.accounts) ||
     !Array.isArray(value.activity) ||
     !Array.isArray(value.watchlist) ||
-    !value.watchlist.every(text)
+    !value.watchlist.every(text) ||
+    (value.syncedProfile !== undefined && !text(value.syncedProfile))
   )
     return false;
   const portfolioIds = new Set<string>();

@@ -1,7 +1,7 @@
 import "./buffer-polyfill.js";
 
-import { Buffer } from "buffer";
 import { SendTransactionError, type PublicKey, type VersionedTransaction } from "@solana/web3.js";
+import { base58 } from "./bytes.js";
 import { connection } from "./client.js";
 import { isChainError } from "../../domain/chainError.js";
 import { UnknownOutcomeError } from "./swap/types.js";
@@ -11,16 +11,6 @@ import { UnknownOutcomeError } from "./swap/types.js";
  * on the word of whoever sent it. Every route that sends a transaction
  * itself ends here, and keeps its own guard for what it signs.
  */
-
-const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-
-function base58(bytes: Uint8Array): string {
-  let value = BigInt(`0x${Buffer.from(bytes).toString("hex")}`);
-  let encoded = "";
-  for (; value > 0n; value /= 58n) encoded = BASE58[Number(value % 58n)] + encoded;
-  for (let i = 0; bytes[i] === 0; i += 1) encoded = `1${encoded}`;
-  return encoded;
-}
 
 const isSigned = (bytes: Uint8Array) => bytes.some((byte) => byte !== 0);
 

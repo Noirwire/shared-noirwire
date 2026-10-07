@@ -14,6 +14,12 @@ export const API_ERRORS = {
   method_not_allowed: { status: 403, asksAgain: false },
   not_found: { status: 404, asksAgain: false },
   request_timeout: { status: 408, asksAgain: true },
+  /** The profile program's own refusals of a write, under the names the program gives them. */
+  StaleRevision: { status: 409, asksAgain: false },
+  ProfileExists: { status: 409, asksAgain: false },
+  ProfileMissing: { status: 409, asksAgain: false },
+  Paused: { status: 409, asksAgain: false },
+  RecordTooLarge: { status: 409, asksAgain: false },
   request_too_large: { status: 413, asksAgain: false },
   refused: { status: 422, asksAgain: false },
   insufficient_payment: { status: 422, asksAgain: false },

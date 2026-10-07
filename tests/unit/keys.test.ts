@@ -8,6 +8,7 @@ import {
   WALLET_DEFAULT_DERIVATION_PATH,
   deriveCandidateKeypairs,
   deriveKeypair,
+  deriveProfileKeys,
   generateWalletMnemonic,
   parseRecoveryPhrase,
   phraseWords,
@@ -103,6 +104,43 @@ describe("deriveCandidateKeypairs", () => {
     expect(candidates.app.publicKey.toBase58()).not.toBe(
       candidates.walletDefault.publicKey.toBase58(),
     );
+  });
+});
+
+describe("deriveProfileKeys", () => {
+  it("gives the published test phrase the same owner and secret every time, on every device", () => {
+    const keys = deriveProfileKeys(BIP39_TEST_MNEMONIC);
+    expect(keys.owner.publicKey.toBase58()).toBe("cz7Xy57QEVWA6waTtp8CwQnWzmNc2frCu7nWY4ygLug");
+    expect(Buffer.from(keys.secret).toString("hex")).toBe(
+      "5e182bef92a51671bc96f3add4a48f770e3a6eef7835a1720113927ea32c1019",
+    );
+    expect(deriveProfileKeys(BIP39_TEST_MNEMONIC).owner.secretKey).toEqual(keys.owner.secretKey);
+  });
+
+  it("sits on the paths written down for it", () => {
+    const seedHex = Buffer.from(mnemonicToSeedSync(BIP39_TEST_MNEMONIC)).toString("hex");
+    const keys = deriveProfileKeys(BIP39_TEST_MNEMONIC);
+    expect(keys.owner.secretKey.slice(0, 32)).toEqual(
+      new Uint8Array(derivePath("m/20055'/0'/0'", seedHex).key),
+    );
+    expect(keys.secret).toEqual(new Uint8Array(derivePath("m/20055'/1'/0'", seedHex).key));
+  });
+
+  it("is no funding wallet's key and no portfolio's, under either scheme", () => {
+    const mnemonic = generateWalletMnemonic();
+    const { owner, secret } = deriveProfileKeys(mnemonic);
+    const profile = [owner.secretKey.slice(0, 32), secret].map((key) =>
+      Buffer.from(key).toString("hex"),
+    );
+    expect(profile[0]).not.toBe(profile[1]);
+    const accounts = new Set<string>();
+    for (let index = 0; index <= 60; index += 1) {
+      for (const keypair of Object.values(deriveCandidateKeypairs(mnemonic, index))) {
+        accounts.add(Buffer.from(keypair.secretKey.slice(0, 32)).toString("hex"));
+      }
+    }
+    expect(accounts.size).toBe(122);
+    for (const key of profile) expect(accounts.has(key)).toBe(false);
   });
 });
 

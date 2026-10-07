@@ -18,6 +18,7 @@ import {
   resetRelayerPins,
 } from "../../src/infrastructure/solana/relayer.js";
 import { settle } from "../../src/infrastructure/solana/pending.js";
+import { profileMirror } from "../../src/infrastructure/solana/profile.js";
 import { sendAndSettle } from "../../src/infrastructure/solana/settlement.js";
 import { executeJupiterSwap, jupiterVenue } from "../../src/infrastructure/solana/swap/jupiter.js";
 import type { SwapQuote } from "../../src/infrastructure/solana/swap/types.js";
@@ -232,6 +233,25 @@ const ORDER = {
 };
 const VISIBLE = { hidden: () => false, subscribe: () => () => undefined };
 
+/** The profile routes as a server that keeps profiles answers them, with nothing stored yet. */
+const PROFILE_ROUTES = {
+  "GET /v1/profile/config": () => ({
+    enabled: true,
+    programId: Keypair.generate().publicKey.toBase58(),
+    gate: FEE_PAYER.toBase58(),
+    maxDataLen: 2048,
+  }),
+  "POST /v1/profile/challenge": () => ({ challenge: "a challenge to sign" }),
+  "POST /v1/profile/session": () => ({ token: "a-read-token", expiresAt: 1_790_000_000 }),
+  "POST /v1/profile/read": () => ({ data: null }),
+  "POST /v1/profile/blockhash": () => ({
+    blockhash: PublicKey.default.toBase58(),
+    lastValidBlockHeight: 1_000,
+  }),
+  "POST /v1/profile/submit": () => ({ signature: "5".repeat(88) }),
+};
+const PROFILE_SENDING = { keepOut: [], stillUnlocked: () => true };
+
 /** A relayed action with nothing in it but its payment: enough to be priced. */
 const emptyDraft = async () => ({
   instructions: [],
@@ -339,6 +359,7 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
         "GET /v1/jupiter/*": () => [],
         "POST /v1/jupiter/*": () => ({}),
         "POST /v1/private-payments/*": () => ({}),
+        ...PROFILE_ROUTES,
       });
 
       // The real session, so its own two requests are among those checked.
@@ -373,6 +394,15 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
           executeJupiterSwap(QUOTE, signed()),
           submitTransfer({ transactionBase64: "AQID", sendTo: "base", cluster: "devnet" }, null),
           nudgeSettlement(Keypair.generate().publicKey),
+          (async () => {
+            const profileOwner = Keypair.generate();
+            await profileMirror.limits();
+            await profileMirror.read(profileOwner, () => true);
+            // The largest record a deployment plans for: the request must still be one the file allows.
+            const record = new Uint8Array(2048);
+            await profileMirror.create(profileOwner, record, PROFILE_SENDING);
+            await profileMirror.write(profileOwner, 1n, record, PROFILE_SENDING);
+          })(),
         ]),
       );
       return api.calls.filter((call) => call.path !== "/health");
@@ -492,10 +522,16 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
         "GET /v1/history/{symbol}/{range}",
         "GET /v1/jupiter/{path}",
         "GET /v1/prices",
+        "GET /v1/profile/config",
         "GET /v1/relayer",
         "POST /v1/events",
         "POST /v1/jupiter/{path}",
         "POST /v1/private-payments/{path}",
+        "POST /v1/profile/blockhash",
+        "POST /v1/profile/challenge",
+        "POST /v1/profile/read",
+        "POST /v1/profile/session",
+        "POST /v1/profile/submit",
         "POST /v1/relayer",
         "POST /v1/rpc",
         "POST /v1/session",
@@ -746,6 +782,102 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
         },
       );
     }
+  });
+
+  describe("every documented answer to a profile request", () => {
+    const owner = () => Keypair.generate();
+    const profileApi = (over: Record<string, () => unknown>) =>
+      fakeApi({ ...PROFILE_ROUTES, ...over });
+    const success = (template: string, method: string) =>
+      documented(template, method).filter((answer) => answer.status === 200);
+
+    it("names every field this package reads from each success", () => {
+      const required = (template: string, method = "post") =>
+        jsonOf(spec!.paths[template][method].responses["200"].content)!.schema!.required;
+      const config = jsonOf(spec!.paths["/v1/profile/config"].get.responses["200"].content)!;
+      expect(Object.keys(config.schema!.properties!).sort()).toEqual([
+        "enabled",
+        "gate",
+        "maxDataLen",
+        "programId",
+      ]);
+      expect(required("/v1/profile/challenge")).toEqual(["challenge"]);
+      expect(required("/v1/profile/session")).toContain("token");
+      expect(required("/v1/profile/read")).toEqual(["data"]);
+      expect(required("/v1/profile/blockhash")?.slice().sort()).toEqual([
+        "blockhash",
+        "lastValidBlockHeight",
+      ]);
+    });
+
+    it.each(spec ? success("/v1/profile/config", "get") : [])(
+      "the settings: the documented answer is on with its size, or off",
+      async ({ body }) => {
+        api = profileApi({ "GET /v1/profile/config": () => answering(200, body) });
+        const { enabled, maxDataLen } = body as { enabled: boolean; maxDataLen?: number };
+        expect(await ended(profileMirror.limits())).toEqual({
+          value: enabled ? { maxDataLen } : null,
+        });
+      },
+    );
+
+    it.each(spec ? errorsOf("/v1/profile/config", "get") : [])(
+      "the settings: %s (%i) is a failure, never taken for on",
+      async (_code, status, body) => {
+        api = profileApi({ "GET /v1/profile/config": () => answering(status, body) });
+        expect(await failure(profileMirror.limits())).toBeInstanceOf(Error);
+      },
+    );
+
+    for (const step of ["challenge", "session", "read"]) {
+      it.each(spec ? errorsOf(`/v1/profile/${step}`, "post") : [])(
+        `a read whose ${step} is answered %s (%i) fails, and is never taken for "no profile"`,
+        async (_code, status, body) => {
+          api = profileApi({ [`POST /v1/profile/${step}`]: () => answering(status, body) });
+          expect(await failure(profileMirror.read(owner(), () => true))).toBeInstanceOf(Error);
+        },
+      );
+    }
+
+    it("a read: the documented answers are no profile, or the account as it is stored", async () => {
+      for (const { body } of success("/v1/profile/read", "post")) {
+        api = profileApi({ "POST /v1/profile/read": () => answering(200, body) });
+        const outcome = await ended(profileMirror.read(owner(), () => true));
+        // A stored example is some other owner's account, which this owner's read refuses.
+        const stored = (body as { data: string | null }).data !== null;
+        expect(outcome).toHaveProperty(
+          stored ? "error" : "value",
+          stored ? expect.anything() : null,
+        );
+        api.restore();
+      }
+    });
+
+    it.each(spec ? errorsOf("/v1/profile/blockhash", "post") : [])(
+      "a write whose blockhash is answered %s (%i) fails with nothing handed over",
+      async (_code, status, body) => {
+        api = profileApi({ "POST /v1/profile/blockhash": () => answering(status, body) });
+        await ended(profileMirror.limits());
+        const sent = profileMirror.write(owner(), 1n, new Uint8Array(8), PROFILE_SENDING);
+        expect(await failure(sent)).toBeInstanceOf(Error);
+        expect(api.callsTo("/v1/profile/submit")).toHaveLength(0);
+      },
+    );
+
+    it.each(spec ? errorsOf("/v1/profile/submit", "post") : [])(
+      "a write answered %s (%i) is stale or a failure, and is handed over once",
+      async (code, status, body) => {
+        api = profileApi({ "POST /v1/profile/submit": () => answering(status, body) });
+        await ended(profileMirror.limits());
+        const outcome = await ended(
+          profileMirror.write(owner(), 1n, new Uint8Array(8), PROFILE_SENDING),
+        );
+        const moved = ["StaleRevision", "ProfileExists", "ProfileMissing"].includes(code);
+        if (moved) expect(outcome).toEqual({ value: "stale" });
+        else expect(outcome).toHaveProperty("error");
+        expect(api.callsTo("/v1/profile/submit")).toHaveLength(1);
+      },
+    );
   });
 
   describe("every documented answer to a session request", () => {

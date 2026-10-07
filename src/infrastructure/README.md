@@ -8,6 +8,7 @@ Every request goes to NoirWire's own server. `api.ts` builds its address, in one
 - `solana/swap/guard.ts`: a trade is held to its own quote and checked against an independent price.
 - `solana/relayed.ts`, `solana/relayer.ts`: what a relayer-paid transaction may contain and what it may cost. The server's relayer route makes the same reading as `relayed.ts`.
 - `solana/private-payments.ts`: private funding through MagicBlock, each built transaction checked before it is signed.
+- `solana/profile.ts`, `solana/profileProgram.ts`, `profileCipher.ts`: the encrypted copy of a wallet's labels on MagicBlock's private rollup. Sealed on the device, signed by a key derived for that alone, and sent through the server, whose gate key pays.
 - `solana/mintPolicy.mjs`: what a stock's mint must look like. Plain JavaScript, so a catalog script can run it under Node with no build step.
 
 **A request that hands over a signature is never made twice, and never called unsent once it has left.** `authorizedFetch` makes a request again after a 401 only when it is a `GET` or is marked `asksAgain`, which `readFetch` and `jupiterThroughApi` do for reads and unsigned builds. A swap's `execute`, a private transfer's `send`, the relayer's `signTransaction` and an RPC `sendTransaction` are sent bare: any answer short of a clear success, a 401 included, is an unknown outcome that the chain settles. Only a request that was never made, because no session could be had, fails as `notAvailableNow`.

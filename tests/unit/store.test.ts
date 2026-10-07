@@ -421,6 +421,25 @@ describe("the wallet store", () => {
       expect(other.getSnapshot()).toBeNull();
     });
 
+    it("keeps the last synced copy of the labels through a lock, and refuses one that is not text", async () => {
+      await seedStored(window, storedToday());
+      const store = await tab();
+      expect(await store.unlock(PASSWORD)).toBeNull();
+      expect(store.getSnapshot()).not.toHaveProperty("syncedProfile");
+      const syncedProfile = '{"v":1,"m":1,"f":{"w":[1,["SPYx"]]}}';
+      expect(await store.updateWallet((wallet) => ({ ...wallet, syncedProfile }))).toBe(true);
+
+      const reloaded = await tab();
+      expect(await reloaded.unlock(PASSWORD)).toBeNull();
+      expect(reloaded.getSnapshot()?.syncedProfile).toBe(syncedProfile);
+
+      const damaged = storedToday();
+      Object.assign(damaged.wallet, { syncedProfile: { v: 1 } });
+      await seedStored(window, damaged);
+      const other = await tab();
+      expect(await other.unlock(PASSWORD)).not.toBeNull();
+    });
+
     it("reads the activity of a v8 wallet under the names it was written with", async () => {
       window.localStorage.setItem(LEGACY_STORAGE_KEY, V8_WALLET_JSON);
       const store = await tab();

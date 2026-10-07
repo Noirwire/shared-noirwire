@@ -58,6 +58,14 @@ export {
   reviewSend,
   send,
 } from "./actions/send.js";
+export {
+  PROFILE_SYNC_TRIES,
+  type ProfileSyncDeps,
+  type ProfileSyncResult,
+  type ProfileSyncStage,
+  profileSyncer,
+  syncProfile,
+} from "./actions/syncProfile.js";
 export { type TradeChain, placeTrade, quoteTrade, reviewOrdersCost } from "./actions/trade.js";
 export { EARN_CASH_DECIMALS, type EarnAction, earnDraft, earnSample } from "./earn.js";
 export { fundingDraft } from "./funding.js";
@@ -89,9 +97,15 @@ export {
 } from "./retries.js";
 export { type ScreenReads, createScreenReads } from "./screenReads.js";
 export {
+  type MirrorSending,
+  type MirrorWrite,
+  type MirroredProfile,
   type OpenSession,
   type PendingWords,
   type PriceReader,
+  type ProfileCipher,
+  type ProfileKeys,
+  type ProfileMirror,
   type RelayerQuote,
   type Session,
   type SessionRefusal,

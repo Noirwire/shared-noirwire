@@ -27,7 +27,54 @@ export type Session<K extends Signer> = {
   fundingSigner(): K | null;
   /** A portfolio's own key, checked against its stored address. Null once locked. */
   portfolioSigner(portfolio: Portfolio): K | null;
+  /** The keys of the wallet's labels' mirror. Derived when asked for, never kept. Null once locked. */
+  profileKeys(): ProfileKeys<K> | null;
   refusal(): SessionRefusal;
+};
+
+/**
+ * What the mirror of a wallet's labels is held under: the key that owns it,
+ * which is no funding wallet's and no portfolio's, and the secret its
+ * contents are sealed with.
+ */
+export type ProfileKeys<K extends Signer> = { owner: K; secret: Uint8Array };
+
+/** A mirror as it was read: how many times it has been written, and its sealed contents. */
+export type MirroredProfile = { revision: bigint; data: Uint8Array };
+
+/** What became of a write: it landed, or the mirror was no longer the one it was built on. */
+export type MirrorWrite = "written" | "stale";
+
+/** What every write to the mirror is held to. */
+export type MirrorSending = {
+  /** The wallet's own addresses, none of which may be named beside the mirror's owner. */
+  keepOut: string[];
+  /** Asked again right before the owner's key signs. */
+  stillUnlocked: StillUnlocked;
+};
+
+/** Where a wallet's labels are mirrored, sealed, off the device. */
+export type ProfileMirror<K extends Signer> = {
+  /** The most bytes a mirror may hold, or null while the server has no mirrors. */
+  limits(): Promise<{ maxDataLen: number } | null>;
+  /** The mirror `owner` holds, or null when there is none. */
+  read(owner: K, stillUnlocked: StillUnlocked): Promise<MirroredProfile | null>;
+  /** Makes the mirror. "stale" when there already is one. */
+  create(owner: K, data: Uint8Array, sending: MirrorSending): Promise<MirrorWrite>;
+  /** Writes over the mirror read at `expectedRevision`. "stale" when it has been written since. */
+  write(
+    owner: K,
+    expectedRevision: bigint,
+    data: Uint8Array,
+    sending: MirrorSending,
+  ): Promise<MirrorWrite>;
+};
+
+/** Seals and opens a mirror's contents, for one owner's mirror only. */
+export type ProfileCipher = {
+  seal(secret: Uint8Array, owner: string, plaintext: string): Promise<Uint8Array>;
+  /** The contents, or null for data that is not this owner's, was changed, or cannot be read. */
+  open(secret: Uint8Array, owner: string, data: Uint8Array): Promise<string | null>;
 };
 
 /** The session, or why there is none. */

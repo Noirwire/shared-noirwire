@@ -48,10 +48,35 @@ export function deriveKeypair(
   index: number,
   scheme: DerivationScheme = "app",
 ): Keypair {
+  return Keypair.fromSeed(keyAt(mnemonic, pathFor(scheme, index)));
+}
+
+/** The 32 key bytes SLIP-0010 derives for `mnemonic` at `path`. */
+function keyAt(mnemonic: string, path: string): Uint8Array {
   const seed = mnemonicToSeedSync(mnemonic);
-  const seedHex = Buffer.from(seed).toString("hex");
-  const { key } = derivePath(pathFor(scheme, index), seedHex);
-  return Keypair.fromSeed(key.subarray(0, 32));
+  const { key } = derivePath(path, Buffer.from(seed).toString("hex"));
+  return key.subarray(0, 32);
+}
+
+/**
+ * Where the keys of a wallet's profile sit: under a purpose of their own,
+ * not the `44'` every account of either scheme is under, so no funding
+ * wallet and no portfolio can ever be derived onto them.
+ */
+export const PROFILE_OWNER_PATH = "m/20055'/0'/0'";
+export const PROFILE_SECRET_PATH = "m/20055'/1'/0'";
+
+/**
+ * The keys of a wallet's profile, the encrypted copy of its labels kept off
+ * the device: the key that owns the record, and the secret its contents are
+ * sealed with. The same for a phrase whichever scheme its accounts use, and
+ * re-derived on demand like every other key.
+ */
+export function deriveProfileKeys(mnemonic: string): { owner: Keypair; secret: Uint8Array } {
+  return {
+    owner: Keypair.fromSeed(keyAt(mnemonic, PROFILE_OWNER_PATH)),
+    secret: keyAt(mnemonic, PROFILE_SECRET_PATH),
+  };
 }
 
 /** Both candidate keypairs for one index, one per known derivation scheme. Used only to resolve an import. */

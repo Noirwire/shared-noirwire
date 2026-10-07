@@ -19,6 +19,8 @@ const ROUTES = {
   jupiter: "/v1/jupiter",
   /** `POST`: the private-payment service, by its own path after it. */
   privatePayments: "/v1/private-payments",
+  /** `GET` for its settings, `POST` for the rest: the encrypted copy of a wallet's labels, by its own path after it. */
+  profile: "/v1/profile",
   /** `GET` for the relayer's keys, `POST` for a price or a signature. */
   relayer: "/v1/relayer",
   /** `GET`: live prices. */

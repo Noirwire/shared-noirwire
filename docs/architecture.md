@@ -122,6 +122,7 @@ Every request this package makes goes to NoirWire's own server, at the one place
 | `rpc`             | `/v1/rpc`                    | `POST`                                         |
 | `jupiter`         | `/v1/jupiter/*`              | `GET`, `POST`                                  |
 | `privatePayments` | `/v1/private-payments/*`     | `POST`                                         |
+| `profile`         | `/v1/profile/*`              | `GET /config`, `POST` for the rest             |
 | `relayer`         | `/v1/relayer`                | `GET`, `POST`                                  |
 | `prices`          | `/v1/prices`                 | `GET`                                          |
 | `history`         | `/v1/history/:symbol/:range` | `GET`                                          |

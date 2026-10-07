@@ -1,6 +1,10 @@
 import type { Keypair } from "@solana/web3.js";
 import type { Session } from "../application/ports.js";
-import { deriveKeypair, FUNDING_DERIVATION_INDEX } from "../infrastructure/solana/keys.js";
+import {
+  deriveKeypair,
+  deriveProfileKeys,
+  FUNDING_DERIVATION_INDEX,
+} from "../infrastructure/solana/keys.js";
 import { getPhrase, getSnapshot, sessionGeneration, unlockedSince } from "./store.js";
 
 /**
@@ -42,6 +46,7 @@ export function unlockedSession(): Session<Keypair> | { refused: "walletLocked" 
     keyAt: (index) => (live() ? deriveKeypair(mnemonic, index, wallet.derivationScheme) : null),
     fundingSigner: () => signerFor(FUNDING_DERIVATION_INDEX, wallet.funding.address),
     portfolioSigner: (portfolio) => signerFor(portfolio.derivationIndex, portfolio.address),
+    profileKeys: () => (live() ? deriveProfileKeys(mnemonic) : null),
     refusal: () => (live() ? "keyMismatch" : "walletLocked"),
   };
 }

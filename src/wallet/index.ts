@@ -41,6 +41,7 @@ export {
   assessPasswordWith,
   suggestPassphrase,
 } from "./passwordStrength.js";
+export { syncProfile } from "./profile.js";
 export { unlockedSession } from "./session.js";
 export {
   type ChangePasswordOptions,

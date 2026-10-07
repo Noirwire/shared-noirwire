@@ -6,6 +6,7 @@ export {
   keepSessionWith,
   sessionRoutes,
 } from "./apiSession.js";
+export { profileCipher } from "./profileCipher.js";
 export { priceHistory } from "./prices/history.js";
 export { loadPriceHistory } from "./prices/historySource.js";
 export {
@@ -69,12 +70,23 @@ export {
   FUNDING_DERIVATION_INDEX,
   type PhraseProblem,
   deriveKeypair,
+  deriveProfileKeys,
   generateWalletMnemonic,
   parseRecoveryPhrase,
   phraseWords,
 } from "./solana/keys.js";
 export { inspectMint, multiplierAt, multiplierSchedule } from "./solana/mintPolicy.mjs";
 export { settle } from "./solana/pending.js";
+export { profileMirror } from "./solana/profile.js";
+export {
+  closeProfileInstruction,
+  createProfileInstruction,
+  profileAccounts,
+  profileMessage,
+  profileWire,
+  readProfileAccount,
+  writeProfileInstruction,
+} from "./solana/profileProgram.js";
 export { verifyBalancesBeforeSigning } from "./solana/presign-guard.js";
 export {
   PRIVATE_PAYMENT_PROGRAMS,
