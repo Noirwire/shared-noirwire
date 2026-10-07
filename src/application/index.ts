@@ -97,6 +97,7 @@ export {
 } from "./retries.js";
 export { type ScreenReads, createScreenReads } from "./screenReads.js";
 export {
+  type MirrorPlace,
   type MirrorSending,
   type MirrorWrite,
   type MirroredProfile,

@@ -16,6 +16,11 @@ import { bytesEqual, readU32LE, readU64LE } from "./bytes.js";
  * transaction built here holds that one instruction and nothing more.
  */
 
+/**
+ * The profile program. Fixed here and never taken from a server: the
+ * owner's key signs for this program and for no other.
+ */
+export const PROFILE_PROGRAM = new PublicKey("AiS6fT2x5XELHvZPrLfdzydC9xUazjS6r4z4bNDTqtHQ");
 /** The rollup's permission program, which says who may read a profile. */
 export const PERMISSION_PROGRAM = new PublicKey("ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1");
 /** Where the rollup collects rent. */

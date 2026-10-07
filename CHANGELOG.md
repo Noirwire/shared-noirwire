@@ -4,6 +4,21 @@ All notable changes to this package are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The apps pin an exact tag; see [README.md](README.md#releasing) for how a tag becomes a release.
 
+## [0.10.0] - 2026-10-07
+
+A wallet's own labels follow its recovery phrase. Portfolio names, icons, archived state, pies and the watchlist are mirrored, encrypted on the device, into one small record that only a key derived from the phrase can read. Restoring the phrase elsewhere brings them back, and web and phone agree. The device's record stays the truth: without the mirror the wallet works as before.
+
+### Added
+
+- `syncProfile()` from `@noirwire/shared/wallet`: call it after unlock and after a label changes. It takes nothing, never rejects, and runs one sync at a time. It does nothing unless the server says profiles are on.
+- `Wallet.syncedProfile`, the copy of the mirror this device last agreed with, kept inside the wallet's own encrypted record.
+- Usage events `profile_synced` and `profile_sync_failed`.
+
+### For both apps
+
+- [ ] Call `syncProfile()` after unlock and after a rename, an icon change, an archive, a pie change or a watchlist change. Nothing else changes, and there is nothing to show.
+- [ ] On the phone, `crypto.subtle` must offer HKDF and AES-GCM.
+
 ## [0.9.0] - 2026-10-07
 
 A private move runs between any two of the person's own places: main wallet to portfolio as before, and now portfolio to main wallet and portfolio to portfolio. The portfolio signs for itself and needs no SOL, the same as the main wallet.

@@ -13,6 +13,7 @@ import { apiErrorOf, authorizedFetch } from "../apiSession.js";
 import { readFetch } from "../readFetch.js";
 import { base58 } from "./bytes.js";
 import {
+  PROFILE_PROGRAM,
   createProfileInstruction,
   profileMessage,
   profileWire,
@@ -172,8 +173,10 @@ export const profileMirror: ProfileMirror<Keypair> = {
       await readFetch(apiUrl("profile", "/config")),
       "the profile settings",
     );
-    if (enabled !== true || typeof programId !== "string" || typeof gate !== "string") return null;
-    deployment = { programId: new PublicKey(programId), gate: new PublicKey(gate) };
+    if (enabled !== true || typeof gate !== "string") return null;
+    // A server that names another program has no mirrors this app will sign for.
+    if (programId !== PROFILE_PROGRAM.toBase58()) return null;
+    deployment = { programId: PROFILE_PROGRAM, gate: new PublicKey(gate) };
     const allowed = typeof maxDataLen === "number" && maxDataLen > 0;
     return { maxDataLen: allowed ? maxDataLen : DEFAULT_MAX_DATA_LEN };
   },

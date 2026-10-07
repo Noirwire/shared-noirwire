@@ -322,6 +322,26 @@ describe("writing a profile", () => {
     expect(api!.callsTo("/v1/profile/submit")).toHaveLength(0);
   });
 
+  it("signs nothing and writes nothing for a server that names another program", async () => {
+    const owner = Keypair.generate();
+    const { state } = serve(owner, {
+      "GET /v1/profile/config": () => ({
+        enabled: true,
+        programId: Keypair.generate().publicKey.toBase58(),
+        gate: Keypair.generate().publicKey.toBase58(),
+        maxDataLen: 2048,
+      }),
+    });
+    // Off, exactly as when the server says it keeps no profiles.
+    expect(await profileMirror.limits()).toBeNull();
+    await expect(profileMirror.create(owner, DATA, sending())).rejects.toThrow();
+    await expect(profileMirror.write(owner, 1n, DATA, sending())).rejects.toThrow();
+    // No challenge was signed, no transaction was signed, nothing was handed over.
+    expect(api!.calls.map((call) => call.path)).toEqual(["/v1/profile/config"]);
+    expect(state.issued).toBe(0);
+    expect(state.submitted).toEqual([]);
+  });
+
   it("builds nothing for a deployment it has not been told of", async () => {
     const owner = Keypair.generate();
     serve(owner, { "GET /v1/profile/config": () => ({ enabled: false }) });

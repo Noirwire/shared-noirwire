@@ -19,6 +19,7 @@ import {
 } from "../../src/infrastructure/solana/relayer.js";
 import { settle } from "../../src/infrastructure/solana/pending.js";
 import { profileMirror } from "../../src/infrastructure/solana/profile.js";
+import { PROFILE_PROGRAM } from "../../src/infrastructure/solana/profileProgram.js";
 import { sendAndSettle } from "../../src/infrastructure/solana/settlement.js";
 import { executeJupiterSwap, jupiterVenue } from "../../src/infrastructure/solana/swap/jupiter.js";
 import type { SwapQuote } from "../../src/infrastructure/solana/swap/types.js";
@@ -237,7 +238,7 @@ const VISIBLE = { hidden: () => false, subscribe: () => () => undefined };
 const PROFILE_ROUTES = {
   "GET /v1/profile/config": () => ({
     enabled: true,
-    programId: Keypair.generate().publicKey.toBase58(),
+    programId: PROFILE_PROGRAM.toBase58(),
     gate: FEE_PAYER.toBase58(),
     maxDataLen: 2048,
   }),
@@ -811,10 +812,15 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
     });
 
     it.each(spec ? success("/v1/profile/config", "get") : [])(
-      "the settings: the documented answer is on with its size, or off",
+      "the settings: the documented answer is on with its size for the pinned program, or off",
       async ({ body }) => {
-        api = profileApi({ "GET /v1/profile/config": () => answering(200, body) });
         const { enabled, maxDataLen } = body as { enabled: boolean; maxDataLen?: number };
+        // The file's example names a program of its own, which this client takes for off.
+        api = profileApi({ "GET /v1/profile/config": () => answering(200, body) });
+        expect(await ended(profileMirror.limits())).toEqual({ value: null });
+        api.restore();
+        const pinned = enabled ? { ...(body as object), programId: PROFILE_PROGRAM } : body;
+        api = profileApi({ "GET /v1/profile/config": () => answering(200, pinned) });
         expect(await ended(profileMirror.limits())).toEqual({
           value: enabled ? { maxDataLen } : null,
         });

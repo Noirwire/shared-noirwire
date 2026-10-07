@@ -70,11 +70,17 @@ export type ProfileMirror<K extends Signer> = {
   ): Promise<MirrorWrite>;
 };
 
-/** Seals and opens a mirror's contents, for one owner's mirror only. */
+/** Which writing of whose mirror some sealed contents are: the owner, and the revision the mirror has with them in it. */
+export type MirrorPlace = { owner: string; revision: bigint };
+
+/** Seals and opens a mirror's contents, for one writing of one owner's mirror only. */
 export type ProfileCipher = {
-  seal(secret: Uint8Array, owner: string, plaintext: string): Promise<Uint8Array>;
-  /** The contents, or null for data that is not this owner's, was changed, or cannot be read. */
-  open(secret: Uint8Array, owner: string, data: Uint8Array): Promise<string | null>;
+  seal(secret: Uint8Array, place: MirrorPlace, plaintext: string): Promise<Uint8Array>;
+  /**
+   * The contents, or null for data that is not this owner's, was changed,
+   * was sealed for another revision, or cannot be read.
+   */
+  open(secret: Uint8Array, place: MirrorPlace, data: Uint8Array): Promise<string | null>;
 };
 
 /** The session, or why there is none. */

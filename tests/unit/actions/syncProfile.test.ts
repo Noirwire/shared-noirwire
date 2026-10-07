@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { nextDerivationIndex } from "../../../src/application/actions/createPortfolio.js";
 import {
   PROFILE_SYNC_TRIES,
   profileSyncer,
@@ -25,6 +26,7 @@ import {
 /** The secret and owner the support harness hands every session: one phrase, on every device. */
 const SECRET = new Uint8Array(32).fill(7);
 const OWNER = "Profile111";
+const at = (revision: bigint, owner = OWNER) => ({ owner, revision });
 
 const newPortfolio = (label: string, address: string, derivationIndex: number): Portfolio => ({
   id: `new_${derivationIndex}`,
@@ -49,9 +51,10 @@ function fakeMirror() {
     sendings: [] as MirrorSending[],
     /** Runs between a sync's read and its write landing, as another device would. */
     beforeWrite: undefined as (() => void | Promise<void>) | undefined,
-    afterRead: undefined as (() => void) | undefined,
+    afterRead: undefined as (() => void | Promise<void>) | undefined,
     async text() {
-      return mirror.account && profileCipher.open(SECRET, OWNER, mirror.account.data);
+      const { account } = mirror;
+      return account && profileCipher.open(SECRET, at(account.revision), account.data);
     },
     async labels() {
       const text = await mirror.text();
@@ -77,7 +80,7 @@ function fakeMirror() {
       mirror.reads += 1;
       if (mirror.unreachable) throw new Error("fetch failed");
       const read = mirror.account && { ...mirror.account };
-      mirror.afterRead?.();
+      await mirror.afterRead?.();
       return read;
     },
     async create(_owner, data, sending) {
@@ -255,8 +258,11 @@ describe("syncing a wallet's labels with their mirror", () => {
     await a.rename("p1", "Mine");
     const before = a.wallet();
     mirror.reads = 0;
-    mirror.afterRead = () => {
-      mirror.account = { ...mirror.account!, revision: mirror.account!.revision + 1n };
+    // Another device writes the same labels again, each time this one has just read.
+    mirror.afterRead = async () => {
+      const revision = mirror.account!.revision + 1n;
+      const data = await profileCipher.seal(SECRET, at(revision), (await mirror.text())!);
+      mirror.account = { revision, data };
     };
 
     expect(await a.sync()).toEqual({ kind: "failed", stage: "conflict" });
@@ -366,15 +372,19 @@ describe("a sync that cannot finish", () => {
     ],
     [
       "was sealed under another secret",
-      () => profileCipher.seal(new Uint8Array(32).fill(8), OWNER, '{"v":1,"m":1,"f":{}}'),
+      () => profileCipher.seal(new Uint8Array(32).fill(8), at(9n), '{"v":1,"m":1,"f":{}}'),
     ],
     [
       "was sealed for another owner",
-      () => profileCipher.seal(SECRET, "Somebody222", '{"v":1,"m":1,"f":{"w":[9,["TSLAx"]]}}'),
+      () => profileCipher.seal(SECRET, at(9n, "Somebody222"), '{"v":1,"m":1,"f":{"w":[9,[]]}}'),
+    ],
+    [
+      "was sealed for another revision",
+      () => profileCipher.seal(SECRET, at(8n), '{"v":1,"m":1,"f":{"w":[9,["TSLAx"]]}}'),
     ],
     [
       "opens to something that is no envelope",
-      () => profileCipher.seal(SECRET, OWNER, '["not","one"]'),
+      () => profileCipher.seal(SECRET, at(9n), '["not","one"]'),
     ],
     ["is larger than a record can be", async () => new Uint8Array(4097).fill(1)],
   ])("neither follows nor writes over a mirror that %s", async (_what, data) => {
@@ -385,6 +395,88 @@ describe("a sync that cannot finish", () => {
     expect(a.wallet()).toBe(before);
     expect(mirror.account).toBe(found);
     expect(mirror.writes).toEqual([]);
+  });
+
+  it("changes nothing on the device for an older record put back under a newer revision", async () => {
+    const mirror = fakeMirror();
+    const a = device(mirror);
+    const b = device(mirror);
+    await a.sync();
+    const old = mirror.account!.data;
+    await b.sync();
+    await a.rename("p1", "Renamed since");
+    await a.sync();
+    await b.sync();
+    expect(b.wallet().portfolios[0].label).toBe("Renamed since");
+
+    // A genuine record of this owner's, under this owner's key: only the revision is wrong.
+    mirror.account = { revision: mirror.account!.revision + 1n, data: old };
+    const found = mirror.account;
+    const before = b.wallet();
+    mirror.writes.length = 0;
+    expect(await b.sync()).toEqual({ kind: "failed", stage: "unreadable" });
+    expect(b.wallet()).toBe(before);
+    expect(mirror.account).toBe(found);
+    expect(mirror.writes).toEqual([]);
+  });
+
+  it("leaves nothing counted as synced when the wallet's own write does not reach storage", async () => {
+    const mirror = fakeMirror();
+    const other = device(mirror);
+    await other.sync();
+    const a = device(mirror, restoredFromPhrase());
+    const before = a.wallet();
+    const working = a.deps.store;
+    a.deps.store = { ...working, update: async () => false };
+
+    expect(await a.sync()).toEqual({ kind: "failed", stage: "save" });
+    expect(a.h.track.mock.calls).toEqual([["profile_sync_failed", { stage: "save" }]]);
+    expect(a.wallet()).toBe(before);
+    expect(a.wallet()).not.toHaveProperty("syncedProfile");
+
+    // Storage back, the next sync starts from what is really kept and gets the labels in.
+    a.deps.store = working;
+    expect(await a.sync()).toEqual({ kind: "synced", wrote: false });
+    const labels = a.wallet().portfolios.map((entry) => entry.label);
+    expect(labels.sort()).toEqual(["Main", "Old"]);
+    expect(a.wallet().syncedProfile).toBe(await mirror.text());
+  });
+
+  it("does not regain a portfolio it took off, takes it off the mirror, and a fresh device still restores the rest", async () => {
+    const mirror = fakeMirror();
+    const a = device(mirror);
+    await a.sync();
+    await a.h.store.update((current) => ({
+      ...current,
+      portfolios: current.portfolios.filter((entry) => entry.id !== "p2"),
+    }));
+
+    expect(await a.sync()).toEqual({ kind: "synced", wrote: true });
+    expect(Object.keys((await mirror.labels())!)).toEqual(["p1", "w"]);
+    expect(a.wallet().portfolios.map((entry) => entry.id)).toEqual(["p1"]);
+    expect(await a.sync()).toEqual({ kind: "synced", wrote: false });
+    expect(a.wallet().portfolios.map((entry) => entry.id)).toEqual(["p1"]);
+
+    const b = device(mirror, wallet({ portfolios: [] }));
+    await b.sync();
+    expect(b.wallet().portfolios).toEqual([
+      { ...newPortfolio("Main", "Derived1", 1), createdAt: 1, archivedAt: null },
+    ]);
+  });
+
+  it("makes no portfolio of an index a mirror has no business naming, and the next one made is still the next", async () => {
+    const mirror = fakeMirror();
+    const far =
+      '{"v":1,"m":1,"f":{"p999999999":[1,{"l":"Far","c":1,"a":null}],"p101":[1,{"l":"Past","c":1,"a":null}],"w":[1,[]]}}';
+    mirror.account = { revision: 4n, data: await profileCipher.seal(SECRET, at(4n), far) };
+    const a = device(mirror);
+    const next = nextDerivationIndex(a.wallet(), 0);
+
+    expect(await a.sync()).toEqual({ kind: "synced", wrote: true });
+    expect(a.wallet().portfolios.map((entry) => entry.derivationIndex)).toEqual([1, 2]);
+    expect(nextDerivationIndex(a.wallet(), 0)).toBe(next);
+    // Kept in the mirror as they came, beside this device's own.
+    expect(Object.keys((await mirror.labels())!)).toEqual(["p1", "p101", "p2", "p999999999", "w"]);
   });
 
   it("does not send a record the server would not hold", async () => {
@@ -429,7 +521,7 @@ describe("a sync that cannot finish", () => {
     await a.sync();
     const newer =
       '{"v":2,"m":2,"f":{"p1":[4,{"l":"From the future","c":1,"a":null,"z":1}],"w":[1,[]]}}';
-    mirror.account = { revision: 5n, data: await profileCipher.seal(SECRET, OWNER, newer) };
+    mirror.account = { revision: 5n, data: await profileCipher.seal(SECRET, at(5n), newer) };
     const sealed = mirror.account;
     await a.h.store.update((current) => ({ ...current, watchlist: ["SPYx"] }));
     mirror.writes.length = 0;

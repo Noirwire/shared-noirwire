@@ -32,8 +32,26 @@ export type ProfileEnvelope = {
 
 const WATCHLIST = "w";
 
-/** A portfolio's field is `p` and its derivation index, which the funding wallet's 0 never is. */
-const PORTFOLIO_FIELD = /^p([1-9]\d{0,8})$/;
+/**
+ * The highest derivation index a mirrored portfolio may have, and so the
+ * most portfolios a mirror can make a device create. A record holds some
+ * twenty portfolios at most, and an import never looks further than this
+ * past the last one used (`EXTENDED_DISCOVERY_GAP`). A field past it is
+ * kept as it came and never becomes a portfolio.
+ */
+export const MAX_MIRRORED_PORTFOLIO_INDEX = 100;
+
+const PORTFOLIO_FIELD = /^p([1-9]\d{0,2})$/;
+
+/**
+ * The derivation index a portfolio's field names: `p` and the index, which
+ * the funding wallet's 0 never is. Null for any other field, and for an
+ * index past `MAX_MIRRORED_PORTFOLIO_INDEX`.
+ */
+function portfolioIndexOf(id: string): number | null {
+  const index = Number(PORTFOLIO_FIELD.exec(id)?.[1]);
+  return Number.isInteger(index) && index <= MAX_MIRRORED_PORTFOLIO_INDEX ? index : null;
+}
 
 /** The keys of a portfolio's value this version writes. Any other is a newer version's, and is kept. */
 const PORTFOLIO_KEYS = ["l", "c", "a", "i", "s"];
@@ -116,7 +134,7 @@ function readAs(id: string, value: unknown): string | null {
     const watchlist = watchlistIn(value);
     return watchlist && JSON.stringify(watchlist);
   }
-  if (!PORTFOLIO_FIELD.test(id)) return null;
+  if (portfolioIndexOf(id) === null) return null;
   const labels = portfolioLabelsIn(value);
   return labels && JSON.stringify(portfolioValue(labels));
 }
@@ -193,7 +211,11 @@ function withUnknownKeys(mine: unknown, theirs: unknown): unknown {
  * Brings the device's labels and the mirror together, field by field, with
  * the copy this device last synced (`synced`) telling which side changed.
  *
- * - Only the mirror has it: the device takes it.
+ * - Only the mirror has it, and the device never synced it: the device
+ *   takes it. That is a device that has never synced, or a field another
+ *   device added since.
+ * - Only the mirror has it, and the device did sync it once: the device
+ *   took it off since, so the device wins and the field leaves the mirror.
  * - Only the device has it: it goes out, at revision 1.
  * - The device's value is as it was last synced, or was never synced: the
  *   mirror's stands, and the device takes it when its revision is higher.
@@ -230,6 +252,12 @@ export function mergeProfile(input: {
 
     if (mine === undefined) {
       if (!theirs) continue;
+      if (last) {
+        // Synced before and gone from the device since: taken off here, so it
+        // is left out. A mirror that may not be written keeps the removal waiting.
+        if (!mayWrite) fields.set(id, last);
+        continue;
+      }
       fields.set(id, theirs);
       changes.push({ id, seen: null, value: theirs[1] });
       continue;
@@ -260,7 +288,10 @@ export function mergeProfile(input: {
       f: Object.fromEntries(sorted),
     },
     changes,
-    write: mayWrite && sorted.some(([id, field]) => mirror?.f[id] !== field),
+    write:
+      mayWrite &&
+      (sorted.some(([id, field]) => mirror?.f[id] !== field) ||
+        Object.keys(mirror?.f ?? {}).some((id) => !fields.has(id))),
   };
 }
 
@@ -295,9 +326,9 @@ export function withProfileChanges(
       watchlist = watchlistIn(value) ?? watchlist;
       continue;
     }
-    const index = Number(PORTFOLIO_FIELD.exec(id)?.[1]);
+    const index = portfolioIndexOf(id);
     const labels = portfolioLabelsIn(value);
-    if (!labels || !Number.isInteger(index)) continue;
+    if (!labels || index === null) continue;
     if (mine !== undefined) {
       portfolios = portfolios.map((portfolio) =>
         portfolio.derivationIndex === index ? withLabels(portfolio, labels) : portfolio,

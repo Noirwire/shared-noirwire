@@ -62,6 +62,7 @@ export {
   resolvePortfolioIcon,
 } from "./portfolioIcon.js";
 export {
+  MAX_MIRRORED_PORTFOLIO_INDEX,
   MAX_PROFILE_BYTES,
   PROFILE_VERSION,
   type PortfolioLabels,

@@ -60,8 +60,11 @@ export const PROFILE_SYNC_TRIES = 3;
  * The wallet is changed last, and in one write, so that a sync that stops
  * anywhere leaves it exactly as it was: the next one starts from the same
  * place. A mirror that moved between the read and the write is read again,
- * `PROFILE_SYNC_TRIES` times in all. A mirror that cannot be opened is
- * neither followed nor written over.
+ * `PROFILE_SYNC_TRIES` times in all. A mirror that cannot be opened, an
+ * older record put back under a newer revision included, is neither
+ * followed nor written over. A wallet write the store says did not reach
+ * storage ends the sync as failed, so nothing is counted as synced that a
+ * restart would not find.
  *
  * One sync at a time, across tabs. No money action waits on it or reads
  * from it, it reserves nothing, and nothing it finds is told to anyone: a
@@ -100,7 +103,11 @@ export async function syncProfile<K extends Signer>(
         const opened =
           stored.data.length > MAX_PROFILE_BYTES
             ? null
-            : await deps.cipher.open(keys.secret, owner, stored.data);
+            : await deps.cipher.open(
+                keys.secret,
+                { owner, revision: stored.revision },
+                stored.data,
+              );
         mirror = opened === null ? null : decodeProfile(opened);
         if (!mirror) return stopped("unreadable");
       }
@@ -114,7 +121,13 @@ export async function syncProfile<K extends Signer>(
       let outcome: MirrorWrite | null = null;
       if (merged.write) {
         try {
-          const data = await deps.cipher.seal(keys.secret, owner, encodeProfile(merged.envelope));
+          // Sealed for the revision the mirror will have once this is in it.
+          const revision = stored ? stored.revision + 1n : 1n;
+          const data = await deps.cipher.seal(
+            keys.secret,
+            { owner, revision },
+            encodeProfile(merged.envelope),
+          );
           if (data.length > limits.maxDataLen) return stopped("too_large");
           const sending = {
             keepOut: othersOf(wallet, { address: owner }),

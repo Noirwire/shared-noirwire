@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MAX_PROFILE_BYTES,
   decodeProfile,
@@ -13,19 +13,37 @@ import { profileCipher } from "../../src/infrastructure/profileCipher.js";
 const SECRET = new Uint8Array(32).map((_, index) => index + 1);
 const OWNER = "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin";
 const OTHER_OWNER = "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T";
+const PLACE = { owner: OWNER, revision: 7n };
 const TEXT = '{"v":1,"m":1,"f":{"w":[1,["SPYx"]]}}';
 
+/**
+ * `TEXT` sealed for `PLACE` under `SECRET` with the nonce a0..ab, worked out
+ * with another implementation (Node's own HKDF and AES-256-GCM). A record
+ * already stored reads exactly like this: a change that breaks these bytes
+ * breaks every record there is.
+ */
+const NONCE = Uint8Array.from({ length: 12 }, (_, index) => 0xa0 + index);
+const SEALED =
+  "01a0a1a2a3a4a5a6a7a8a9aaab7e5ea4c1065eaf6e8feb489de014074a31e976358c7a751a84158d482613864089c1a7c17767460ee1749f4f7e0fec72648de93b";
+
 describe("the profile cipher", () => {
-  it("opens what it sealed, and lays it out as format, nonce, ciphertext and tag", async () => {
-    const sealed = await profileCipher.seal(SECRET, OWNER, TEXT);
-    expect(sealed[0]).toBe(1);
-    expect(sealed.length).toBe(1 + 12 + new TextEncoder().encode(TEXT).length + 16);
-    expect(new TextDecoder().decode(sealed)).not.toContain("SPYx");
-    expect(await profileCipher.open(SECRET, OWNER, sealed)).toBe(TEXT);
+  afterEach(() => vi.restoreAllMocks());
+
+  it("opens a record sealed before today: format 1, the nonce, then ciphertext and tag", async () => {
+    expect(await profileCipher.open(SECRET, PLACE, Buffer.from(SEALED, "hex"))).toBe(TEXT);
+  });
+
+  it("seals to those same bytes for the same secret, owner, revision, nonce and text", async () => {
+    vi.spyOn(crypto, "getRandomValues").mockImplementation((array) => {
+      (array as Uint8Array).set(NONCE);
+      return array;
+    });
+    const sealed = await profileCipher.seal(SECRET, PLACE, TEXT);
+    expect(Buffer.from(sealed).toString("hex")).toBe(SEALED);
   });
 
   it("seals with AES-256-GCM under HKDF-SHA-256 of the secret, so another implementation opens it", async () => {
-    const sealed = await profileCipher.seal(SECRET, OWNER, TEXT);
+    const sealed = await profileCipher.seal(SECRET, PLACE, TEXT);
     const material = await crypto.subtle.importKey("raw", SECRET, "HKDF", false, ["deriveKey"]);
     const key = await crypto.subtle.deriveKey(
       {
@@ -43,7 +61,7 @@ describe("the profile cipher", () => {
       {
         name: "AES-GCM",
         iv: sealed.slice(1, 13),
-        additionalData: new TextEncoder().encode(`noirwire-profile|1|${OWNER}`),
+        additionalData: new TextEncoder().encode(`noirwire-profile|1|${OWNER}|7`),
       },
       key,
       sealed.slice(13),
@@ -52,35 +70,43 @@ describe("the profile cipher", () => {
   });
 
   it("does not open under another secret", async () => {
-    const sealed = await profileCipher.seal(SECRET, OWNER, TEXT);
+    const sealed = await profileCipher.seal(SECRET, PLACE, TEXT);
     const wrong = SECRET.map((byte) => byte ^ 1);
-    expect(await profileCipher.open(wrong, OWNER, sealed)).toBeNull();
+    expect(await profileCipher.open(wrong, PLACE, sealed)).toBeNull();
   });
 
   it("does not open once any byte of it has changed", async () => {
-    const sealed = await profileCipher.seal(SECRET, OWNER, TEXT);
+    const sealed = await profileCipher.seal(SECRET, PLACE, TEXT);
     for (const at of [0, 1, 12, 13, sealed.length - 17, sealed.length - 1]) {
       const tampered = Uint8Array.from(sealed);
       tampered[at] ^= 0x01;
-      expect(await profileCipher.open(SECRET, OWNER, tampered), `byte ${at}`).toBeNull();
+      expect(await profileCipher.open(SECRET, PLACE, tampered), `byte ${at}`).toBeNull();
     }
   });
 
   it("does not open as another owner's record", async () => {
-    const sealed = await profileCipher.seal(SECRET, OWNER, TEXT);
-    expect(await profileCipher.open(SECRET, OTHER_OWNER, sealed)).toBeNull();
+    const sealed = await profileCipher.seal(SECRET, PLACE, TEXT);
+    const elsewhere = { ...PLACE, owner: OTHER_OWNER };
+    expect(await profileCipher.open(SECRET, elsewhere, sealed)).toBeNull();
+  });
+
+  it("does not open as any other revision of the same owner's record", async () => {
+    const sealed = await profileCipher.seal(SECRET, PLACE, TEXT);
+    for (const revision of [1n, 6n, 8n, 70n]) {
+      expect(await profileCipher.open(SECRET, { ...PLACE, revision }, sealed)).toBeNull();
+    }
   });
 
   it("never seals the same text the same way twice", async () => {
-    const first = await profileCipher.seal(SECRET, OWNER, TEXT);
-    const second = await profileCipher.seal(SECRET, OWNER, TEXT);
+    const first = await profileCipher.seal(SECRET, PLACE, TEXT);
+    const second = await profileCipher.seal(SECRET, PLACE, TEXT);
     expect(first).not.toEqual(second);
     expect(first.subarray(1, 13)).not.toEqual(second.subarray(1, 13));
   });
 
   it("answers null, not an error, for data too short to be a record", async () => {
-    expect(await profileCipher.open(SECRET, OWNER, new Uint8Array(0))).toBeNull();
-    expect(await profileCipher.open(SECRET, OWNER, Uint8Array.from([1, 2, 3]))).toBeNull();
+    expect(await profileCipher.open(SECRET, PLACE, new Uint8Array(0))).toBeNull();
+    expect(await profileCipher.open(SECRET, PLACE, Uint8Array.from([1, 2, 3]))).toBeNull();
   });
 });
 
@@ -133,8 +159,8 @@ describe("a full wallet's record", () => {
       synced: null,
       mirror: null,
     });
-    const sealed = await profileCipher.seal(SECRET, OWNER, encodeProfile(envelope));
-    expect(decodeProfile((await profileCipher.open(SECRET, OWNER, sealed))!)).toEqual(envelope);
+    const sealed = await profileCipher.seal(SECRET, PLACE, encodeProfile(envelope));
+    expect(decodeProfile((await profileCipher.open(SECRET, PLACE, sealed))!)).toEqual(envelope);
     return sealed;
   }
 

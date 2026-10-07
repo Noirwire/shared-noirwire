@@ -7,8 +7,9 @@ import type { ProfileCipher } from "../application/ports.js";
  * secret. WebCrypto only, no dependency.
  *
  * Sealed, a profile is one format byte, a 12-byte nonce, then the
- * ciphertext and its tag. Whose profile it is goes in as additional data: a
- * record copied onto another owner's account does not open there.
+ * ciphertext and its tag. Whose profile it is, and which revision of it,
+ * go in as additional data: a record copied onto another owner's account,
+ * or put back in place of a later one, does not open there.
  */
 
 const FORMAT = 1;
@@ -35,20 +36,29 @@ async function keyFrom(secret: Uint8Array): Promise<CryptoKey> {
   );
 }
 
-function sealing(nonce: Uint8Array, owner: string) {
+/**
+ * The owner and the revision go in as additional data. The key proves who
+ * wrote a record, not which writing of it this is: bound to its revision, an
+ * older record put back under a newer one does not open.
+ */
+function sealing(nonce: Uint8Array, owner: string, revision: bigint) {
   return {
     name: "AES-GCM",
     iv: nonce as BufferSource,
-    additionalData: utf8(`noirwire-profile|${FORMAT}|${owner}`),
+    additionalData: utf8(`noirwire-profile|${FORMAT}|${owner}|${revision}`),
   };
 }
 
 export const profileCipher: ProfileCipher = {
   /** Every call draws a new nonce: GCM is broken by two messages under one key and one nonce. */
-  async seal(secret, owner, plaintext) {
+  async seal(secret, { owner, revision }, plaintext) {
     const nonce = crypto.getRandomValues(new Uint8Array(NONCE_BYTES));
     const ciphertext = new Uint8Array(
-      await crypto.subtle.encrypt(sealing(nonce, owner), await keyFrom(secret), utf8(plaintext)),
+      await crypto.subtle.encrypt(
+        sealing(nonce, owner, revision),
+        await keyFrom(secret),
+        utf8(plaintext),
+      ),
     );
     const sealed = new Uint8Array(1 + NONCE_BYTES + ciphertext.length);
     sealed[0] = FORMAT;
@@ -58,11 +68,11 @@ export const profileCipher: ProfileCipher = {
   },
 
   /** Null, not a thrown error: a record this app cannot open is an ordinary thing to find. */
-  async open(secret, owner, data) {
+  async open(secret, { owner, revision }, data) {
     if (data[0] !== FORMAT || data.length <= 1 + NONCE_BYTES) return null;
     try {
       const plaintext = await crypto.subtle.decrypt(
-        sealing(data.subarray(1, 1 + NONCE_BYTES), owner),
+        sealing(data.subarray(1, 1 + NONCE_BYTES), owner, revision),
         await keyFrom(secret),
         data.subarray(1 + NONCE_BYTES) as BufferSource,
       );

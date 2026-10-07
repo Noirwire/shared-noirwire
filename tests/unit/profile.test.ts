@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  MAX_MIRRORED_PORTFOLIO_INDEX,
   decodeProfile,
   encodeProfile,
   mayWriteProfile,
@@ -89,9 +90,51 @@ describe("the labels a wallet mirrors", () => {
 });
 
 describe("the envelope", () => {
-  it("comes back from its text as it went in", () => {
-    const written = envelope({ w: [2, ["SPYx"]], p1: [5, value("Main")], later: [1, { any: 1 }] });
-    expect(decodeProfile(encodeProfile(written))).toEqual(written);
+  /** A record exactly as one already stored reads. A change that breaks this text breaks every record there is. */
+  const STORED =
+    '{"v":1,"m":1,"f":{"p3":[5,{"l":"Rainy day","c":1003,"a":77,"i":["sun","ochre"],"s":[["NVDAx",100]]}],"w":[2,["SPYx"]]}}';
+
+  it("is written as the compact text records already stored are in", () => {
+    const pie = wallet({
+      portfolios: [
+        portfolio(3, {
+          label: "Rainy day",
+          archivedAt: 77,
+          icon: { glyph: "sun", tint: "ochre" },
+          pie: [{ symbol: "NVDAx", weight: 100 }],
+        }),
+      ],
+    });
+    const fields = profileFieldsOf(pie);
+    expect(encodeProfile(envelope({ p3: [5, fields.p3], w: [2, fields.w] }))).toBe(STORED);
+  });
+
+  it("is read from that text, down to the labels a wallet takes from it", () => {
+    const read = decodeProfile(STORED)!;
+    expect(read).toEqual({
+      v: 1,
+      m: 1,
+      f: {
+        p3: [5, { l: "Rainy day", c: 1003, a: 77, i: ["sun", "ochre"], s: [["NVDAx", 100]] }],
+        w: [2, ["SPYx"]],
+      },
+    });
+    const empty = wallet({ portfolios: [], watchlist: [] });
+    const { changes } = mergeProfile({
+      device: profileFieldsOf(empty),
+      synced: null,
+      mirror: read,
+    });
+    const taken = withProfileChanges(empty, changes, (index, label) => portfolio(index, { label }));
+    expect(taken.watchlist).toEqual(["SPYx"]);
+    expect(taken.portfolios[0]).toMatchObject({
+      derivationIndex: 3,
+      label: "Rainy day",
+      createdAt: 1003,
+      archivedAt: 77,
+      icon: { glyph: "sun", tint: "ochre" },
+      pie: [{ symbol: "NVDAx", weight: 100 }],
+    });
   });
 
   it("is not read from text that is not one", () => {
@@ -122,16 +165,72 @@ describe("merging the device's labels with the mirror", () => {
     expect(merged.envelope).toEqual(envelope({ p1: [1, value("Portfolio 1")], w: [1, ["SPYx"]] }));
   });
 
-  it("takes a field only the mirror has, without writing", () => {
+  it("takes a field only the mirror has, added by another device since, without writing", () => {
+    const synced = envelope({ p1: [1, value("Portfolio 1")], w: [1, ["SPYx"]] });
+    const mirror = envelope({ ...synced.f, p4: [3, value("Trips")] });
+    for (const last of [synced, null]) {
+      const merged = mergeProfile({ device: profileFieldsOf(wallet()), synced: last, mirror });
+      expect(merged.write).toBe(false);
+      expect(merged.changes).toEqual([{ id: "p4", seen: null, value: value("Trips") }]);
+      expect(merged.envelope.f.p4).toEqual([3, value("Trips")]);
+    }
+  });
+
+  it("does not bring back a field the device synced once and has taken off since: it leaves the mirror", () => {
     const mirror = envelope({
       p1: [1, value("Portfolio 1")],
       p4: [3, value("Trips")],
       w: [1, ["SPYx"]],
     });
     const merged = mergeProfile({ device: profileFieldsOf(wallet()), synced: mirror, mirror });
-    expect(merged.write).toBe(false);
-    expect(merged.changes).toEqual([{ id: "p4", seen: null, value: value("Trips") }]);
-    expect(merged.envelope.f.p4).toEqual([3, value("Trips")]);
+    expect(merged.changes).toEqual([]);
+    expect(merged.write).toBe(true);
+    expect(Object.keys(merged.envelope.f)).toEqual(["p1", "w"]);
+
+    // Even when another device rewrote it in the meantime: the device wins.
+    const rewritten = envelope({ ...mirror.f, p4: [9, value("Trips, renamed")] });
+    const again = mergeProfile({
+      device: profileFieldsOf(wallet()),
+      synced: mirror,
+      mirror: rewritten,
+    });
+    expect(again).toMatchObject({ changes: [], write: true });
+    expect(again.envelope.f).not.toHaveProperty("p4");
+
+    // A mirror it may not write keeps the field, and the removal waits.
+    const locked = mergeProfile({
+      device: profileFieldsOf(wallet()),
+      synced: mirror,
+      mirror: { ...mirror, m: 2 },
+    });
+    expect(locked).toMatchObject({ changes: [], write: false });
+    expect(locked.envelope.f.p4).toEqual([3, value("Trips")]);
+  });
+
+  it("never makes a portfolio of a field past the highest index a mirror may name, and keeps the field", () => {
+    const far: ProfileField = [2, value("Far away")];
+    const mirror = envelope({
+      p1: [1, value("Portfolio 1")],
+      p100: [1, value("The last one")],
+      p101: far,
+      p999999999: far,
+      p0: far,
+      w: [1, ["SPYx"]],
+    });
+    const mine = wallet({ watchlist: ["NVDAx"] });
+    const merged = mergeProfile({ device: profileFieldsOf(mine), synced: mirror, mirror });
+    const fresh = mergeProfile({ device: profileFieldsOf(mine), synced: null, mirror });
+    expect(fresh.changes.map((change) => change.id)).toEqual(["w", "p100"]);
+    expect(MAX_MIRRORED_PORTFOLIO_INDEX).toBe(100);
+    // Written back as they came when this device writes for a reason of its own.
+    expect(merged.write).toBe(true);
+    expect(merged.envelope.f).toMatchObject({ p101: far, p999999999: far, p0: far });
+    const made: number[] = [];
+    withProfileChanges(mine, [{ id: "p999999999", seen: null, value: far[1] }], (index) => {
+      made.push(index);
+      return null;
+    });
+    expect(made).toEqual([]);
   });
 
   it("takes the mirror's value when the device's is as last synced and the mirror's revision is higher", () => {

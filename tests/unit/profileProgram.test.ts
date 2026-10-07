@@ -10,10 +10,12 @@ import {
   type TransactionInstruction,
 } from "@solana/web3.js";
 import { describe, expect, it } from "vitest";
+import { API_ERRORS } from "../../src/domain/apiError.js";
 import { signMessage } from "../../src/infrastructure/solana/profile.js";
 import {
   MAGIC_PROGRAM,
   PERMISSION_PROGRAM,
+  PROFILE_PROGRAM,
   ROLLUP_VAULT,
   closeProfileInstruction,
   createProfileInstruction,
@@ -23,6 +25,7 @@ import {
   readProfileAccount,
   writeProfileInstruction,
 } from "../../src/infrastructure/solana/profileProgram.js";
+import { PROFILE_IDL, type IdlInstruction } from "./support/profileIdl.js";
 
 const PROGRAM_ID = new PublicKey("AiS6fT2x5XELHvZPrLfdzydC9xUazjS6r4z4bNDTqtHQ");
 const gate = Keypair.generate().publicKey;
@@ -252,27 +255,15 @@ function signedBy(signer: PublicKey, message: Uint8Array, signature: Uint8Array)
   return verify(null, message, key, signature);
 }
 
-// The program is a sibling checkout on a developer's machine and absent in
-// CI, where this suite skips instead of failing.
 const IDL = join(import.meta.dirname, "../../../profile-noirwire/target/idl/noirwire_profile.json");
 
-type IdlAccount = { name: string; signer?: boolean; writable?: boolean; address?: string };
-type Idl = {
-  address: string;
-  instructions: {
-    name: string;
-    discriminator: number[];
-    accounts: IdlAccount[];
-    args: { name: string; type: string }[];
-  }[];
-};
+describe("the profile program's instructions against its IDL", () => {
+  const described = (name: string) =>
+    PROFILE_IDL.instructions.find((entry) => entry.name === name)!;
 
-describe.skipIf(!existsSync(IDL))("the profile program's instructions against its IDL", () => {
-  const idl = existsSync(IDL) ? (JSON.parse(readFileSync(IDL, "utf8")) as Idl) : null;
-  const described = (name: string) => idl!.instructions.find((entry) => entry.name === name)!;
-
-  it("are for the program the IDL is of", () => {
-    expect(idl!.address).toBe(PROGRAM_ID.toBase58());
+  it("are for the program the IDL is of, which is the one the client is pinned to", () => {
+    expect(PROFILE_IDL.address).toBe(PROGRAM_ID.toBase58());
+    expect(PROFILE_PROGRAM.toBase58()).toBe(PROFILE_IDL.address);
   });
 
   it.each(Object.keys(built))("%s matches its discriminator, accounts and arguments", (name) => {
@@ -287,36 +278,52 @@ describe.skipIf(!existsSync(IDL))("the profile program's instructions against it
         writable: account.writable === true,
       })),
     );
-    accounts.forEach((account, index) => {
-      if (account.address) expect(instruction.keys[index].pubkey.toBase58()).toBe(account.address);
-    });
-    expect(accounts.map((account) => account.name)).toEqual(
-      name === "close_profile"
-        ? [
-            "owner",
-            "sponsor",
-            "profile",
-            "permission",
-            "permission_program",
-            "vault",
-            "magic_program",
-          ]
-        : name === "create_profile"
-          ? [
-              "gate",
-              "owner",
-              "sponsor",
-              "profile",
-              "permission",
-              "permission_program",
-              "vault",
-              "magic_program",
-            ]
-          : ["gate", "owner", "sponsor", "profile", "vault", "magic_program"],
+    // Each place holds the account the IDL names for it: a fixed address, or the one derived.
+    const derived: Record<string, PublicKey> = {
+      gate,
+      owner,
+      ...profileAccounts(PROGRAM_ID, owner),
+    };
+    expect(instruction.keys.map((key) => key.pubkey.toBase58())).toEqual(
+      accounts.map((account) => account.address ?? derived[account.name].toBase58()),
     );
     const argumentBytes = { u64: 8, bytes: 4 + DATA.length } as Record<string, number>;
     const expectedLength = args.reduce((total, arg) => total + argumentBytes[arg.type], 8);
     expect(instruction.data.length).toBe(expectedLength);
+  });
+
+  it("names every refusal of a write the client reads by its code", () => {
+    const read = ["StaleRevision", "ProfileExists", "ProfileMissing", "Paused", "RecordTooLarge"];
+    for (const code of read) {
+      expect(PROFILE_IDL.errors, code).toContain(code);
+      expect(API_ERRORS, code).toHaveProperty(code);
+    }
+  });
+
+  // The program is a sibling checkout on a developer's machine and absent in
+  // CI, where only this one check skips: it is what catches a copy gone stale.
+  it.skipIf(!existsSync(IDL))("is still what the program's own build says", () => {
+    const live = JSON.parse(readFileSync(IDL, "utf8")) as {
+      address: string;
+      instructions: IdlInstruction[];
+      errors: { name: string }[];
+    };
+    expect(live.address).toBe(PROFILE_IDL.address);
+    for (const copied of PROFILE_IDL.instructions) {
+      const found = live.instructions.find((entry) => entry.name === copied.name)!;
+      expect(found.discriminator, copied.name).toEqual(copied.discriminator);
+      expect(found.args.map(({ name, type }) => ({ name, type }))).toEqual(copied.args);
+      expect(
+        found.accounts.map(({ name, signer, writable, address }) => ({
+          name,
+          ...(signer ? { signer } : {}),
+          ...(writable ? { writable } : {}),
+          ...(address ? { address } : {}),
+        })),
+        copied.name,
+      ).toEqual(copied.accounts);
+    }
+    expect(live.errors.map((entry) => entry.name)).toEqual(PROFILE_IDL.errors);
   });
 });
 
