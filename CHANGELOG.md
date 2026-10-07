@@ -4,6 +4,20 @@ All notable changes to this package are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The apps pin an exact tag; see [README.md](README.md#releasing) for how a tag becomes a release.
 
+## [0.11.0] - 2026-10-07
+
+Settings can say whether a wallet's labels are backed up: one quiet row with a dot, and nothing at all where there is no backup to speak of.
+
+### Added
+
+- `profileSyncStatus()` and `subscribeProfileSync(listener)` from `@noirwire/shared/wallet`: how the labels stand with their mirror, as `off`, `syncing`, `synced` (with when, by this device's clock) or `behind`, and null until the first sync after an unlock has said. Kept in memory only, and set by the sync itself: it asks for nothing more.
+- `labelsBackupView(status)` from `@noirwire/shared/presentation`: the row to show, with its tone (`safe`, `neutral` or `danger`), label, value and detail, or null when nothing is shown.
+- `settingsCopy.labelsBackup`, the row's words.
+
+### For both apps
+
+- [ ] Show the labels backup row in Settings: read `profileSyncStatus()`, subscribing with `subscribeProfileSync`, hand it to `labelsBackupView`, and draw a dot in the view's tone beside its label, value and detail. Show nothing when the view is null.
+
 ## [0.10.1] - 2026-10-07
 
 ### Fixed

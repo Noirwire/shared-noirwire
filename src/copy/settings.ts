@@ -17,6 +17,21 @@ export const settingsCopy = {
   lead: "Manage your wallet, security and privacy in one place.",
   saveFailing: saveFailing("in this browser", "after a reload"),
 
+  /** Whether the names a person gave things are kept beyond this device. Nothing is shown where they are not kept at all. */
+  labelsBackup: {
+    label: "Labels backup",
+    synced: {
+      value: "Backed up",
+      detail:
+        "Your portfolio names, icons and watchlist are encrypted and stored, so they return with your recovery phrase.",
+    },
+    syncing: { value: "Backing up" },
+    behind: {
+      value: "Not backed up yet",
+      detail: "They are safe on this device. NoirWire will try again the next time you unlock.",
+    },
+  },
+
   sections: {
     security: {
       title: "Security and recovery",

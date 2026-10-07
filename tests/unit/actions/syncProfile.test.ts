@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { nextDerivationIndex } from "../../../src/application/actions/createPortfolio.js";
 import {
   PROFILE_SYNC_TRIES,
+  profileSyncBoard,
   profileSyncer,
   syncProfile,
   type ProfileSyncDeps,
@@ -106,6 +107,10 @@ type Mirror = ReturnType<typeof fakeMirror>;
 /** One device: its own wallet and store, over a mirror it may share with another. */
 function device(mirror: Mirror, initial: Wallet = wallet()) {
   const h = harness(initial);
+  const board = profileSyncBoard();
+  /** Every status a subscriber was told of, in order. */
+  const told: (string | undefined)[] = [];
+  board.subscribe(() => told.push(board.get()?.kind));
   const deps: ProfileSyncDeps<FakeSigner> = {
     session: h.deps.session,
     store: h.store,
@@ -113,6 +118,7 @@ function device(mirror: Mirror, initial: Wallet = wallet()) {
     mirror: mirror.port,
     cipher: profileCipher,
     newPortfolio,
+    status: board,
   };
   const rename = (id: string, label: string) =>
     h.store.update((current) => ({
@@ -121,7 +127,7 @@ function device(mirror: Mirror, initial: Wallet = wallet()) {
         entry.id === id ? { ...entry, label } : entry,
       ),
     }));
-  return { h, deps, sync: () => syncProfile(deps), rename, wallet: h.wallet };
+  return { h, deps, sync: () => syncProfile(deps), rename, wallet: h.wallet, board, told };
 }
 
 /** A wallet as an import leaves it: the one portfolio it found, under the name it gives every first one. */
@@ -542,6 +548,103 @@ describe("a sync that cannot finish", () => {
     expect(mirror.account).toBe(sealed);
     expect(a.wallet().portfolios[0].label).toBe("From the future");
     expect(a.wallet().watchlist).toEqual(["SPYx"]);
+  });
+});
+
+describe("how a sync says it stands", () => {
+  it("says nothing before a first sync, then backing up, then backed up and when", async () => {
+    const mirror = fakeMirror();
+    const a = device(mirror);
+    expect(a.board.get()).toBeNull();
+    const started = Date.now();
+    await a.sync();
+    expect(a.told).toEqual(["syncing", "synced"]);
+    const status = a.board.get();
+    expect(status?.kind).toBe("synced");
+    expect(status?.kind === "synced" && status.at).toBeGreaterThanOrEqual(started);
+  });
+
+  it("confirms backed up again after a sync that had nothing to change", async () => {
+    vi.useFakeTimers({ now: 1_000 });
+    try {
+      const mirror = fakeMirror();
+      const a = device(mirror);
+      await a.sync();
+      vi.setSystemTime(9_000);
+      expect(await a.sync()).toEqual({ kind: "synced", wrote: false });
+      expect(a.board.get()).toEqual({ kind: "synced", at: 9_000 });
+      expect(a.told).toEqual(["syncing", "synced", "syncing", "synced"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("is backing up for as long as a sync is in flight", async () => {
+    const mirror = fakeMirror();
+    const a = device(mirror);
+    let during: string | undefined;
+    mirror.beforeWrite = () => void (during = a.board.get()?.kind);
+    await a.sync();
+    expect(during).toBe("syncing");
+  });
+
+  it("is not backed up yet after a write that failed, and backed up once one gets through", async () => {
+    const mirror = fakeMirror();
+    const a = device(mirror);
+    mirror.writesFail = true;
+    await a.sync();
+    expect(a.board.get()).toEqual({ kind: "behind" });
+    mirror.writesFail = false;
+    await a.sync();
+    expect(a.told).toEqual(["syncing", "behind", "syncing", "synced"]);
+  });
+
+  it("is off, and tells a subscriber once, while the server says it keeps no mirrors", async () => {
+    const mirror = fakeMirror();
+    mirror.limits = null;
+    const a = device(mirror);
+    await a.sync();
+    await a.sync();
+    expect(a.board.get()).toEqual({ kind: "off" });
+    expect(a.told).toEqual(["off"]);
+  });
+
+  it("is off when the server could not be asked and was never known to keep mirrors", async () => {
+    const mirror = fakeMirror();
+    mirror.limitsFail = true;
+    const a = device(mirror);
+    await a.sync();
+    expect(a.board.get()).toEqual({ kind: "off" });
+  });
+
+  it("is not backed up yet when the server cannot be asked after it was known to keep mirrors", async () => {
+    const mirror = fakeMirror();
+    const a = device(mirror);
+    await a.sync();
+    mirror.limitsFail = true;
+    await a.sync();
+    expect(a.board.get()).toEqual({ kind: "behind" });
+    expect(a.told).toEqual(["syncing", "synced", "behind"]);
+  });
+
+  it("is off for a mirror this version may read and not write", async () => {
+    const mirror = fakeMirror();
+    const newer = '{"v":2,"m":2,"f":{"w":[1,[]]}}';
+    mirror.account = { revision: 5n, data: await profileCipher.seal(SECRET, at(5n), newer) };
+    const a = device(mirror);
+    await a.sync();
+    expect(a.board.get()).toEqual({ kind: "off" });
+  });
+
+  it("goes back to nothing when it is reset, and tells a subscriber only if it had something", async () => {
+    const mirror = fakeMirror();
+    const a = device(mirror);
+    a.board.reset();
+    expect(a.told).toEqual([]);
+    await a.sync();
+    a.board.reset();
+    expect(a.board.get()).toBeNull();
+    expect(a.told).toEqual(["syncing", "synced", undefined]);
   });
 });
 

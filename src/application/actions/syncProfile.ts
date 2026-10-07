@@ -2,6 +2,7 @@ import {
   MAX_PROFILE_BYTES,
   decodeProfile,
   encodeProfile,
+  mayWriteProfile,
   mergeProfile,
   profileFieldsOf,
   withProfileChanges,
@@ -34,7 +35,58 @@ export type ProfileSyncDeps<K extends Signer> = {
   cipher: ProfileCipher;
   /** A new portfolio record for the key at `derivationIndex`, whose address is `address`. */
   newPortfolio(label: string, address: string, derivationIndex: number): Portfolio;
+  /** Where each sync says how it stands, for a screen to read. */
+  status: Pick<ProfileSyncBoard, "get" | "set">;
 };
+
+/**
+ * How the wallet's labels stand with their mirror, as far as the last sync
+ * of this unlock could tell:
+ * - `off`: the server keeps no mirrors, or this version may not write the
+ *   one there is. Nothing is shown.
+ * - `syncing`: a sync is under way.
+ * - `synced`: the last sync left the device and the mirror agreeing. `at`
+ *   is when, by this device's clock, and is only ever shown.
+ * - `behind`: the last sync failed with mirrors known to be kept. The labels
+ *   are safe on this device and not mirrored yet.
+ */
+export type ProfileSyncStatus =
+  { kind: "off" } | { kind: "syncing" } | { kind: "synced"; at: number } | { kind: "behind" };
+
+/** The status, kept in memory and nowhere else. Null until a sync has said anything. */
+export type ProfileSyncBoard = {
+  get(): ProfileSyncStatus | null;
+  set(next: ProfileSyncStatus): void;
+  /** Back to null: what was said of one unlock says nothing of the next. */
+  reset(): void;
+  /** Hears of every change, and of nothing else. Hands back what stops it. */
+  subscribe(listener: () => void): () => void;
+};
+
+const sameStatus = (a: ProfileSyncStatus | null, b: ProfileSyncStatus) =>
+  a?.kind === b.kind && (a.kind !== "synced" || b.kind !== "synced" || a.at === b.at);
+
+export function profileSyncBoard(): ProfileSyncBoard {
+  let status: ProfileSyncStatus | null = null;
+  const listeners = new Set<() => void>();
+  const becomes = (next: ProfileSyncStatus | null) => {
+    status = next;
+    listeners.forEach((listener) => listener());
+  };
+  return {
+    get: () => status,
+    set(next) {
+      if (!sameStatus(status, next)) becomes(next);
+    },
+    reset() {
+      if (status !== null) becomes(null);
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
+    },
+  };
+}
 
 /** Where a sync that failed stopped. */
 export type ProfileSyncStage = UsageFields["stage"];
@@ -79,6 +131,9 @@ export async function syncProfile<K extends Signer>(
     const stopped = (stage: ProfileSyncStage): ProfileSyncResult => {
       if (!session.live()) return refused("walletLocked");
       deps.track("profile_sync_failed", { stage });
+      // Mirrors are known to be kept once a sync of this unlock got past asking.
+      const known = deps.status.get();
+      deps.status.set({ kind: known && known.kind !== "off" ? "behind" : "off" });
       return { kind: "failed", stage };
     };
 
@@ -90,7 +145,11 @@ export async function syncProfile<K extends Signer>(
     } catch {
       return stopped("config");
     }
-    if (!limits) return { kind: "off" };
+    if (!limits) {
+      deps.status.set({ kind: "off" });
+      return { kind: "off" };
+    }
+    deps.status.set({ kind: "syncing" });
     const keys = session.profileKeys();
     if (!keys) return refused("walletLocked");
     const owner = keys.owner.publicKey.toBase58();
@@ -152,6 +211,10 @@ export async function syncProfile<K extends Signer>(
       const kept = await keep(deps, session, merged);
       if (kept === "notSaved") return stopped("save");
       if (outcome === "written" || kept === "saved") deps.track("profile_synced");
+      // A mirror this version may not write was read and no more: nothing to show for it.
+      deps.status.set(
+        mayWriteProfile(mirror) ? { kind: "synced", at: Date.now() } : { kind: "off" },
+      );
       return { kind: "synced", wrote: outcome === "written" };
     }
     return stopped("conflict");

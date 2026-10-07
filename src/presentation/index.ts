@@ -179,7 +179,7 @@ export {
 } from "./portfolio.js";
 export { type ProgressStep, type StepStatus } from "./progress.js";
 export { type NewPasswordView, newPasswordView } from "./password.js";
-export { privacySectionHelp } from "./settings.js";
+export { type LabelsBackupView, labelsBackupView, privacySectionHelp } from "./settings.js";
 export { saysRawChainError } from "./actionResult.js";
 export {
   type UnlockProblemView,

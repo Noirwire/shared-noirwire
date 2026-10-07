@@ -62,7 +62,10 @@ export {
   PROFILE_SYNC_TRIES,
   type ProfileSyncDeps,
   type ProfileSyncResult,
+  type ProfileSyncBoard,
   type ProfileSyncStage,
+  type ProfileSyncStatus,
+  profileSyncBoard,
   profileSyncer,
   syncProfile,
 } from "./actions/syncProfile.js";
