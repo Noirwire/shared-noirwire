@@ -4,6 +4,12 @@ All notable changes to this package are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The apps pin an exact tag; see [README.md](README.md#releasing) for how a tag becomes a release.
 
+## [0.10.1] - 2026-10-07
+
+### Fixed
+
+- A sync that could not ask the server whether it keeps profiles is counted as `profile_sync_failed` with stage `config`, and no longer passes for a server that said profiles are off. Nothing a person sees changes.
+
 ## [0.10.0] - 2026-10-07
 
 A wallet's own labels follow its recovery phrase. Portfolio names, icons, archived state, pies and the watchlist are mirrored, encrypted on the device, into one small record that only a key derived from the phrase can read. Restoring the phrase elsewhere brings them back, and web and phone agree. The device's record stays the truth: without the mirror the wallet works as before.

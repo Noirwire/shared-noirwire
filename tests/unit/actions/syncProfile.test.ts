@@ -334,17 +334,29 @@ describe("a sync that cannot finish", () => {
     expect(await mirror.labels()).toMatchObject({ w: [2, ["SPYx"]] });
   });
 
-  it("does nothing at all, and counts nothing, while the server has no mirrors or cannot say", async () => {
-    for (const off of [(m: Mirror) => (m.limits = null), (m: Mirror) => (m.limitsFail = true)]) {
-      const { mirror, a, before } = await midway();
-      off(mirror);
-      mirror.reads = 0;
-      expect(await a.sync()).toEqual({ kind: "off" });
-      expect(mirror.reads).toBe(0);
-      expect(mirror.writes).toEqual([]);
-      expect(a.wallet()).toBe(before);
-      expect(a.h.track).not.toHaveBeenCalled();
-    }
+  it("does nothing at all, and counts nothing, while the server says it keeps no mirrors", async () => {
+    const { mirror, a, before } = await midway();
+    mirror.limits = null;
+    mirror.reads = 0;
+    expect(await a.sync()).toEqual({ kind: "off" });
+    expect(mirror.reads).toBe(0);
+    expect(mirror.writes).toEqual([]);
+    expect(a.wallet()).toBe(before);
+    expect(a.h.track).not.toHaveBeenCalled();
+  });
+
+  it("counts one failure, and does nothing else, when the server cannot be asked whether it keeps mirrors", async () => {
+    const { mirror, a, before } = await midway();
+    mirror.limitsFail = true;
+    mirror.reads = 0;
+    mirror.sendings.length = 0;
+    expect(await a.sync()).toEqual({ kind: "failed", stage: "config" });
+    // Nothing was read, so no challenge was signed, and nothing was sent to be signed for.
+    expect(mirror.reads).toBe(0);
+    expect(mirror.sendings).toEqual([]);
+    expect(mirror.writes).toEqual([]);
+    expect(a.wallet()).toBe(before);
+    expect(a.h.track.mock.calls).toEqual([["profile_sync_failed", { stage: "config" }]]);
   });
 
   it("writes nothing, to the mirror or the wallet, once the wallet locks part way", async () => {

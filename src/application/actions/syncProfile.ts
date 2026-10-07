@@ -40,7 +40,7 @@ export type ProfileSyncDeps<K extends Signer> = {
 export type ProfileSyncStage = UsageFields["stage"];
 
 export type ProfileSyncResult =
-  /** The server has no mirrors, or could not say. Nothing was read or written. */
+  /** The server says it keeps no mirrors. Nothing was read or written, and nothing is counted. */
   | { kind: "off" }
   /** The device and the mirror agree. `wrote` when the mirror had to be written for that. */
   | { kind: "synced"; wrote: boolean }
@@ -76,17 +76,24 @@ export async function syncProfile<K extends Signer>(
   return deps.store.serialised("noirwire-profile-sync", async () => {
     const session = openSession(deps.session);
     if ("kind" in session) return session;
-    const limits = await deps.mirror.limits().catch(() => null);
-    if (!limits) return { kind: "off" };
-    const keys = session.profileKeys();
-    if (!keys) return refused("walletLocked");
-    const owner = keys.owner.publicKey.toBase58();
-
     const stopped = (stage: ProfileSyncStage): ProfileSyncResult => {
       if (!session.live()) return refused("walletLocked");
       deps.track("profile_sync_failed", { stage });
       return { kind: "failed", stage };
     };
+
+    // A server that says it keeps no mirrors is an answer, and nothing is
+    // counted. One that could not be asked is a failure like any other.
+    let limits: { maxDataLen: number } | null;
+    try {
+      limits = await deps.mirror.limits();
+    } catch {
+      return stopped("config");
+    }
+    if (!limits) return { kind: "off" };
+    const keys = session.profileKeys();
+    if (!keys) return refused("walletLocked");
+    const owner = keys.owner.publicKey.toBase58();
 
     for (let tried = 0; tried < PROFILE_SYNC_TRIES; tried += 1) {
       let stored: MirroredProfile | null;

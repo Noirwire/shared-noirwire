@@ -115,7 +115,7 @@ const FIELDS = {
   range: oneOf("1D", "1W", "1M"),
   what: oneOf("funding", "portfolio"),
   kind_of: oneOf("error", "rejection"),
-  stage: oneOf("read", "unreadable", "too_large", "write", "conflict", "save"),
+  stage: oneOf("config", "read", "unreadable", "too_large", "write", "conflict", "save"),
 } satisfies Record<string, (value: unknown) => boolean>;
 
 type Field = keyof typeof FIELDS;
