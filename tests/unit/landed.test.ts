@@ -229,14 +229,17 @@ function privately(h: Harness, token: Partial<PrivateToken<FakeSigner>> = {}) {
     nudgeSettlement: async () => undefined,
     ...token,
   };
-  const refresh = { funding: vi.fn(async () => Promise.reject(dropped())) };
+  const refresh = {
+    funding: vi.fn(async () => Promise.reject(dropped())),
+    portfolioAsset: vi.fn(async () => 0),
+  };
   return {
     privateToken,
     run: () =>
       settled(
         fundPrivately(
           { ...h.deps, privateToken: () => privateToken, refresh },
-          { portfolioId: "p1", amount: 10, symbol: "USDC" },
+          { from: "funding", to: "p1", amount: 10, symbol: "USDC" },
         ),
       ),
   };
@@ -263,8 +266,12 @@ describe("moving money in privately", () => {
     const t = privately(h);
     const result = await settled(
       fundPrivately(
-        { ...deps, privateToken: () => t.privateToken, refresh: { funding: unreadable } },
-        { portfolioId: "p1", amount: 10, symbol: "USDC" },
+        {
+          ...deps,
+          privateToken: () => t.privateToken,
+          refresh: { funding: unreadable, portfolioAsset: unreadable },
+        },
+        { from: "funding", to: "p1", amount: 10, symbol: "USDC" },
       ),
     );
     expect(result).toEqual({

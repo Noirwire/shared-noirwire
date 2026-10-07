@@ -176,11 +176,22 @@ function rowOf(reads: Reads, recorded: Activity, words: RowWords): ActivityRowVi
   };
 }
 
+/** The name of the place of this wallet a send went to, or null when it left the wallet. */
+function movedTo(wallet: Wallet, recorded: Activity): string | null {
+  if (recorded.kind !== "send" || !recorded.counterparty) return null;
+  if (recorded.counterparty === wallet.funding.address) return fundingCopy.wallet.title;
+  return (
+    wallet.portfolios.find((portfolio) => portfolio.address === recorded.counterparty)?.label ??
+    null
+  );
+}
+
 export function activityRow(reads: Reads, wallet: Wallet, recorded: Activity): ActivityRowView {
   const name = portfolioName(wallet, recorded.portfolioId);
+  const destination = movedTo(wallet, recorded);
   return rowOf(reads, recorded, {
-    title: activityTitle(reads, recorded),
-    caption: recorded.kind === "send" ? activityCopy.sentCaption(name) : name,
+    title: destination ? activityCopy.movedTo(destination) : activityTitle(reads, recorded),
+    caption: recorded.kind === "send" && !destination ? activityCopy.sentCaption(name) : name,
     icon: ICON[recorded.kind],
     incoming: INCOMING[recorded.kind],
   });

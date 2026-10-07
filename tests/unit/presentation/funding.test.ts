@@ -62,6 +62,15 @@ describe("fundingDraft", () => {
     expect(funding.canFund).toBe(true);
   });
 
+  it("offers as its most what is left once both fees are paid on top", () => {
+    const funding = draft({ fundingBalance: 13 });
+    expect(funding.max).toBe(12.787212);
+    expect(funding.leaving(funding.max)).toBeLessThanOrEqual(13);
+    expect(funding.leaving(funding.max + 0.000002)).toBeGreaterThan(13);
+    expect(draft({ fundingBalance: 0.6 }).max).toBe(0);
+    expect(draft({ privateRoute: false, fundingBalance: 2 }).max).toBe(2);
+  });
+
   it("moves exactly the amount on the public route", () => {
     const funding = draft({ privateRoute: false, decimals: 0, amountText: "20" });
     expect(funding.minimum).toBe(0);
@@ -78,7 +87,7 @@ describe("fundingDraft", () => {
 
 describe("fundingTitle and fundingFooter", () => {
   it("calls only the private route private", () => {
-    expect(fundingTitle("USDC", true)).toBe("Move to portfolio");
+    expect(fundingTitle("USDC", true)).toBe("Move money");
     expect(fundingTitle("SOL", false)).toBe("Move SOL publicly");
     expect(fundingFooter(true)).toMatch(/^A private move breaks the public link/);
     expect(fundingFooter(false)).toBe("This is an ordinary, fully public transfer.");
@@ -89,7 +98,7 @@ describe("fundingAmountView", () => {
   it("offers the presets it can afford and states the private route's costs", () => {
     const view = amountView();
     expect(view.lead).toBe(
-      "Move USDC into this portfolio without publishing a transfer between your main wallet and it. Available 20.00 USDC.",
+      "Move USDC without publishing a transfer between the two. Available 20.00 USDC.",
     );
     expect(view.noPrivateRoute).toBeNull();
     expect(view.presets).toEqual([
@@ -99,7 +108,7 @@ describe("fundingAmountView", () => {
     expect(view.otherAmount).toBe("Other amount in USDC");
     expect(view.next).toEqual({ label: "Continue", disabled: true });
     expect(view.costs).toBe(
-      "Costs a 0.1% privacy fee plus a flat 0.20 USDC relay fee, both charged in USDC by the settlement service on top of the amount. The relay fee pays the network costs, so your main wallet needs no SOL. The smallest private move is 0.50 USDC. It usually arrives within a minute and can take a few.",
+      "Costs a 0.1% privacy fee plus a flat 0.20 USDC relay fee, both charged in USDC by the settlement service on top of the amount. The relay fee pays the network costs, so no SOL is needed. The smallest private move is 0.50 USDC. It usually arrives within a minute and can take a few.",
     );
     expect(view.empty).toBeNull();
   });
@@ -109,7 +118,9 @@ describe("fundingAmountView", () => {
       { asset: "SOL", privateRoute: false, fundingBalance: 1, presets: [0.05] },
       { privateRoute: false, decimals: 0, fundingBalance: 1 },
     );
-    expect(view.lead).toBe("Move SOL into this portfolio. Available 1.0000 SOL.");
+    expect(view.lead).toBe(
+      "Move SOL from your main wallet into the portfolio. Available 1.0000 SOL.",
+    );
     expect(view.noPrivateRoute).toMatch(/^SOL cannot be moved privately\./);
     expect(view.presets).toEqual([{ value: 0.05, label: "0.0500 SOL", disabled: false }]);
     expect(view.costs).toBeNull();
@@ -206,6 +217,36 @@ describe("fundingProgressView", () => {
   });
 });
 
+describe("a move out of a portfolio", () => {
+  it("names the portfolio the money leaves, and never sends its owner to add money", () => {
+    const empty = amountView({ sourceLabel: "Trips", fundingBalance: 0 }, { fundingBalance: 0 });
+    expect(empty.empty).toBeNull();
+    expect(empty.nothingToMove).toBe("Trips holds no USDC to move.");
+    expect(empty.max).toBeNull();
+
+    const over = amountView({ sourceLabel: "Trips" }, { amountText: "19.9" });
+    expect(over.unaffordable).toBe(
+      "With fees this takes 20.1199 USDC from Trips, more than it holds. Enter a smaller amount.",
+    );
+    expect(over.max).toEqual({ label: "Max", value: 19.780219 });
+    expect(over.total.label).toBe("Total leaving Trips");
+  });
+
+  it("reviews what leaves the portfolio and where it arrives", () => {
+    const view = fundingReviewView({
+      draft: draft({ amountText: "10" }),
+      asset: "USDC",
+      amount: 10,
+      portfolioLabel: "your main wallet",
+      sourceLabel: "Trips",
+      pending: { blocked: false },
+    });
+    expect(view.lead).toBe("Review what leaves Trips before moving money into your main wallet.");
+    expect(view.terms[0].label).toBe("Arrives in your main wallet");
+    expect(view.total).toEqual({ label: "Total leaving Trips", value: "10.21 USDC" });
+  });
+});
+
 describe("fundingWalletView", () => {
   const SOL_PRICED = { ...TEST_PRICES, SOL: { usd: 200, change24h: 0 } };
   const holding = (usdc: number, sol = 0, entries: Activity[] = []) =>
@@ -256,7 +297,7 @@ describe("fundingWalletView", () => {
     expect(view.total.value).toBe("$0.00");
     expect(view.assets).toEqual([{ symbol: "USDC", amount: "0.00 USDC", value: "$0.00" }]);
     expect(view.move).toEqual({
-      label: "Move to portfolio",
+      label: "Move money",
       target: { to: "fund" },
       disabled: true,
       reason: "Add money to your main wallet first.",
@@ -373,7 +414,7 @@ describe("fundingOutcomeView", () => {
       alert: true,
     });
     expect(unknown.body).toBe(
-      "The transfer of 10.00 USDC was sent, but we could not confirm that it arrived. It may still arrive. Do not send it again yet: check your main wallet’s USDC balance first. If it has gone down, the money is on its way to Investing and needs nothing more from you.",
+      "The transfer of 10.00 USDC was sent, but we could not confirm that it arrived. It may still arrive. Do not send it again yet: check the USDC balance of your main wallet first. If it has gone down, the money is on its way to Investing and needs nothing more from you.",
     );
     expect(fundingOutcomeView({ ...base, outcome: "pending", privateRoute: true })).toMatchObject({
       title: "Still settling",

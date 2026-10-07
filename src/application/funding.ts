@@ -1,12 +1,12 @@
 import { tooPrecise, typedAmount } from "../domain/amount.js";
-import { privateTransferCosts } from "../domain/privateTransfer.js";
+import { maxPrivateTransfer, privateTransferCosts } from "../domain/privateTransfer.js";
 
 export type FundingInput = {
   /** Whether the asset moves by the private route, rather than as a public transfer. */
   privateRoute: boolean;
   /** The decimals of the asset's token. */
   decimals: number;
-  /** What the funding wallet holds of the asset. */
+  /** What the place the money leaves holds of the asset. */
   fundingBalance: number;
   amountText: string;
 };
@@ -31,6 +31,8 @@ export function fundingDraft(input: FundingInput) {
     leaving,
     affordable,
     canFund: amountValid && affordable(customAmount),
+    /** The most that can move: on the private route, what is left once the fees are paid on top. */
+    max: privateRoute ? maxPrivateTransfer(fundingBalance, decimals) : Math.max(fundingBalance, 0),
     costsOf,
   };
 }

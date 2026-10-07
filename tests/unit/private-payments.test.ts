@@ -351,7 +351,7 @@ describe("keeping this wallet's other addresses out of the transaction", () => {
     expect((await checkRelayFee(built.transaction, SENDER, USDC)).ok).toBe(true);
     expect(await checkKeepsOut(built.transaction, USDC, secret)).toMatchObject({
       ok: false,
-      reason: expect.stringContaining("name one of your portfolios"),
+      reason: expect.stringContaining("name another wallet of yours"),
     });
   });
 

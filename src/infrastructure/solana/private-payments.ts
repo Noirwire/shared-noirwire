@@ -107,10 +107,10 @@ export async function checkRelayFee(
   if (!feePayer) return refuse("This transfer names no fee payer.");
   const senderIndex = message.staticAccountKeys.findIndex((key) => key.equals(sender));
   if (feePayer.equals(sender)) {
-    return refuse("This transfer would be paid for in SOL by your funding wallet.");
+    return refuse("This transfer would be paid for in SOL by the wallet sending it.");
   }
   if (!message.isAccountSigner(senderIndex) || message.isAccountWritable(senderIndex)) {
-    return refuse("This transfer asks your funding wallet for more than its signature.");
+    return refuse("This transfer asks the wallet sending it for more than its signature.");
   }
 
   const accountKeys = await resolveAccountKeys(transaction);
@@ -247,7 +247,7 @@ export async function checkKeepsOut(
       return {
         ok: false,
         reason:
-          "This transfer would name one of your portfolios publicly next to your funding wallet. Not signed.",
+          "This transfer would publicly name another wallet of yours next to the one sending it. Not signed.",
       };
     }
   }

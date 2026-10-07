@@ -1,4 +1,5 @@
 import type { PendingWords } from "../application/ports.js";
+import { fundingCopy } from "../copy/funding.js";
 import { pendingActionCopy as copy } from "../copy/pendingAction.js";
 import { shownAmountWith, type ShownUnits } from "./amount.js";
 
@@ -8,7 +9,7 @@ export function pendingWords(units: ShownUnits): PendingWords {
   return {
     moving: (symbol, held, portfolio) => copy.what.moving(amount(symbol, held), portfolio),
     privateTransfer: (symbol, held, portfolio) =>
-      copy.what.privateTransfer(amount(symbol, held), portfolio),
+      copy.what.privateTransfer(amount(symbol, held), portfolio ?? fundingCopy.wallet.title),
     send: (symbol, held) => copy.what.send(amount(symbol, held)),
     trade: (side, symbol) => copy.what.trade(side, symbol),
     openingHoldings: () => copy.what.openingHoldings,

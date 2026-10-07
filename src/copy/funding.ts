@@ -11,11 +11,11 @@ export const privateMoveTiming = "It usually arrives within a minute and can tak
 
 /** Said on both platforms under the amount of a private move. */
 const privateMoveFooter =
-  "A private move breaks the public link between your main wallet and this portfolio. It does not hide the amount, and the settlement service sees both addresses. It does not see your IP address: the request goes through NoirWire's own server first, which keeps only a basic record that a request was made, not your address or what's in it. Privacy from the public record, not from the service. Private moves are powered by MagicBlock.";
+  "A private move breaks the public link between where the money leaves and where it arrives. It does not hide the amount, and the settlement service sees both addresses. It does not see your IP address: the request goes through NoirWire's own server first, which keeps only a basic record that a request was made, not your address or what's in it. Privacy from the public record, not from the service. Private moves are powered by MagicBlock.";
 
 /**
- * The main wallet, and moving money from it into a portfolio, privately or
- * in public. It is the person's own public wallet: its address is the one
+ * The main wallet, and moving money between it and the portfolios, privately
+ * or in public. It is the person's own public wallet: its address is the one
  * they share, money arrives there, and portfolios stay separate from it.
  */
 export const fundingCopy = {
@@ -25,15 +25,21 @@ export const fundingCopy = {
     empty: "Your main wallet is empty. Add money to get started.",
     /** Why Move to portfolio cannot be pressed while there is no USDC to move. */
     addMoneyFirst: "Add money to your main wallet first.",
+    /** How a sentence names it as one end of a move. */
+    inSentence: "your main wallet",
   },
 
-  titlePrivate: "Move to portfolio",
+  titlePrivate: "Move money",
+  from: "From",
+  to: "To",
+  /** Turns a move around: what it left arrives, and what it arrived at leaves. */
+  swap: "Swap from and to",
   titlePublic: (asset: string) => `Move ${asset} publicly`,
 
   stages: {
     enqueue: {
       title: "Enqueue the private move",
-      detail: "Signed by your main wallet and handed to the settlement queue.",
+      detail: "Signed on this device and handed to the settlement queue.",
     },
     settle: {
       title: "Settle out of the queue",
@@ -41,36 +47,38 @@ export const fundingCopy = {
         `Delivered after ${minSeconds}-${maxSeconds}s, split across several entries.`,
     },
     arrive: {
-      title: "Arrive at this portfolio",
-      detail: "Confirmed by reading this portfolio's real balance.",
+      title: "Arrive",
+      detail: "Confirmed by reading the real balance it arrives in.",
     },
   },
 
-  /** `available` is null until the main wallet has been read: then no amount is named. */
+  /** `available` is null until where the money leaves has been read: then no amount is named. */
   leadPrivate: (asset: string, available: string | null) =>
-    `Move ${asset} into this portfolio without publishing a transfer between your main wallet and it.${available === null ? "" : ` Available ${available}.`}`,
+    `Move ${asset} without publishing a transfer between the two.${available === null ? "" : ` Available ${available}.`}`,
   leadPublic: (asset: string, available: string | null) =>
-    `Move ${asset} into this portfolio.${available === null ? "" : ` Available ${available}.`}`,
+    `Move ${asset} from your main wallet into the portfolio.${available === null ? "" : ` Available ${available}.`}`,
   noPrivateMove: (asset: string) =>
-    `${asset} cannot be moved privately. This is a direct, public transfer from your main wallet to this portfolio, and it links the two addresses publicly. Keep it small - enough to cover fees is usually plenty.`,
+    `${asset} cannot be moved privately. This is a direct, public transfer from your main wallet to the portfolio, and it links the two addresses publicly. Keep it small - enough to cover fees is usually plenty.`,
   otherAmount: (asset: string) => `Other amount in ${asset}`,
   invalidAmount: "Enter an amount greater than zero and within your available balance.",
   belowMinimum: (minimum: string) => `A private move has to be at least ${minimum}.`,
-  overBalance: (leaving: string) =>
-    `With fees this takes ${leaving} from your main wallet, more than it holds. Enter a smaller amount.`,
+  overBalance: (leaving: string, from: string) =>
+    `With fees this takes ${leaving} from ${from}, more than it holds. Enter a smaller amount.`,
+  /** A portfolio with none of the asset to move out. */
+  nothingToMove: (from: string, asset: string) => `${from} holds no ${asset} to move.`,
   emptyBefore: (asset: string) => `Your main wallet holds no ${asset}. `,
   addressLink: "Show your main wallet address",
   emptyAfter: " to add money first.",
   privateCosts: (feePercent: number, relayFee: string, asset: string, minimum: string) =>
-    `Costs a ${feePercent}% privacy fee plus a flat ${relayFee} relay fee, both charged in ${asset} by the settlement service on top of the amount. The relay fee pays the network costs, so your main wallet needs no SOL. The smallest private move is ${minimum}. ${privateMoveTiming}`,
+    `Costs a ${feePercent}% privacy fee plus a flat ${relayFee} relay fee, both charged in ${asset} by the settlement service on top of the amount. The relay fee pays the network costs, so no SOL is needed. The smallest private move is ${minimum}. ${privateMoveTiming}`,
 
-  reviewLead: (portfolio: string) =>
-    `Review what leaves your main wallet before moving money into ${portfolio}.`,
+  reviewLead: (from: string, to: string) =>
+    `Review what leaves ${from} before moving money into ${to}.`,
   terms: {
-    arrives: (portfolio: string) => `Arrives in ${portfolio}`,
+    arrives: (to: string) => `Arrives in ${to}`,
     privacyFee: (percent: number) => `Privacy fee (${percent}%)`,
     relayFee: "Relay fee",
-    total: "Total leaving your main wallet",
+    total: (from: string) => `Total leaving ${from}`,
   },
   noSolNeeded:
     "No SOL is needed. If the transfer would take more than this total, it is not signed.",
@@ -94,12 +102,12 @@ export const fundingCopy = {
   observerLink: "See what an outside observer can and cannot connect.",
 
   unknownTitle: "Sent, but not confirmed",
-  unknown: (amount: string, asset: string, portfolio: string) =>
-    `The transfer of ${amount} was sent, but we could not confirm that it arrived. It may still arrive. Do not send it again yet: check your main wallet’s ${asset} balance first. If it has gone down, the money is on its way to ${portfolio} and needs nothing more from you.`,
+  unknown: (amount: string, asset: string, from: string, to: string) =>
+    `The transfer of ${amount} was sent, but we could not confirm that it arrived. It may still arrive. Do not send it again yet: check the ${asset} balance of ${from} first. If it has gone down, the money is on its way to ${to} and needs nothing more from you.`,
 
   settlingTitle: "Still settling",
   settling:
-    "The transfer was accepted but has not landed yet. Queued transfers settle on their own schedule, so this is normal rather than a failure. This portfolio’s balance will show it once it arrives.",
+    "The transfer was accepted but has not landed yet. Queued transfers settle on their own schedule, so this is normal rather than a failure. The balance will show it once it arrives.",
 
   footerPrivate: privateMoveFooter,
   footerPublic: "This is an ordinary, fully public transfer.",

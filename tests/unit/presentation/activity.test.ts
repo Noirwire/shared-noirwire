@@ -98,6 +98,30 @@ describe("activityRow", () => {
   });
 });
 
+describe("a private move out of a portfolio", () => {
+  it("reads as moved to the place of this wallet it went to, not as a send to an address", () => {
+    const wallet = withEntries([]);
+    const moved = (counterparty: string) =>
+      activityRow(
+        reads,
+        wallet,
+        activity({ portfolioId: "acc_1", kind: "send", amount: 5, usd: 5, counterparty }),
+      );
+    const toMain = moved(wallet.funding.address);
+    expect(toMain).toMatchObject({
+      title: "Moved to Main wallet",
+      caption: "Investing",
+      icon: "out",
+    });
+    expect(toMain.value.text).toBe("-$5.00");
+    expect(moved(wallet.portfolios[0].address).title).toBe("Moved to Investing");
+    expect(moved("SomeoneElse111")).toMatchObject({
+      title: "Sent",
+      caption: "To an address you entered · Investing",
+    });
+  });
+});
+
 describe("the main wallet's activity", () => {
   const arrival = activity({
     id: "arrival",

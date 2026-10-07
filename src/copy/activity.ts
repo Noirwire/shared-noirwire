@@ -75,6 +75,8 @@ export const activityCopy = {
   },
   portfolioFallback: "Portfolio",
   movedToPortfolio: "Moved to portfolio",
+  /** A private move out of a portfolio, to another place of the same wallet. */
+  movedTo: (place: string) => `Moved to ${place}`,
   notPriced: "Not priced",
   /** A stock amount recorded before shown amounts were, which is a count of raw tokens. */
   rawTokens: (amount: string) => `${amount} (raw tokens)`,

@@ -4,6 +4,29 @@ All notable changes to this package are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The apps pin an exact tag; see [README.md](README.md#releasing) for how a tag becomes a release.
 
+## [0.9.0] - 2026-10-07
+
+A private move runs between any two of the person's own places: main wallet to portfolio as before, and now portfolio to main wallet and portfolio to portfolio. The portfolio signs for itself and needs no SOL, the same as the main wallet.
+
+### Breaking
+
+For both apps:
+
+- [ ] **Move**: `fundPrivately(deps, { from, to, amount, symbol })` replaces `portfolioId` with the two ends, each a portfolio's id or `FUNDING`. The move as it was is `{ from: FUNDING, to: portfolioId }`. Its `refresh` needs `portfolioAsset` beside `funding`. A move to where it left, or to or from an archived portfolio, is refused.
+- [ ] **Move, the arrival**: `awaitPrivateArrival(deps, { from, to, symbol, balanceBefore, amount })` takes the same two ends. An arrival in the main wallet is recorded there.
+- [ ] **Move, the screens**: `fundingAmountView`, `fundingReviewView` and `fundingOutcomeView` take an optional `sourceLabel`, the portfolio the money leaves; absent means the main wallet. `portfolioLabel` is where it arrives: pass `fundingCopy.wallet.inSentence` when that is the main wallet. `fundingDraft`'s `fundingBalance` is what the place the money leaves holds.
+- [ ] **Pending words**: `PendingWords.privateTransfer` gets a null label for a move into the main wallet. `pendingWords` already answers it.
+
+### Added
+
+- `fundingAmountView` answers `max`, the most that can move once both fees are paid on top, and `nothingToMove` for a portfolio that holds none of the asset. `fundingDraft` answers the same `max`.
+- `fundingCopy.from`, `to` and `swap` for the two ends of a move.
+- A move out of a portfolio is listed there as "Moved to Main wallet" or "Moved to" the portfolio's name, once its transaction has landed.
+
+### Changed
+
+- The move's title is "Move money", and its wording no longer assumes the main wallet is where the money leaves.
+
 ## [0.8.0] - 2026-10-06
 
 A move to a portfolio is called arrived only once all of it is there. The settlement service delivers a private transfer in three parts, seconds apart, and the arrival was called on the first rise in the balance: a move of 10 USDC was reported, and recorded in Activity, as 3.33 USDC, while the other two parts landed a few seconds later.

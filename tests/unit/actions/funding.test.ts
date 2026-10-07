@@ -7,7 +7,15 @@ import {
 } from "../../../src/application/actions/fundPrivately.js";
 import { ChainError, UnknownOutcomeError } from "../../../src/domain/chainError.js";
 import { actionFailure } from "../../../src/presentation/actionResult.js";
-import { FUNDING_ADDRESS, harness, OWN_ADDRESS, type FakeSigner } from "../support/actions.js";
+import {
+  FUNDING_ADDRESS,
+  harness,
+  OTHER_ADDRESS,
+  OWN_ADDRESS,
+  portfolio,
+  wallet,
+  type FakeSigner,
+} from "../support/actions.js";
 
 function usdc(over: Partial<AssetMoves<FakeSigner>> = {}): AssetMoves<FakeSigner> {
   return {
@@ -155,7 +163,7 @@ function privateToken(over: Partial<PrivateToken<FakeSigner>> = {}): PrivateToke
 }
 
 function privately(token = privateToken(), h = harness()) {
-  const refresh = { funding: vi.fn(async () => 0) };
+  const refresh = { funding: vi.fn(async () => 0), portfolioAsset: vi.fn(async () => 0) };
   const deps = {
     ...h.deps,
     privateToken: (symbol: string) => (symbol === token.symbol ? token : undefined),
@@ -165,10 +173,168 @@ function privately(token = privateToken(), h = harness()) {
     h,
     token,
     deps,
-    run: (amount = 20, symbol = "USDC") =>
-      fundPrivately(deps, { portfolioId: "p1", amount, symbol }),
+    refresh,
+    run: (amount = 20, symbol = "USDC", from = "funding", to = "p1") =>
+      fundPrivately(deps, { from, to, amount, symbol }),
   };
 }
+
+const TRIPS_ADDRESS = "Portfolio333";
+
+/** A wallet with a second portfolio that is still in use, beside the archived one. */
+function twoActive() {
+  return harness(
+    wallet({
+      portfolios: [
+        ...wallet().portfolios,
+        portfolio({ id: "p3", label: "Trips", address: TRIPS_ADDRESS, derivationIndex: 3 }),
+      ],
+    }),
+  );
+}
+
+describe("moving money privately out of a portfolio", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("is signed by the portfolio, for the main wallet, naming no other place of the wallet", async () => {
+    const { h, token, refresh, run } = privately(privateToken(), twoActive());
+    expect(await run(20, "USDC", "p1", "funding")).toMatchObject({ kind: "submitted" });
+    expect(token.sendPrivately).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sender: expect.objectContaining({ address: OWN_ADDRESS }),
+        to: FUNDING_ADDRESS,
+        keepOut: [FUNDING_ADDRESS, OTHER_ADDRESS, TRIPS_ADDRESS],
+      }),
+    );
+    expect(h.pending.pendingFor("p1")).toMatchObject({
+      signature: "enqueue",
+      what: "a private move of 20.00 USDC into Main wallet",
+    });
+    expect(h.pending.pendingFor(h.FUNDING)).toBeUndefined();
+    expect(refresh.portfolioAsset).toHaveBeenCalledWith("p1", OWN_ADDRESS, "USDC");
+  });
+
+  it("goes from one portfolio to another, and is listed as money out once its transaction has landed", async () => {
+    const { h, token, run } = privately(privateToken(), twoActive());
+    expect(await run(20, "USDC", "p1", "p3")).toMatchObject({ kind: "submitted" });
+    expect(token.sendPrivately).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: TRIPS_ADDRESS,
+        keepOut: [FUNDING_ADDRESS, OTHER_ADDRESS, TRIPS_ADDRESS],
+      }),
+    );
+    expect(h.wallet().activity).toEqual([]);
+    h.settle.mockResolvedValueOnce("landed" as never);
+    await h.pending.settlePending("p1");
+    expect(h.wallet().activity).toEqual([
+      expect.objectContaining({
+        portfolioId: "p1",
+        kind: "send",
+        amount: 20,
+        counterparty: TRIPS_ADDRESS,
+      }),
+    ]);
+  });
+
+  it("refuses a move that would arrive where it left, or at an archived portfolio", async () => {
+    const { token, run } = privately(privateToken(), twoActive());
+    expect(await run(20, "USDC", "p1", "p1")).toMatchObject({ kind: "refused" });
+    expect(await run(20, "USDC", "p1", "p2")).toMatchObject({ kind: "refused" });
+    expect(await run(20, "USDC", "p2", "funding")).toMatchObject({ kind: "refused" });
+    expect(token.sendPrivately).not.toHaveBeenCalled();
+  });
+
+  it("records an arrival in the main wallet as money that arrived there", async () => {
+    vi.useFakeTimers();
+    const { h, deps } = privately(privateToken({ balance: vi.fn().mockResolvedValue(120) }));
+    const arrival = awaitPrivateArrival(deps, {
+      from: "p1",
+      to: "funding",
+      symbol: "USDC",
+      balanceBefore: 100,
+      amount: 20,
+    });
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(await arrival).toBe(120);
+    expect(h.wallet().funding.tokens.USDC).toBe(120);
+    expect(h.wallet().activity).toEqual([
+      expect.objectContaining({ portfolioId: "funding", kind: "deposit", amount: 20 }),
+    ]);
+  });
+
+  it("records the whole arrival when a balance refresh stored a part of it without writing it down", async () => {
+    vi.useFakeTimers();
+    const h = harness(
+      wallet({ funding: { address: FUNDING_ADDRESS, sol: 0, tokens: { USDC: 113.333333 } } }),
+    );
+    const { deps } = privately(privateToken({ balance: vi.fn().mockResolvedValue(120) }), h);
+    const arrival = awaitPrivateArrival(deps, {
+      from: "p1",
+      to: "funding",
+      symbol: "USDC",
+      balanceBefore: 100,
+      amount: 20,
+    });
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(await arrival).toBe(120);
+    expect(h.wallet().activity).toEqual([
+      expect.objectContaining({ portfolioId: "funding", kind: "deposit", amount: 20 }),
+    ]);
+  });
+
+  it("does not record again the parts a balance refresh wrote down while it watched", async () => {
+    vi.useFakeTimers();
+    const balance = vi.fn().mockResolvedValueOnce(113.333333).mockResolvedValue(120);
+    const { h, deps } = privately(privateToken({ balance }));
+    const arrival = awaitPrivateArrival(deps, {
+      from: "p1",
+      to: "funding",
+      symbol: "USDC",
+      balanceBefore: 100,
+      amount: 20,
+    });
+    await vi.advanceTimersByTimeAsync(3_000);
+    await h.store.update((current) => ({
+      ...current,
+      activity: [
+        {
+          id: "seen",
+          at: Date.now(),
+          portfolioId: "funding",
+          kind: "deposit",
+          symbol: "USDC",
+          amount: 13.333333,
+          usd: 13.333333,
+        },
+      ],
+    }));
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(await arrival).toBe(120);
+    expect(h.wallet().activity).toHaveLength(2);
+    expect(h.wallet().activity[0].amount).toBeCloseTo(6.666667, 6);
+  });
+
+  it("records money from another portfolio as arrived, never as a move out of the main wallet", async () => {
+    vi.useFakeTimers();
+    const { h, deps } = privately(
+      privateToken({ balance: vi.fn().mockResolvedValue(70) }),
+      twoActive(),
+    );
+    const arrival = awaitPrivateArrival(deps, {
+      from: "p3",
+      to: "p1",
+      symbol: "USDC",
+      balanceBefore: 50,
+      amount: 20,
+    });
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(await arrival).toBe(70);
+    expect(h.holding("p1", "USDC")).toMatchObject({ amount: 70 });
+    expect(h.wallet().activity).toEqual([
+      expect.objectContaining({ portfolioId: "p1", kind: "deposit", amount: 20 }),
+    ]);
+  });
+});
 
 describe("funding a portfolio privately", () => {
   afterEach(() => vi.useRealTimers());
@@ -234,7 +400,8 @@ describe("funding a portfolio privately", () => {
     const balance = vi.fn().mockResolvedValueOnce(10).mockResolvedValueOnce(29.7);
     const { h, deps } = privately(privateToken({ balance }));
     const arrival = awaitPrivateArrival(deps, {
-      portfolioId: "p1",
+      from: "funding",
+      to: "p1",
       symbol: "USDC",
       balanceBefore: 10,
       amount: 19.7,
@@ -256,7 +423,8 @@ describe("funding a portfolio privately", () => {
     const { h, deps } = privately(privateToken({ balance }));
     let settled: number | null | undefined;
     const arrival = awaitPrivateArrival(deps, {
-      portfolioId: "p1",
+      from: "funding",
+      to: "p1",
       symbol: "USDC",
       balanceBefore: 10,
       amount: 10,
@@ -276,7 +444,8 @@ describe("funding a portfolio privately", () => {
     vi.useFakeTimers();
     const { h, deps } = privately(privateToken({ balance: vi.fn().mockResolvedValue(13.333333) }));
     const arrival = awaitPrivateArrival(deps, {
-      portfolioId: "p1",
+      from: "funding",
+      to: "p1",
       symbol: "USDC",
       balanceBefore: 10,
       amount: 10,
@@ -293,7 +462,8 @@ describe("funding a portfolio privately", () => {
     const token = privateToken();
     const { h, deps } = privately(token);
     const arrival = awaitPrivateArrival(deps, {
-      portfolioId: "p1",
+      from: "funding",
+      to: "p1",
       symbol: "USDC",
       balanceBefore: 10,
       amount: 5,

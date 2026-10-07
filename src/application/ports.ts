@@ -75,7 +75,8 @@ export type RelayerQuote = {
  */
 export type PendingWords = {
   moving(symbol: string, amount: number, portfolioLabel: string): string;
-  privateTransfer(symbol: string, amount: number, portfolioLabel: string): string;
+  /** `portfolioLabel` is null for a move into the funding wallet. */
+  privateTransfer(symbol: string, amount: number, portfolioLabel: string | null): string;
   send(symbol: string, amount: number): string;
   trade(side: "buy" | "sell", symbol: string): string;
   openingHoldings(): string;

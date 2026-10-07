@@ -31,6 +31,19 @@ export function privacyFeeFor(amountRaw: bigint): bigint {
 }
 
 /**
+ * The most a balance of `held` can move privately once both fees are paid on
+ * top of it, or 0 when that is under the smallest transfer.
+ */
+export function maxPrivateTransfer(held: number, decimals: number): number {
+  const heldRaw = BigInt(Math.floor(Math.max(held, 0) * 10 ** decimals + 1e-6));
+  const afterRelay = heldRaw - RELAY_FEE_RAW;
+  if (afterRelay < MIN_TRANSFER_RAW) return 0;
+  let raw = (afterRelay * 10_000n) / BigInt(10_000 + PRIVACY_FEE_BPS);
+  while (raw + privacyFeeFor(raw) > afterRelay) raw -= 1n;
+  return raw < MIN_TRANSFER_RAW ? 0 : Number(raw) / 10 ** decimals;
+}
+
+/**
  * What a private transfer of `amount` costs, in the token's own units, for a
  * token of `decimals`. The funding wallet pays no SOL: the network fee is the
  * service's, and it is paid back by the flat relay fee.

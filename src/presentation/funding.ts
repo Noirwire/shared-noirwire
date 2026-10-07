@@ -55,12 +55,14 @@ function privateTerms(
   asset: string,
   amount: number,
   portfolioLabel: string,
+  sourceLabel: string | undefined,
   platform: AppPlatform,
   figure: (asset: string, amount: number) => string,
 ): { terms: Term[]; total: Term } {
   const costs = draft.costsOf(amount);
   const mobile = platform === "mobile";
   const words = mobile ? { ...copy.terms, ...mobileCopy.terms } : copy.terms;
+  const from = sourceLabel ?? copy.wallet.inSentence;
   const fee = (value: number) => (mobile ? `+ ${figure(asset, value)}` : figure(asset, value));
   return {
     terms: [
@@ -69,7 +71,7 @@ function privateTerms(
       { label: words.relayFee, value: fee(costs.relayFee) },
     ],
     total: {
-      label: mobile ? mobileCopy.terms.leaves : copy.terms.total,
+      label: mobile ? mobileCopy.terms.leaves : copy.terms.total(from),
       value: figure(asset, costs.total),
     },
   };
@@ -95,8 +97,10 @@ export type FundingAmountState = {
   pending: { blocked: boolean };
   /** The words of the platform the step is drawn on. The web's when absent. */
   platform?: AppPlatform;
-  /** The portfolio the money moves into, named in the phone's lead and terms. */
+  /** Where the money arrives, named in the phone's lead and in the terms. */
   portfolioLabel?: string;
+  /** The portfolio the money leaves. The main wallet when absent. */
+  sourceLabel?: string;
   /** Nothing is reviewed while the device is offline. Online when absent. */
   online?: boolean;
 };
@@ -117,6 +121,10 @@ export type FundingAmountView = {
   unavailable: UnavailableView | null;
   amountLabel: string;
   placeholder: string;
+  /** Said for a portfolio that holds none of the asset to move out. */
+  nothingToMove: string | null;
+  /** Fills in the most that can move once the fees are paid on top, or null when nothing can. */
+  max: { label: string; value: number } | null;
   /** The typed amount, its fees and what leaves the funding wallet. */
   terms: readonly Term[];
   total: Term;
@@ -151,7 +159,10 @@ export function fundingAmountView(state: FundingAmountState): FundingAmountView 
     shown && draft.amountValid && !affordable(draft.customAmount)
       ? draft.customAmount < draft.minimum
         ? copy.belowMinimum(symbolAmount(asset, draft.minimum))
-        : copy.overBalance(exactAmount(asset, draft.leaving(draft.customAmount)))
+        : copy.overBalance(
+            exactAmount(asset, draft.leaving(draft.customAmount)),
+            state.sourceLabel ?? copy.wallet.inSentence,
+          )
       : null;
   const empty = read && fundingBalance <= 0;
   const { terms, total } = privateTerms(
@@ -159,6 +170,7 @@ export function fundingAmountView(state: FundingAmountState): FundingAmountView 
     asset,
     typed ? draft.customAmount : 0,
     portfolioLabel,
+    state.sourceLabel,
     platform,
     // The same figures the review states: a fee of 0.025 is not shown as 0.03 here and 0.025 there.
     exactAmount,
@@ -182,9 +194,10 @@ export function fundingAmountView(state: FundingAmountState): FundingAmountView 
     },
     invalid,
     unaffordable,
-    empty: empty
-      ? { before: copy.emptyBefore(asset), link: copy.addressLink, after: copy.emptyAfter }
-      : null,
+    empty:
+      empty && state.sourceLabel === undefined
+        ? { before: copy.emptyBefore(asset), link: copy.addressLink, after: copy.emptyAfter }
+        : null,
     costs: !privateRoute
       ? null
       : mobile
@@ -197,6 +210,11 @@ export function fundingAmountView(state: FundingAmountState): FundingAmountView 
           ),
     available: { label: mobileCopy.available, value: available },
     unavailable: !read && state.readFailed ? balancesUnavailable() : null,
+    nothingToMove:
+      empty && state.sourceLabel !== undefined
+        ? copy.nothingToMove(state.sourceLabel, asset)
+        : null,
+    max: read && draft.max > 0 ? { label: commonCopy.max, value: draft.max } : null,
     amountLabel: mobile ? mobileCopy.amountLabel : copy.otherAmount(asset),
     placeholder: commonCopy.amountPlaceholder,
     terms,
@@ -234,7 +252,10 @@ export function fundingReviewView(state: {
   draft: FundingDraft;
   asset: string;
   amount: number;
+  /** Where the money arrives. */
   portfolioLabel: string;
+  /** The portfolio the money leaves. The main wallet when absent. */
+  sourceLabel?: string;
   pending: { blocked: boolean };
   /** The words of the platform the step is drawn on. The web's when absent. */
   platform?: AppPlatform;
@@ -248,12 +269,13 @@ export function fundingReviewView(state: {
     asset,
     amount,
     state.portfolioLabel,
+    state.sourceLabel,
     "web",
     exactAmount,
   );
   return {
     title: mobile ? mobileCopy.reviewTitle : copy.titlePrivate,
-    lead: copy.reviewLead(state.portfolioLabel),
+    lead: copy.reviewLead(state.sourceLabel ?? copy.wallet.inSentence, state.portfolioLabel),
     terms,
     total,
     totalSpoken: mobileCopy.totalSpoken(total.label, total.value),
@@ -341,7 +363,10 @@ export function fundingOutcomeView(state: {
   arrived: number;
   /** The fees a private transfer charged on top. */
   fee: number;
+  /** Where the money arrives. */
   portfolioLabel: string;
+  /** The portfolio the money left. The main wallet when absent. */
+  sourceLabel?: string;
   /** The money moved, and the portfolio's balance could not be read back yet. */
   balancesUnread?: boolean;
   /** The words of the platform the step is drawn on. The web's when absent. */
@@ -377,7 +402,12 @@ export function fundingOutcomeView(state: {
     case "unknown":
       return {
         title: copy.unknownTitle,
-        body: copy.unknown(symbolAmount(asset, state.amount), asset, portfolioLabel),
+        body: copy.unknown(
+          symbolAmount(asset, state.amount),
+          asset,
+          state.sourceLabel ?? copy.wallet.inSentence,
+          portfolioLabel,
+        ),
         observerLink: null,
         close: commonCopy.close,
         alert: true,
