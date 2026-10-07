@@ -4,6 +4,12 @@ All notable changes to this package are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The apps pin an exact tag; see [README.md](README.md#releasing) for how a tag becomes a release.
 
+## [0.11.1] - 2026-10-07
+
+### Fixed
+
+- The labels backup row stops saying "Backed up" the moment a new sync starts, and no longer waits for the server's first answer to do so: a label just changed is not shown as backed up while that answer is still on its way. Where the server was never known to keep profiles, nothing is shown, as before.
+
 ## [0.11.0] - 2026-10-07
 
 Settings can say whether a wallet's labels are backed up: one quiet row with a dot, and nothing at all where there is no backup to speak of.

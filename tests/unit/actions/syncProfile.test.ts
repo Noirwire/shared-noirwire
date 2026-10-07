@@ -44,6 +44,8 @@ function fakeMirror() {
   const mirror = {
     limits: { maxDataLen: 2048 } as { maxDataLen: number } | null,
     limitsFail: false,
+    /** While set, the server does not answer whether it keeps mirrors until this settles. */
+    limitsHang: undefined as Promise<void> | undefined,
     unreachable: false,
     writesFail: false,
     account: null as MirroredProfile | null,
@@ -74,6 +76,7 @@ function fakeMirror() {
   }
   const port: ProfileMirror<FakeSigner> = {
     async limits() {
+      await mirror.limitsHang;
       if (mirror.limitsFail) throw new Error("fetch failed");
       return mirror.limits;
     },
@@ -624,7 +627,53 @@ describe("how a sync says it stands", () => {
     mirror.limitsFail = true;
     await a.sync();
     expect(a.board.get()).toEqual({ kind: "behind" });
-    expect(a.told).toEqual(["syncing", "synced", "behind"]);
+    expect(a.told).toEqual(["syncing", "synced", "syncing", "behind"]);
+  });
+
+  it("stops saying backed up the moment a new sync starts, however long the server takes to answer", async () => {
+    const mirror = fakeMirror();
+    const a = device(mirror);
+    await a.sync();
+    await a.rename("p1", "Only on this device so far");
+    let answer: () => void = () => undefined;
+    mirror.limitsHang = new Promise<void>((resolve) => (answer = resolve));
+
+    const running = a.sync();
+    await Promise.resolve();
+    expect(a.board.get()).toEqual({ kind: "syncing" });
+
+    answer();
+    expect(await running).toEqual({ kind: "synced", wrote: true });
+    expect(a.board.get()?.kind).toBe("synced");
+    expect(a.told).toEqual(["syncing", "synced", "syncing", "synced"]);
+  });
+
+  it("says backing up at once after a failure too, and off if the server then says it keeps no mirrors", async () => {
+    const mirror = fakeMirror();
+    const a = device(mirror);
+    mirror.writesFail = true;
+    await a.sync();
+    mirror.limits = null;
+    await a.sync();
+    expect(a.told).toEqual(["syncing", "behind", "syncing", "off"]);
+  });
+
+  it("says nothing while the server has yet to answer and was never known to keep mirrors", async () => {
+    const mirror = fakeMirror();
+    const a = device(mirror);
+    let answer: () => void = () => undefined;
+    mirror.limitsHang = new Promise<void>((resolve) => (answer = resolve));
+
+    const running = a.sync();
+    await Promise.resolve();
+    expect(a.board.get()).toBeNull();
+    expect(a.told).toEqual([]);
+
+    mirror.limits = null;
+    answer();
+    await running;
+    // Off from the start: at no point was anything shown.
+    expect(a.told).toEqual(["off"]);
   });
 
   it("is off for a mirror this version may read and not write", async () => {

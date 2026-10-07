@@ -137,6 +137,12 @@ export async function syncProfile<K extends Signer>(
       return { kind: "failed", stage };
     };
 
+    // Mirrors already known to be kept: what the last sync said stops being
+    // true the moment this one starts, however long the server takes to
+    // answer. Not known yet, nothing is said until the server says it keeps them.
+    const before = deps.status.get()?.kind;
+    if (before === "synced" || before === "behind") deps.status.set({ kind: "syncing" });
+
     // A server that says it keeps no mirrors is an answer, and nothing is
     // counted. One that could not be asked is a failure like any other.
     let limits: { maxDataLen: number } | null;
