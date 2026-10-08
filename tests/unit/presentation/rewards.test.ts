@@ -5,9 +5,13 @@ import {
   INVITED_BOOST_PERCENT,
   INVITED_BOOST_WEEKS,
   INVITER_SCORE_SHARE_PERCENT,
+  type RewardsConfig,
   type RewardsState,
 } from "../../../src/domain/rewards.js";
 import {
+  rewardsEarlyLine,
+  rewardsInviteCardView,
+  rewardsInvitedBannerView,
   rewardsJoinProblem,
   rewardsPromoView,
   rewardsView as viewOf,
@@ -19,11 +23,25 @@ type ViewState = Parameters<typeof viewOf>[0];
 const rewardsView = (state: Omit<ViewState, "config"> & Partial<Pick<ViewState, "config">>) =>
   viewOf({ config: null, ...state });
 
-const season = (weeklyPoints: number, seasonWeeks = 12) => ({
+const season = (
+  weeklyPoints: number,
+  seasonWeeks = 12,
+  tradersThisWeek: number | null = null,
+): RewardsConfig => ({
   seasonStart: "2026-10-19T00:00:00.000Z",
   seasonWeeks,
   weeklyPoints,
+  tradersThisWeek,
 });
+
+const RULES = [
+  `${INVITER_SCORE_SHARE_PERCENT}%`,
+  `${INVITED_BOOST_PERCENT}%`,
+  `${INVITED_BOOST_WEEKS} weeks`,
+];
+
+/** Words that would say an inviter is paid, which is not what the scoring does. */
+const MONEY = /\bmoney\b|\bcash\b|cut of|\$|USDC|dollar/i;
 
 const ENDS_AT = "2026-10-12T00:00:00.000Z";
 
@@ -33,7 +51,7 @@ const member = (over: Partial<RewardsState> = {}): RewardsState => ({
   invited: 3,
   wasInvited: false,
   points: "12500",
-  week: { index: 2, endsAt: ENDS_AT, feeMicroUsdc: "4250000", shareBps: 125 },
+  week: { index: 2, endsAt: ENDS_AT, feeMicroUsdc: "4250000", shareBps: 125, traders: 4 },
   ...over,
 });
 
@@ -76,13 +94,13 @@ describe("the Rewards screen", () => {
     const active = rewardsView({ joined: true, rewards: member() });
     const locked = rewardsView({ joined: true, rewards: member({ codeActive: false }) });
     if (!active.joined || !locked.joined) throw new Error("not shown as joined");
-    expect(active.standing?.invite.share?.code.value).toBe("K7M2QX9P");
-    expect(active.standing?.invite.share?.link.value).toBe(
-      "https://app.noirwire.com/?ref=K7M2QX9P",
-    );
+    expect(active.standing?.invite.copy?.code.value).toBe("K7M2QX9P");
+    expect(active.standing?.invite.copy?.link.value).toBe("https://app.noirwire.com/?ref=K7M2QX9P");
+    expect(active.standing?.invite.share?.link).toBe("https://app.noirwire.com/?ref=K7M2QX9P");
     expect(active.standing?.invite.locked).toBeNull();
 
     expect(locked.standing?.invite.share).toBeNull();
+    expect(locked.standing?.invite.copy).toBeNull();
     expect(locked.standing?.invite.locked).toMatch(/first trade/i);
     expect(strings(locked).join(" ")).not.toContain("K7M2QX9P");
   });
@@ -170,10 +188,10 @@ describe("the words a screen needs beside the figures", () => {
   it("names each copy button for what it copies, and asks before turning rewards off with the note as its body", () => {
     const view = rewardsView({ joined: true, rewards: member() });
     if (!view.joined) throw new Error("not shown as joined");
-    const share = view.standing!.invite.share!;
-    expect(share.copyCode).toMatch(/code/i);
-    expect(share.copyLink).toMatch(/link/i);
-    expect(share.copyCode).not.toBe(share.copyLink);
+    const copy = view.standing!.invite.copy!;
+    expect(copy.copyCode).toMatch(/code/i);
+    expect(copy.copyLink).toMatch(/link/i);
+    expect(copy.copyCode).not.toBe(copy.copyLink);
     const { confirm } = view.leave;
     expect(confirm.body).toBe(view.leave.note);
     expect(new Set([confirm.title, confirm.confirm, confirm.cancel]).size).toBe(3);
@@ -183,6 +201,223 @@ describe("the words a screen needs beside the figures", () => {
     const view = rewardsView({ joined: false, rewards: null });
     if (view.joined) throw new Error("shown as joined");
     expect(view.joiningLabel).not.toBe(view.joinLabel);
+  });
+});
+
+describe("how early it is this week", () => {
+  it("says nothing when the count is not known", () => {
+    expect(rewardsEarlyLine(null, 100_000)).toBeNull();
+  });
+
+  it("names the week's own points when nobody has paid a fee yet, and no count", () => {
+    const line = rewardsEarlyLine(0, 250_000)!;
+    expect(line).toContain("250,000");
+    expect(line).toMatch(/nobody/i);
+    expect(line).not.toContain("100,000");
+  });
+
+  it.each([
+    [1, "1 trader has", true],
+    [2, "2 traders have", true],
+    [9, "9 traders have", true],
+    [10, "10 traders have", false],
+    [1_500, "1,500 traders have", false],
+  ])("says %i as a count, and as only that many under ten", (traders, counted, only) => {
+    const line = rewardsEarlyLine(traders, 100_000)!;
+    expect(line).toContain(counted);
+    expect(/^only\b/i.test(line)).toBe(only);
+    expect(line).not.toContain("100,000");
+  });
+});
+
+describe("the early line, wherever it is shown", () => {
+  it("is on the promo and the pitch from the season's count, and on a member's standing from the week's", () => {
+    const config = season(100_000, 12, 3);
+    const promo = rewardsPromoView(config, false)!;
+    const notJoined = rewardsView({ joined: false, rewards: null, config });
+    const joined = rewardsView({ joined: true, rewards: member(), config });
+    if (notJoined.joined || !joined.joined) throw new Error("wrong side shown");
+    expect(promo.early).toBe(rewardsEarlyLine(3, 100_000));
+    expect(notJoined.pitch?.early).toBe(rewardsEarlyLine(3, 100_000));
+    expect(joined.standing?.early).toBe(rewardsEarlyLine(4, 100_000));
+    const pitch = Object.keys(notJoined.pitch!);
+    expect(pitch.indexOf("early")).toBeLessThan(pitch.indexOf("lines"));
+  });
+
+  it("is left out for a server that does not count traders, and for a member outside a week", () => {
+    const older = season(100_000);
+    const notJoined = rewardsView({ joined: false, rewards: null, config: older });
+    const uncounted = rewardsView({
+      joined: true,
+      rewards: member({ week: { ...member().week!, traders: null } }),
+      config: older,
+    });
+    const noWeek = rewardsView({ joined: true, rewards: member({ week: null }), config: older });
+    const noSeason = rewardsView({ joined: true, rewards: member() });
+    if (notJoined.joined || !uncounted.joined || !noWeek.joined || !noSeason.joined) {
+      throw new Error("wrong side shown");
+    }
+    expect(rewardsPromoView(older, false)?.early).toBeNull();
+    expect(notJoined.pitch?.early).toBeNull();
+    expect(notJoined.pitch?.lines.length).toBeGreaterThan(0);
+    expect(uncounted.standing?.early).toBeNull();
+    expect(noWeek.standing?.early).toBeNull();
+    expect(noSeason.standing?.early).toBeNull();
+  });
+});
+
+describe("the invite section of a member's screen", () => {
+  it("comes first in the standing", () => {
+    const view = rewardsView({ joined: true, rewards: member() });
+    if (!view.joined) throw new Error("not shown as joined");
+    expect(Object.keys(view.standing!)[0]).toBe("invite");
+  });
+
+  it("asks by how many have joined: nobody, one, two, then the number", () => {
+    const headline = (invited: number) => {
+      const view = rewardsView({ joined: true, rewards: member({ invited }) });
+      if (!view.joined) throw new Error("not shown as joined");
+      return view.standing!.invite.headline;
+    };
+    const said = [0, 1, 2, 3, 1_200].map(headline);
+    expect(new Set(said).size).toBe(5);
+    expect(said[0]).not.toMatch(/joined/i);
+    expect(said[1]).toMatch(/^one\b/i);
+    expect(said[2]).toMatch(/^two\b/i);
+    expect(said[3]).toMatch(/^3\b/);
+    expect(said[4]).toMatch(/^1,200\b/);
+  });
+
+  it("says what inviting earns as a share of a trading score, by the scoring's own number", () => {
+    const view = rewardsView({ joined: true, rewards: member() });
+    if (!view.joined) throw new Error("not shown as joined");
+    expect(view.standing!.invite.ask).toContain(`${INVITER_SCORE_SHARE_PERCENT}%`);
+    expect(view.standing!.invite.ask).toMatch(/score/i);
+  });
+});
+
+describe("what a member sends to bring someone in", () => {
+  const shared = (config: RewardsConfig | null, code = "K7M2QX9P") => {
+    const view = rewardsView({ joined: true, rewards: member({ code }), config });
+    if (!view.joined) throw new Error("not shown as joined");
+    return view.standing!.invite.share!;
+  };
+
+  it("puts the link in the chat message, and beside the post, not in it", () => {
+    const share = shared(season(100_000));
+    expect(share.chat).toContain(share.link);
+    expect(share.x).not.toContain("http");
+    const url = new URL(share.xUrl);
+    expect(`${url.origin}${url.pathname}`).toBe("https://x.com/intent/post");
+    expect(url.searchParams.get("text")).toBe(share.x);
+    expect(url.searchParams.get("url")).toBe(share.link);
+    expect(share.xUrl).toContain(encodeURIComponent(share.x));
+    expect(share.xUrl).toContain(encodeURIComponent(share.link));
+  });
+
+  it("fits a post with its link, even with the largest week a season could name", () => {
+    // X counts any link as 23 characters, and one space sits between it and the text.
+    for (const config of [null, season(100_000), season(999_999_999)]) {
+      expect(shared(config).x.length + 1 + 23).toBeLessThanOrEqual(280);
+    }
+  });
+
+  it("states the scoring's rules and the season's own points, and leaves the points out when the season is not known", () => {
+    const known = shared(season(250_000));
+    const unknown = shared(null);
+    for (const rule of RULES) {
+      expect(known.chat).toContain(rule);
+      expect(known.x).toContain(rule);
+      expect(unknown.x).toContain(rule);
+    }
+    expect(known.x).toContain("250,000");
+    expect(unknown.x).not.toMatch(/\d{3},\d{3}/);
+    expect(unknown.x.length).toBeLessThan(known.x.length);
+  });
+
+  it("has a label for each way of sending it, and a word for once it is copied", () => {
+    const { shareLabel, xLabel, copied } = shared(null);
+    expect(new Set([shareLabel, xLabel, copied]).size).toBe(3);
+    expect(xLabel).toMatch(/\bX\b/);
+  });
+});
+
+describe("the home card of a wallet that has joined", () => {
+  it("is not shown while the member's standing is not known", () => {
+    expect(rewardsInviteCardView(null, season(100_000))).toBeNull();
+  });
+
+  it("asks for an invite and carries what to send once the code can be used", () => {
+    const card = rewardsInviteCardView(member(), season(100_000))!;
+    const onScreen = rewardsView({ joined: true, rewards: member(), config: season(100_000) });
+    if (!onScreen.joined) throw new Error("not shown as joined");
+    expect(card.share).toEqual(onScreen.standing!.invite.share);
+    for (const rule of RULES) expect(card.detail).toContain(rule);
+    expect(card.action).toBe(card.share!.shareLabel);
+  });
+
+  it("says what unlocks the invite, and leads to Rewards, while the code is locked", () => {
+    const locked = rewardsInviteCardView(member({ codeActive: false }), season(100_000))!;
+    const active = rewardsInviteCardView(member(), season(100_000))!;
+    expect(locked.share).toBeNull();
+    expect(locked.detail).toContain(`${INVITER_SCORE_SHARE_PERCENT}%`);
+    expect(locked.detail).toMatch(/first trade/i);
+    expect(locked.title).not.toBe(active.title);
+    expect(locked.action).not.toBe(active.action);
+    expect(strings(locked).join(" ")).not.toContain("K7M2QX9P");
+  });
+});
+
+describe("a wallet with an invite waiting on this device", () => {
+  it("is told on the home card what joining with it brings, and is still not shown the card once joined", () => {
+    const config = season(100_000, 12, 3);
+    const plain = rewardsPromoView(config, false)!;
+    const invited = rewardsPromoView(config, false, true)!;
+    expect(invited.title).not.toBe(plain.title);
+    expect(invited.action).not.toBe(plain.action);
+    expect(invited.detail).toContain(`${INVITED_BOOST_PERCENT}%`);
+    expect(invited.detail).toContain(`${INVITED_BOOST_WEEKS} weeks`);
+    expect(invited.early).toBe(plain.early);
+    expect(rewardsPromoView(config, false, false)).toEqual(plain);
+    expect(rewardsPromoView(config, true, true)).toBeNull();
+    expect(rewardsPromoView(null, false, true)).toBeNull();
+  });
+
+  it("reads its boost first in the pitch, ahead of the lines everyone reads", () => {
+    const config = season(100_000);
+    const plain = rewardsView({ joined: false, rewards: null, config });
+    const invited = rewardsView({ joined: false, rewards: null, config, invited: true });
+    if (plain.joined || invited.joined) throw new Error("shown as joined");
+    const [first, ...rest] = invited.pitch!.lines;
+    expect(rest).toEqual(plain.pitch!.lines);
+    expect(first).toContain(`${INVITED_BOOST_PERCENT}%`);
+    expect(first).toContain(`${INVITED_BOOST_WEEKS} weeks`);
+  });
+
+  it("sees a banner where a wallet is made, with the boost and that joining is optional, and none without an invite", () => {
+    expect(rewardsInvitedBannerView(false)).toBeNull();
+    const banner = rewardsInvitedBannerView(true)!;
+    expect(banner.title).not.toBe(banner.detail);
+    expect(banner.detail).toContain(`${INVITED_BOOST_PERCENT}%`);
+    expect(banner.detail).toContain(`${INVITED_BOOST_WEEKS} weeks`);
+    expect(banner.detail).toMatch(/optional/i);
+  });
+});
+
+describe("what inviting is said to earn", () => {
+  it("is a share of a trading score everywhere, and never money", () => {
+    const config = season(100_000, 12, 3);
+    const said = strings([
+      rewardsPromoView(config, false, true),
+      rewardsInviteCardView(member(), config),
+      rewardsInviteCardView(member({ codeActive: false }), config),
+      rewardsInvitedBannerView(true),
+      rewardsView({ joined: false, rewards: null, config, invited: true }),
+    ]);
+    const member0 = rewardsView({ joined: true, rewards: member(), config });
+    if (!member0.joined) throw new Error("not shown as joined");
+    said.push(...strings(member0.standing!.invite));
+    for (const text of said) expect(text, text).not.toMatch(MONEY);
   });
 });
 

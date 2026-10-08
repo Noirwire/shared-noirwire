@@ -22,7 +22,13 @@ const STATE = {
   invited: 0,
   wasInvited: false,
   points: "0",
-  week: { index: 0, endsAt: "2026-10-12T00:00:00.000Z", feeMicroUsdc: "0", shareBps: 0 },
+  week: {
+    index: 0,
+    endsAt: "2026-10-12T00:00:00.000Z",
+    feeMicroUsdc: "0",
+    shareBps: 0,
+    traders: 0,
+  },
 };
 
 function makeWallet(): Wallet {

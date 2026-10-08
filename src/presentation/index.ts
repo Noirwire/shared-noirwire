@@ -181,13 +181,18 @@ export { type ProgressStep, type StepStatus } from "./progress.js";
 export { type NewPasswordView, newPasswordView } from "./password.js";
 export {
   type RewardsFigure,
+  type RewardsInviteCardView,
   type RewardsInviteView,
   type RewardsLeaveConfirmView,
   type RewardsPitchView,
   type RewardsPromoView,
+  type RewardsShareView,
   type RewardsStandingView,
   type RewardsView,
   type RewardsWeekView,
+  rewardsEarlyLine,
+  rewardsInviteCardView,
+  rewardsInvitedBannerView,
   rewardsJoinProblem,
   rewardsPromoView,
   rewardsView,

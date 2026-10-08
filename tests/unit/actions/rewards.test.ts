@@ -24,7 +24,13 @@ const STATE: RewardsState = {
   invited: 0,
   wasInvited: true,
   points: "0",
-  week: { index: 0, endsAt: "2026-10-12T00:00:00.000Z", feeMicroUsdc: "0", shareBps: 0 },
+  week: {
+    index: 0,
+    endsAt: "2026-10-12T00:00:00.000Z",
+    feeMicroUsdc: "0",
+    shareBps: 0,
+    traders: 0,
+  },
 };
 
 /** The harness's member key, and the portfolio with derivation index 1. */
@@ -50,7 +56,12 @@ function fakeRewards() {
   const api: RewardsApi<FakeSigner> = {
     async config() {
       reached("config");
-      return { seasonStart: "2026-09-28T00:00:00.000Z", seasonWeeks: 12, weeklyPoints: 100_000 };
+      return {
+        seasonStart: "2026-09-28T00:00:00.000Z",
+        seasonWeeks: 12,
+        weeklyPoints: 100_000,
+        tradersThisWeek: null,
+      };
     },
     async join(member, inviteCode) {
       reached("join");

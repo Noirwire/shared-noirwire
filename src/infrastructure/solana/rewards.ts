@@ -61,10 +61,13 @@ async function failureOf(response: Response, what: string): Promise<Error> {
 
 const unsound = () => new Error("A rewards request was answered without a member's standing.");
 
+/** A count the server may not send yet: the number, or null for anything else. */
+const countIn = (value: unknown): number | null => (typeof value === "number" ? value : null);
+
 /** The running week as the server sent it, or null when it sent none. */
 function weekIn(value: unknown): RewardsWeek | null {
   if (value === null || value === undefined) return null;
-  const { index, endsAt, feeMicroUsdc, shareBps } = value as Record<string, unknown>;
+  const { index, endsAt, feeMicroUsdc, shareBps, traders } = value as Record<string, unknown>;
   if (
     typeof index !== "number" ||
     typeof endsAt !== "string" ||
@@ -73,7 +76,7 @@ function weekIn(value: unknown): RewardsWeek | null {
   ) {
     throw unsound();
   }
-  return { index, endsAt, feeMicroUsdc, shareBps };
+  return { index, endsAt, feeMicroUsdc, shareBps, traders: countIn(traders) };
 }
 
 /** A member's standing, rebuilt field by field from what the server sent. Throws for anything else. */
@@ -98,10 +101,8 @@ export const rewardsApi: RewardsApi<Keypair> = {
   async config() {
     const response = await readFetch(apiUrl("rewards", "/config"));
     if (!response.ok) throw await failureOf(response, "the rewards settings");
-    const { enabled, seasonStart, seasonWeeks, weeklyPoints } = (await response.json()) as Record<
-      string,
-      unknown
-    >;
+    const { enabled, seasonStart, seasonWeeks, weeklyPoints, tradersThisWeek } =
+      (await response.json()) as Record<string, unknown>;
     if (enabled !== true) return null;
     if (
       typeof seasonStart !== "string" ||
@@ -110,7 +111,7 @@ export const rewardsApi: RewardsApi<Keypair> = {
     ) {
       throw new Error("The rewards settings were answered without a season.");
     }
-    return { seasonStart, seasonWeeks, weeklyPoints };
+    return { seasonStart, seasonWeeks, weeklyPoints, tradersThisWeek: countIn(tradersThisWeek) };
   },
 
   async join(member, inviteCode, stillUnlocked) {

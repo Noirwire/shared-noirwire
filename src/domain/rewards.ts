@@ -28,6 +28,8 @@ export type RewardsConfig = {
   seasonWeeks: number;
   /** The points one week hands out between its members. */
   weeklyPoints: number;
+  /** How many members have had a trade's fee credited in the running week. Null when the server does not say. */
+  tradersThisWeek: number | null;
 };
 
 /** The running week, as it stands for one member. */
@@ -39,6 +41,8 @@ export type RewardsWeek = {
   feeMicroUsdc: string;
   /** The part of the week's points those fees would earn as things stand, in hundredths of a percent. An estimate. */
   shareBps: number;
+  /** How many members have had a trade's fee credited this week. Null when the server does not say. */
+  traders: number | null;
 };
 
 /** How a member stands. */

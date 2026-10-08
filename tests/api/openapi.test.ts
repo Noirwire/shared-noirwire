@@ -952,12 +952,12 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
         jsonOf(spec!.paths[template][method].responses["200"].content)!.schema!;
       const standing = ["code", "codeActive", "invited", "points", "wasInvited", "week"];
       const week = ["endsAt", "feeMicroUsdc", "index", "shareBps"];
-      expect(fields("/v1/rewards/config", "get").required?.slice().sort()).toEqual([
-        "enabled",
-        "seasonStart",
-        "seasonWeeks",
-        "weeklyPoints",
-      ]);
+      const config = fields("/v1/rewards/config", "get");
+      expect(config.required).toEqual(
+        expect.arrayContaining(["enabled", "seasonStart", "seasonWeeks", "weeklyPoints"]),
+      );
+      // The two counts of traders are read when they are there, so they are only held to being documented.
+      expect(config.properties).toHaveProperty("tradersThisWeek");
       const states = [
         fields("/v1/rewards/join"),
         fields("/v1/rewards/state"),
@@ -965,7 +965,8 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
       ];
       for (const state of states) {
         expect(state.required?.slice().sort()).toEqual(standing);
-        expect(state.properties!.week.required?.slice().sort()).toEqual(week);
+        expect(state.properties!.week.required).toEqual(expect.arrayContaining(week));
+        expect(state.properties!.week.properties).toHaveProperty("traders");
       }
       expect(fields("/v1/rewards/claims").required?.slice().sort()).toEqual([
         "credited",
@@ -977,11 +978,19 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
     it.each(spec ? success("/v1/rewards/config", "get") : [])(
       "the settings: the documented answer is the season, or off",
       async ({ body }) => {
-        const { enabled, ...season } = body as { enabled: boolean };
+        const { enabled, ...season } = body as { enabled: boolean; tradersThisWeek?: number };
         api = rewardsServer({ "GET /v1/rewards/config": () => answering(200, body) });
-        expect(await ended(rewardsApi.config())).toEqual({ value: enabled ? season : null });
+        expect(await ended(rewardsApi.config())).toEqual({
+          value: enabled ? { ...season, tradersThisWeek: season.tradersThisWeek ?? null } : null,
+        });
       },
     );
+
+    /** A documented standing as its client reads it: a count of traders that is not there is null. */
+    const asRead = (state: unknown) => {
+      const { week, ...rest } = state as { week: { traders?: number } | null };
+      return { ...rest, week: week && { ...week, traders: week.traders ?? null } };
+    };
 
     it.each(spec ? errorsOf("/v1/rewards/config", "get") : [])(
       "the settings: %s (%i) is a failure, never taken for on",
@@ -995,21 +1004,23 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
       for (const { body } of success("/v1/rewards/join")) {
         api = rewardsServer({ "POST /v1/rewards/join": () => answering(200, body) });
         expect(await ended(rewardsApi.join(Keypair.generate(), undefined, stillUnlocked))).toEqual({
-          value: { kind: "joined", state: body },
+          value: { kind: "joined", state: asRead(body) },
         });
         api.restore();
       }
       for (const { body } of success("/v1/rewards/state")) {
         api = rewardsServer({ "POST /v1/rewards/state": () => answering(200, body) });
         expect(await ended(rewardsApi.state(Keypair.generate(), stillUnlocked))).toEqual({
-          value: body,
+          value: asRead(body),
         });
         api.restore();
       }
       for (const { body } of success("/v1/rewards/claims")) {
         api = rewardsServer({ "POST /v1/rewards/claims": () => answering(200, body) });
         const { feeMicroUsdc, state } = body as { feeMicroUsdc: string; state: object };
-        expect(await ended(claim())).toEqual({ value: { kind: "credited", feeMicroUsdc, state } });
+        expect(await ended(claim())).toEqual({
+          value: { kind: "credited", feeMicroUsdc, state: asRead(state) },
+        });
         api.restore();
       }
     });

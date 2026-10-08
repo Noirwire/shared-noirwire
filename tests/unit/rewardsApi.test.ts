@@ -49,7 +49,13 @@ const STATE = {
   invited: 3,
   wasInvited: false,
   points: "1250",
-  week: { index: 2, endsAt: "2026-10-12T00:00:00.000Z", feeMicroUsdc: "480000", shareBps: 125 },
+  week: {
+    index: 2,
+    endsAt: "2026-10-12T00:00:00.000Z",
+    feeMicroUsdc: "480000",
+    shareBps: 125,
+    traders: 7,
+  },
 };
 
 const refusal = (code: string, status: number) =>
@@ -75,6 +81,7 @@ function server(over: Record<string, ApiHandler> = {}) {
       seasonStart: "2026-09-28T00:00:00.000Z",
       seasonWeeks: 12,
       weeklyPoints: 100_000,
+      tradersThisWeek: 5,
     }),
     "POST /v1/rewards/join": (call) =>
       stamped("join", call) ? STATE : refusal("unauthorized", 401),
@@ -116,6 +123,7 @@ describe("the rewards settings", () => {
       seasonStart: "2026-09-28T00:00:00.000Z",
       seasonWeeks: 12,
       weeklyPoints: 100_000,
+      tradersThisWeek: 5,
     });
     expect(api!.calls).toHaveLength(1);
     expect(api!.calls[0].body).toBeNull();
@@ -128,6 +136,23 @@ describe("the rewards settings", () => {
     ]) {
       serve({ "GET /v1/rewards/config": () => config });
       expect(await rewardsApi.config(), JSON.stringify(config)).toBeNull();
+      api!.restore();
+    }
+  });
+
+  it("read a server that does not count traders, or counts them as something else, as not saying", async () => {
+    const season = { enabled: true, seasonStart: "2026-09-28T00:00:00.000Z", seasonWeeks: 12 };
+    for (const count of [{}, { tradersThisWeek: null }, { tradersThisWeek: "5" }]) {
+      serve({ "GET /v1/rewards/config": () => ({ ...season, weeklyPoints: 100_000, ...count }) });
+      expect((await rewardsApi.config())?.tradersThisWeek, JSON.stringify(count)).toBeNull();
+      api!.restore();
+    }
+    const { index, endsAt, feeMicroUsdc, shareBps } = STATE.week;
+    const olderWeek = { index, endsAt, feeMicroUsdc, shareBps };
+    for (const week of [olderWeek, { ...olderWeek, traders: "7" }]) {
+      serve({ "POST /v1/rewards/state": () => ({ ...STATE, week }) });
+      const state = await rewardsApi.state(Keypair.generate(), unlocked);
+      expect(state?.week, JSON.stringify(week)).toEqual({ ...olderWeek, traders: null });
       api!.restore();
     }
   });
