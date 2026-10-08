@@ -12,6 +12,7 @@ export {
   symbolAmount,
   tokenAmount,
   usd,
+  wholeNumber,
 } from "./format.js";
 export {
   type Freshness,
@@ -84,6 +85,18 @@ export {
   classifyRecipient,
   hasForeignCharacters,
 } from "./recipients.js";
+export {
+  MAX_QUEUED_CLAIMS,
+  type RewardsConfig,
+  type RewardsState,
+  type RewardsWeek,
+  inviteCodeAsSent,
+  rewardsJoinMessage,
+  rewardsMessage,
+  withClaimQueued,
+  withoutClaim,
+  withoutRewards,
+} from "./rewards.js";
 export { entryHref, safeDestination } from "./safeDestination.js";
 export {
   ACTIVITY_KINDS,
@@ -97,6 +110,7 @@ export {
   type PendingAction,
   type PieSlice,
   type Portfolio,
+  type RewardClaim,
   type Wallet,
 } from "./wallet.js";
 export {

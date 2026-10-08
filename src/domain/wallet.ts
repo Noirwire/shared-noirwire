@@ -159,6 +159,12 @@ export type PendingAction = {
   activity?: Pick<Activity, "kind" | "symbol" | "amount" | "usd" | "counterparty" | "networkCost">;
 };
 
+/** One trade waiting to be claimed for points: its signature, and the derivation index of the portfolio that made it. */
+export type RewardClaim = {
+  signature: string;
+  derivationIndex: number;
+};
+
 type FundingWallet = {
   /** The wallet's real Solana pubkey at derivation index 0, base58-encoded. */
   address: string;
@@ -205,6 +211,19 @@ export type Wallet = {
    * this device from one changed on another. Absent until a first sync.
    */
   syncedProfile?: string;
+  /**
+   * Set once the person joined rewards on this device. Absent means off: a
+   * wallet without it asks the server nothing about rewards. It is not one
+   * of the mirrored labels, so each device is joined on its own.
+   */
+  rewardsJoined?: true;
+  /**
+   * Trades waiting to be claimed for points, oldest first, never more than
+   * `MAX_QUEUED_CLAIMS` (src/domain/rewards.ts). Kept here, in the encrypted
+   * record, because a trade is often too new to be claimed when it lands.
+   * Absent while none waits.
+   */
+  rewardClaims?: RewardClaim[];
   /**
    * Set on a wallet that was imported from its recovery phrase: what it did
    * before, on another device, was never recorded here.

@@ -15,6 +15,7 @@ import { marketsCopy, mobileMarketsCopy } from "../../src/copy/markets.js";
 import { mobilePendingActionCopy, pendingActionCopy } from "../../src/copy/pendingAction.js";
 import { mobilePieCopy, pieCopy } from "../../src/copy/pie.js";
 import { mobilePortfolioCopy, portfolioCopy } from "../../src/copy/portfolio.js";
+import { rewardsCopy } from "../../src/copy/rewards.js";
 import { mobileSendCopy, sendCopy } from "../../src/copy/send.js";
 import { mobileTradeCopy, tradeCopy } from "../../src/copy/trade.js";
 import { chainErrorMessage, refusalMessage } from "../../src/presentation/actionResult.js";
@@ -52,6 +53,7 @@ const WEB = [
   pendingActionCopy,
   pieCopy,
   portfolioCopy,
+  rewardsCopy,
   sendCopy,
   tradeCopy,
   waitingCopy,

@@ -26,6 +26,11 @@ export function tokenAmount(amount: number) {
   });
 }
 
+/** A count that has no fraction, such as points: grouped by thousands, with no decimals. */
+export function wholeNumber(amount: number) {
+  return amount.toLocaleString("en-US", { maximumFractionDigits: 0 });
+}
+
 /** USDC reads like money, with two decimals. Everything else is held in shares, with four. */
 export function symbolAmount(symbol: string, amount: number) {
   return symbol === "USDC" ? `${tokenAmount(amount)} ${symbol}` : `${shares(amount)} ${symbol}`;

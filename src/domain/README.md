@@ -14,6 +14,8 @@ Pure rules and types: what a wallet, a portfolio, a holding, an order or a pie i
 
 `profile.ts` is the wallet's own labels (portfolio names, marks, pies, archived state, the watchlist) as the record that mirrors them off the device: its envelope, and the merge of the device's labels with the mirror, field by field, by revision and never by a clock. The device wins a field it changed; a field or a key this version does not know passes through untouched.
 
+`rewards.ts` is what rewards are made of: how a member stands, the text a member signs for each request, and the short line of trades waiting to be claimed that the wallet's record keeps.
+
 **Belongs here:** types, validation, arithmetic, formatting rules (`format.ts`).
 
 **May import:** nothing of ours. No other folder in this package, no platform seam, no library that talks to a network.

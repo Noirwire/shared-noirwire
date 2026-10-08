@@ -52,6 +52,15 @@ export {
   createBalanceRefresh,
 } from "./actions/refreshBalances.js";
 export {
+  type JoinRewardsResult,
+  type RewardsDeps,
+  claimQueuedTrades,
+  claimTrade,
+  joinRewards,
+  leaveRewardsOnThisDevice,
+  rewardsState,
+} from "./actions/rewards.js";
+export {
   type SendChain,
   type SendInput,
   type SendableAsset,
@@ -111,6 +120,9 @@ export {
   type ProfileKeys,
   type ProfileMirror,
   type RelayerQuote,
+  type RewardsApi,
+  type RewardsClaim,
+  type RewardsJoin,
   type Session,
   type SessionRefusal,
   type Signer,

@@ -179,6 +179,18 @@ export {
 } from "./portfolio.js";
 export { type ProgressStep, type StepStatus } from "./progress.js";
 export { type NewPasswordView, newPasswordView } from "./password.js";
+export {
+  type RewardsFigure,
+  type RewardsInviteView,
+  type RewardsLeaveConfirmView,
+  type RewardsPromoView,
+  type RewardsStandingView,
+  type RewardsView,
+  type RewardsWeekView,
+  rewardsJoinProblem,
+  rewardsPromoView,
+  rewardsView,
+} from "./rewards.js";
 export { type LabelsBackupView, labelsBackupView, privacySectionHelp } from "./settings.js";
 export { saysRawChainError } from "./actionResult.js";
 export {

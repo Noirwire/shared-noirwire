@@ -7,6 +7,7 @@ import {
   createBalanceRefresh,
   type BalanceRefresh,
 } from "../application/actions/refreshBalances.js";
+import { claimTrade, type RewardsDeps } from "../application/actions/rewards.js";
 import type { SendableAsset, SendChain } from "../application/actions/send.js";
 import type { TradeChain } from "../application/actions/trade.js";
 import type { CostChain } from "../application/networkCost.js";
@@ -36,6 +37,7 @@ import { confirmNetwork } from "../infrastructure/solana/networkIdentity.js";
 import { settle } from "../infrastructure/solana/pending.js";
 import { nudgeSettlement, sendPrivateTransfer } from "../infrastructure/solana/private-payments.js";
 import { quoteRelayed, runRelayed } from "../infrastructure/solana/relayer.js";
+import { rewardsApi } from "../infrastructure/solana/rewards.js";
 import { guardSigningWith } from "../infrastructure/solana/signerAccounts.js";
 import { lamportsToSol } from "../infrastructure/solana/sol.js";
 import {
@@ -115,6 +117,9 @@ export const store = { snapshot: getSnapshot, update: updateWallet, isUnlocked, 
 /** Asked for at the moment of each event, so the platform installed at boot is the one counted with. */
 export const track: ActionDeps<Keypair>["track"] = (name, data) =>
   (getPlatform().track as (name: string, data?: object) => void)(name, data);
+
+/** What every rewards action is given: the same session and store as the money actions, and the server's rewards routes. */
+export const rewards: RewardsDeps<Keypair> = { session: unlockedSession, store, api: rewardsApi };
 
 async function balanceOf(owner: string, symbol: string): Promise<number> {
   const handle = assetHandle(symbol);
@@ -317,6 +322,8 @@ export function installMoney(locks: MoneyLocks): Money {
       failureBand: (result) => failureReason(failureAccount(result)),
       pending: { reserve: pending.reserve },
       words: pendingWords(catalog.shownUnits),
+      // Started and left to itself. A wallet that has not joined rewards asks nothing.
+      tradeLanded: (signature, portfolio) => void claimTrade(rewards, signature, portfolio),
     },
     refresh: createBalanceRefresh({
       store,

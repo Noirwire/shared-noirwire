@@ -113,6 +113,7 @@ export function harness(initial: Wallet = wallet()) {
       portfolioSigner: (entry) => own(entry.address),
       profileKeys: () =>
         live() ? { owner: signer("Profile111"), secret: new Uint8Array(32).fill(7) } : null,
+      rewardsKey: () => (live() ? signer("Rewards111") : null),
       refusal: () => (live() ? "keyMismatch" : "walletLocked"),
     };
   };

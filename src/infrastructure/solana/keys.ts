@@ -79,6 +79,22 @@ export function deriveProfileKeys(mnemonic: string): { owner: Keypair; secret: U
   };
 }
 
+/**
+ * Where a wallet's rewards key sits: under a purpose of its own again, so
+ * it is no account of either scheme and no key of the profile.
+ */
+export const REWARDS_KEY_PATH = "m/20056'/0'/0'";
+
+/**
+ * The key a wallet is known to rewards by. It is not a Solana account and
+ * holds nothing: its public key names the member, and it signs what the
+ * member asks of the server. The same for a phrase whichever scheme its
+ * accounts use, and re-derived on demand like every other key.
+ */
+export function deriveRewardsKey(mnemonic: string): Keypair {
+  return Keypair.fromSeed(keyAt(mnemonic, REWARDS_KEY_PATH));
+}
+
 /** Both candidate keypairs for one index, one per known derivation scheme. Used only to resolve an import. */
 export function deriveCandidateKeypairs(
   mnemonic: string,

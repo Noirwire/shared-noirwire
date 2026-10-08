@@ -20,6 +20,7 @@ import {
 import { settle } from "../../src/infrastructure/solana/pending.js";
 import { profileMirror } from "../../src/infrastructure/solana/profile.js";
 import { PROFILE_PROGRAM } from "../../src/infrastructure/solana/profileProgram.js";
+import { rewardsApi } from "../../src/infrastructure/solana/rewards.js";
 import { sendAndSettle } from "../../src/infrastructure/solana/settlement.js";
 import { executeJupiterSwap, jupiterVenue } from "../../src/infrastructure/solana/swap/jupiter.js";
 import type { SwapQuote } from "../../src/infrastructure/solana/swap/types.js";
@@ -253,6 +254,34 @@ const PROFILE_ROUTES = {
 };
 const PROFILE_SENDING = { keepOut: [], stillUnlocked: () => true };
 
+/** A member outside the season, as the server writes one. */
+const REWARDS_STATE = {
+  code: "K7M2QX9R",
+  codeActive: true,
+  invited: 2,
+  wasInvited: false,
+  points: "1250",
+  week: null,
+};
+
+/** The rewards routes as a server that runs rewards answers them. */
+const REWARDS_ROUTES = {
+  "GET /v1/rewards/config": () => ({
+    enabled: true,
+    seasonStart: "2026-10-19T00:00:00.000Z",
+    seasonWeeks: 12,
+    weeklyPoints: 100_000,
+  }),
+  "POST /v1/rewards/join": () => REWARDS_STATE,
+  "POST /v1/rewards/state": () => REWARDS_STATE,
+  "POST /v1/rewards/claims": () => ({
+    credited: true,
+    feeMicroUsdc: "61000",
+    state: REWARDS_STATE,
+  }),
+};
+const TRADE_ID = "5".repeat(88);
+
 /** A relayed action with nothing in it but its payment: enough to be priced. */
 const emptyDraft = async () => ({
   instructions: [],
@@ -361,6 +390,7 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
         "POST /v1/jupiter/*": () => ({}),
         "POST /v1/private-payments/*": () => ({}),
         ...PROFILE_ROUTES,
+        ...REWARDS_ROUTES,
       });
 
       // The real session, so its own two requests are among those checked.
@@ -403,6 +433,19 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
             const record = new Uint8Array(2048);
             await profileMirror.create(profileOwner, record, PROFILE_SENDING);
             await profileMirror.write(profileOwner, 1n, record, PROFILE_SENDING);
+          })(),
+          (async () => {
+            const member = Keypair.generate();
+            const stillUnlocked = () => true;
+            await rewardsApi.config();
+            await rewardsApi.join(member, "K7M2QX9R", stillUnlocked);
+            await rewardsApi.state(member, stillUnlocked);
+            await rewardsApi.claim({
+              member,
+              portfolio: Keypair.generate(),
+              transaction: TRADE_ID,
+              stillUnlocked,
+            });
           })(),
         ]),
       );
@@ -525,6 +568,7 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
         "GET /v1/prices",
         "GET /v1/profile/config",
         "GET /v1/relayer",
+        "GET /v1/rewards/config",
         "POST /v1/events",
         "POST /v1/jupiter/{path}",
         "POST /v1/private-payments/{path}",
@@ -534,6 +578,9 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
         "POST /v1/profile/session",
         "POST /v1/profile/submit",
         "POST /v1/relayer",
+        "POST /v1/rewards/claims",
+        "POST /v1/rewards/join",
+        "POST /v1/rewards/state",
         "POST /v1/rpc",
         "POST /v1/session",
         "POST /v1/session/refresh",
@@ -882,6 +929,136 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
         if (moved) expect(outcome).toEqual({ value: "stale" });
         else expect(outcome).toHaveProperty("error");
         expect(api.callsTo("/v1/profile/submit")).toHaveLength(1);
+      },
+    );
+  });
+
+  describe("every documented answer to a rewards request", () => {
+    const stillUnlocked = () => true;
+    const rewardsServer = (over: Record<string, () => unknown>) =>
+      fakeApi({ ...REWARDS_ROUTES, ...over });
+    const success = (template: string, method = "post") =>
+      documented(template, method).filter((answer) => answer.status === 200);
+    const claim = () =>
+      rewardsApi.claim({
+        member: Keypair.generate(),
+        portfolio: Keypair.generate(),
+        transaction: TRADE_ID,
+        stillUnlocked,
+      });
+
+    it("names every field this package reads from each success", () => {
+      const fields = (template: string, method = "post") =>
+        jsonOf(spec!.paths[template][method].responses["200"].content)!.schema!;
+      const standing = ["code", "codeActive", "invited", "points", "wasInvited", "week"];
+      const week = ["endsAt", "feeMicroUsdc", "index", "shareBps"];
+      expect(fields("/v1/rewards/config", "get").required?.slice().sort()).toEqual([
+        "enabled",
+        "seasonStart",
+        "seasonWeeks",
+        "weeklyPoints",
+      ]);
+      const states = [
+        fields("/v1/rewards/join"),
+        fields("/v1/rewards/state"),
+        fields("/v1/rewards/claims").properties!.state,
+      ];
+      for (const state of states) {
+        expect(state.required?.slice().sort()).toEqual(standing);
+        expect(state.properties!.week.required?.slice().sort()).toEqual(week);
+      }
+      expect(fields("/v1/rewards/claims").required?.slice().sort()).toEqual([
+        "credited",
+        "feeMicroUsdc",
+        "state",
+      ]);
+    });
+
+    it.each(spec ? success("/v1/rewards/config", "get") : [])(
+      "the settings: the documented answer is the season, or off",
+      async ({ body }) => {
+        const { enabled, ...season } = body as { enabled: boolean };
+        api = rewardsServer({ "GET /v1/rewards/config": () => answering(200, body) });
+        expect(await ended(rewardsApi.config())).toEqual({ value: enabled ? season : null });
+      },
+    );
+
+    it.each(spec ? errorsOf("/v1/rewards/config", "get") : [])(
+      "the settings: %s (%i) is a failure, never taken for on",
+      async (_code, status, body) => {
+        api = rewardsServer({ "GET /v1/rewards/config": () => answering(status, body) });
+        expect(await failure(rewardsApi.config())).toBeInstanceOf(Error);
+      },
+    );
+
+    it("a joining, a read and a claim: the documented answers are read as the file gives them", async () => {
+      for (const { body } of success("/v1/rewards/join")) {
+        api = rewardsServer({ "POST /v1/rewards/join": () => answering(200, body) });
+        expect(await ended(rewardsApi.join(Keypair.generate(), undefined, stillUnlocked))).toEqual({
+          value: { kind: "joined", state: body },
+        });
+        api.restore();
+      }
+      for (const { body } of success("/v1/rewards/state")) {
+        api = rewardsServer({ "POST /v1/rewards/state": () => answering(200, body) });
+        expect(await ended(rewardsApi.state(Keypair.generate(), stillUnlocked))).toEqual({
+          value: body,
+        });
+        api.restore();
+      }
+      for (const { body } of success("/v1/rewards/claims")) {
+        api = rewardsServer({ "POST /v1/rewards/claims": () => answering(200, body) });
+        const { feeMicroUsdc, state } = body as { feeMicroUsdc: string; state: object };
+        expect(await ended(claim())).toEqual({ value: { kind: "credited", feeMicroUsdc, state } });
+        api.restore();
+      }
+    });
+
+    it.each(spec ? errorsOf("/v1/rewards/join", "post") : [])(
+      "a joining answered %s (%i) blames the invite code only when the server does, and is a failure otherwise",
+      async (code, status, body) => {
+        api = rewardsServer({ "POST /v1/rewards/join": () => answering(status, body) });
+        const outcome = await ended(rewardsApi.join(Keypair.generate(), "K7M2QX9R", stillUnlocked));
+        if (code === "invite_code_invalid")
+          expect(outcome).toEqual({ value: { kind: "inviteNotValid" } });
+        else expect(outcome).toHaveProperty("error");
+      },
+    );
+
+    it.each(spec ? errorsOf("/v1/rewards/state", "post") : [])(
+      "a read answered %s (%i) is no member only when the server says so, and a failure otherwise",
+      async (code, status, body) => {
+        api = rewardsServer({ "POST /v1/rewards/state": () => answering(status, body) });
+        const outcome = await ended(rewardsApi.state(Keypair.generate(), stillUnlocked));
+        if (code === "not_a_member") expect(outcome).toEqual({ value: null });
+        else expect(outcome).toHaveProperty("error");
+      },
+    );
+
+    it.each(spec ? errorsOf("/v1/rewards/claims", "post") : [])(
+      "a claim answered %s (%i) is settled only by the server's word on that trade, and waits otherwise",
+      async (code, status, body) => {
+        api = rewardsServer({ "POST /v1/rewards/claims": () => answering(status, body) });
+        const outcome = await ended(claim());
+        const settled: Record<string, unknown> = {
+          not_a_member: { kind: "notMember" },
+          already_claimed: { kind: "alreadyClaimed" },
+          signature_invalid: { kind: "refused", code },
+          transaction_failed: { kind: "refused", code },
+          not_a_signer: { kind: "refused", code },
+          no_referral_fee: { kind: "refused", code },
+          outside_claim_window: { kind: "refused", code },
+        };
+        if (code === "transaction_not_finalized") {
+          expect(outcome).toEqual({ value: { kind: "notFinalized" } });
+        } else if (code in settled) {
+          expect(outcome).toEqual({ value: settled[code] });
+        } else {
+          // Left in line: the server was busy, runs no rewards right now, or would not take the request as made.
+          expect(outcome).toHaveProperty("error");
+        }
+        // Asked once, but for the one more a renewed session is given.
+        expect(api.callsTo("/v1/rewards/claims")).toHaveLength(status === 401 ? 2 : 1);
       },
     );
   });

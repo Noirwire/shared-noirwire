@@ -6,9 +6,17 @@ import {
   type TradeChain,
   type TradeOrder,
 } from "../../../src/application/actions/trade.js";
+import { claimTrade } from "../../../src/application/actions/rewards.js";
+import type { RewardsApi } from "../../../src/application/ports.js";
 import { ChainError, UnknownOutcomeError } from "../../../src/domain/chainError.js";
 import { actionFailure } from "../../../src/presentation/actionResult.js";
-import { FUNDING_ADDRESS, harness, OTHER_ADDRESS, type FakeSigner } from "../support/actions.js";
+import {
+  FUNDING_ADDRESS,
+  harness,
+  OTHER_ADDRESS,
+  wallet,
+  type FakeSigner,
+} from "../support/actions.js";
 
 type Plan = TradeOrder & { built: boolean };
 
@@ -294,5 +302,53 @@ describe("reviewing the network cost of orders", () => {
 
   it("says there is no price when no way of paying applies and the order is not too small", async () => {
     expect(await review(trading(), [plan()], true)).toEqual({ kind: "noPrice" });
+  });
+});
+
+describe("a trade and rewards", () => {
+  /** The trade wired to claim itself, against a rewards server whose answer to a claim never comes. */
+  function wired(h = harness()) {
+    const t = trading(chain(), h);
+    const claim = vi.fn(() => new Promise<never>(() => undefined));
+    const api = { claim } as unknown as RewardsApi<FakeSigner>;
+    const rewards = { session: h.deps.session, store: h.store, api };
+    const deps = {
+      ...t.deps,
+      tradeLanded: (signature: string, portfolio: { derivationIndex: number }) =>
+        void claimTrade(rewards, signature, portfolio),
+    };
+    return { t, claim, place: () => placeTrade(deps, { portfolioId: "p1", reviewed: plan() }) };
+  }
+
+  it("answers the same, without waiting, while the claim it started is never answered", async () => {
+    const plain = await trading().place();
+    const { t, claim, place } = wired(harness(wallet({ rewardsJoined: true })));
+    expect(await place()).toEqual(plain);
+    await vi.waitFor(() => expect(claim).toHaveBeenCalledTimes(1));
+    expect(claim).toHaveBeenCalledWith(expect.objectContaining({ transaction: "trade-sig" }));
+    expect(t.h.wallet().rewardClaims).toEqual([{ signature: "trade-sig", derivationIndex: 1 }]);
+  });
+
+  it("answers the same when what hears of it throws", async () => {
+    const t = trading();
+    const tradeLanded = vi.fn(() => {
+      throw new Error("rewards broke");
+    });
+    expect(
+      await placeTrade({ ...t.deps, tradeLanded }, { portfolioId: "p1", reviewed: plan() }),
+    ).toEqual({ kind: "confirmed", signature: "trade-sig", settlement: "balancesRead" });
+    expect(tradeLanded).toHaveBeenCalledTimes(1);
+  });
+
+  it("claims nothing for a wallet that has not joined, and nothing for a trade that did not land", async () => {
+    const off = wired();
+    await off.place();
+    expect(off.claim).not.toHaveBeenCalled();
+    expect(off.t.h.wallet()).not.toHaveProperty("rewardClaims");
+
+    const failing = trading(chain({ execute: vi.fn(async () => Promise.reject(new Error("no"))) }));
+    const tradeLanded = vi.fn();
+    await placeTrade({ ...failing.deps, tradeLanded }, { portfolioId: "p1", reviewed: plan() });
+    expect(tradeLanded).not.toHaveBeenCalled();
   });
 });

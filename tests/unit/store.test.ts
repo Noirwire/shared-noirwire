@@ -440,6 +440,34 @@ describe("the wallet store", () => {
       expect(await other.unlock(PASSWORD)).not.toBeNull();
     });
 
+    it("reads a record from before rewards as not joined, keeps a joining and its waiting claims through a lock, and refuses either misshapen", async () => {
+      await seedStored(window, storedToday());
+      const store = await tab();
+      expect(await store.unlock(PASSWORD)).toBeNull();
+      expect(store.getSnapshot()).not.toHaveProperty("rewardsJoined");
+      expect(store.getSnapshot()).not.toHaveProperty("rewardClaims");
+      const rewardClaims = [{ signature: "trade-sig", derivationIndex: 1 }];
+      expect(
+        await store.updateWallet((wallet) => ({ ...wallet, rewardsJoined: true, rewardClaims })),
+      ).toBe(true);
+
+      const reloaded = await tab();
+      expect(await reloaded.unlock(PASSWORD)).toBeNull();
+      expect(reloaded.getSnapshot()).toMatchObject({ rewardsJoined: true, rewardClaims });
+
+      for (const misshapen of [
+        { rewardsJoined: "yes" },
+        { rewardClaims: [{ signature: "trade-sig" }] },
+        { rewardClaims: { signature: "trade-sig", derivationIndex: 1 } },
+      ]) {
+        const damaged = storedToday();
+        Object.assign(damaged.wallet, misshapen);
+        await seedStored(window, damaged);
+        const other = await tab();
+        expect(await other.unlock(PASSWORD), JSON.stringify(misshapen)).not.toBeNull();
+      }
+    });
+
     it("reads the activity of a v8 wallet under the names it was written with", async () => {
       window.localStorage.setItem(LEGACY_STORAGE_KEY, V8_WALLET_JSON);
       const store = await tab();
@@ -896,6 +924,7 @@ describe("the wallet store", () => {
       expect(session.fundingSigner()).toBeNull();
       expect(session.portfolioSigner(portfolio)).toBeNull();
       expect(session.keyAt(4)).toBeNull();
+      expect(session.rewardsKey()).toBeNull();
       expect(session.refusal()).toBe("walletLocked");
       expect(unlockedSession()).toEqual({ refused: "walletLocked" });
     });

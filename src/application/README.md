@@ -12,6 +12,8 @@ The rest is what the screens read: the catalog and valuation (`catalog.ts`, `por
 
 `actions/syncProfile.ts` is not a money action and none waits on it: it brings the wallet's labels and their encrypted mirror into agreement, in the background. It writes the mirror first and the wallet last, in one write, so a sync that stops anywhere leaves the wallet as it was; a failure is counted and never shown. `profileSyncer` runs it one at a time.
 
+`actions/rewards.ts` is not a money action either: points for trades, for a wallet that chose to join. Joining is kept in the wallet's record, and a wallet without it asks the server nothing. A trade that landed is put in line in the record (twenty at most) and claimed without the trade waiting for it, through `ActionDeps.tradeLanded`; a claim the server cannot take yet stays in line for `claimQueuedTrades`. Only `joinRewards` says how it went.
+
 `networkCheck.ts` asks which network the connection serves as the app opens, and waits no longer than `NETWORK_CHECK_LIMIT_MS` (8 s) for the answer: a read that fails and one that never answers are both `unreachable`.
 
 `pacer.ts` spaces requests so that no more than a set number start in a second, with a clock that can be passed in. Told that the service refused one for coming too fast (`slowDown`), it holds everything back for a moment and halves its rate; `hold` waits without slowing further.

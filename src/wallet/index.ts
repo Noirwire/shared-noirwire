@@ -42,6 +42,14 @@ export {
   suggestPassphrase,
 } from "./passwordStrength.js";
 export { profileSyncStatus, subscribeProfileSync, syncProfile } from "./profile.js";
+export {
+  claimQueuedTrades,
+  claimTrade,
+  joinRewards,
+  leaveRewardsOnThisDevice,
+  rewardsConfig,
+  rewardsState,
+} from "./rewards.js";
 export { unlockedSession } from "./session.js";
 export {
   type ChangePasswordOptions,

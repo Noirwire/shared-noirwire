@@ -21,6 +21,8 @@ const ROUTES = {
   privatePayments: "/v1/private-payments",
   /** `GET` for its settings, `POST` for the rest: the encrypted copy of a wallet's labels, by its own path after it. */
   profile: "/v1/profile",
+  /** `GET` for its settings, `POST` for the rest: points for trades, for a wallet that joined, by its own path after it. */
+  rewards: "/v1/rewards",
   /** `GET` for the relayer's keys, `POST` for a price or a signature. */
   relayer: "/v1/relayer",
   /** `GET`: live prices. */

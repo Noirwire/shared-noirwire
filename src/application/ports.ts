@@ -1,3 +1,4 @@
+import type { RewardsConfig, RewardsState } from "../domain/rewards.js";
 import type { EventData, EventName } from "../domain/usageEvents.js";
 import type { Portfolio, Wallet } from "../domain/wallet.js";
 
@@ -29,6 +30,8 @@ export type Session<K extends Signer> = {
   portfolioSigner(portfolio: Portfolio): K | null;
   /** The keys of the wallet's labels' mirror. Derived when asked for, never kept. Null once locked. */
   profileKeys(): ProfileKeys<K> | null;
+  /** The key the wallet is known to rewards by, which is no funding wallet's and no portfolio's. Derived when asked for, never kept. Null once locked. */
+  rewardsKey(): K | null;
   refusal(): SessionRefusal;
 };
 
@@ -81,6 +84,47 @@ export type ProfileCipher = {
    * was sealed for another revision, or cannot be read.
    */
   open(secret: Uint8Array, place: MirrorPlace, data: Uint8Array): Promise<string | null>;
+};
+
+/** What joining answers: the member as it stands, or that the invite code sent with it is not one the server takes. */
+export type RewardsJoin = { kind: "joined"; state: RewardsState } | { kind: "inviteNotValid" };
+
+/** What became of a claim. Every answer but `notFinalized` is final for that trade. */
+export type RewardsClaim =
+  /** The trade's fee counts for the member. `feeMicroUsdc` is that fee, in millionths of a USDC. */
+  | { kind: "credited"; feeMicroUsdc: string; state: RewardsState }
+  /** The trade was claimed before, by this member or another. */
+  | { kind: "alreadyClaimed" }
+  /** The server knows no member by this key. */
+  | { kind: "notMember" }
+  /** The server cannot see the trade as final yet. The same claim may be taken shortly. */
+  | { kind: "notFinalized" }
+  /** Turned down for good, under the server's own code: the trade failed, paid no fee, was not this portfolio's or is too old, or a signature on the claim does not hold. */
+  | { kind: "refused"; code: string };
+
+/**
+ * NoirWire's rewards, as the use cases ask for them. Every call but
+ * `config` is signed by the member's own key, and a claim by the portfolio's
+ * too. Each rejects when no answer could be had.
+ */
+export type RewardsApi<K extends Signer> = {
+  /** What the server says of rewards, or null while it runs none. Names no wallet and no key. */
+  config(): Promise<RewardsConfig | null>;
+  /** Joins, or finds the member already there. An invite code counts on a first joining only. */
+  join(
+    member: K,
+    inviteCode: string | undefined,
+    stillUnlocked: StillUnlocked,
+  ): Promise<RewardsJoin>;
+  /** How the member stands, or null when the server knows none by this key. */
+  state(member: K, stillUnlocked: StillUnlocked): Promise<RewardsState | null>;
+  /** Claims the trade `transaction` for `member`, as the `portfolio` that made it. */
+  claim(input: {
+    member: K;
+    portfolio: K;
+    transaction: string;
+    stillUnlocked: StillUnlocked;
+  }): Promise<RewardsClaim>;
 };
 
 /** The session, or why there is none. */
