@@ -102,7 +102,6 @@ export {
   rewardsMessage,
   withClaimQueued,
   withoutClaim,
-  withoutRewards,
 } from "./rewards.js";
 export { entryHref, safeDestination } from "./safeDestination.js";
 export {

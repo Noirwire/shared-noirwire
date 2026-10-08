@@ -108,7 +108,7 @@ describe("the Rewards screen", () => {
 
     expect(locked.standing?.invite.share).toBeNull();
     expect(locked.standing?.invite.copy).toBeNull();
-    expect(locked.standing?.invite.locked).toMatch(/first trade/i);
+    expect(locked.standing?.invite.locked).not.toBeNull();
     expect(strings(locked).join(" ")).not.toContain("K7M2QX9P");
   });
 
@@ -192,16 +192,22 @@ describe("the way into Rewards on the home screen", () => {
 });
 
 describe("the words a screen needs beside the figures", () => {
-  it("names each copy button for what it copies, and asks before turning rewards off with the note as its body", () => {
+  it("names each copy button for what it copies", () => {
     const view = rewardsView({ joined: true, rewards: member() });
     if (!view.joined) throw new Error("not shown as joined");
     const copy = view.standing!.invite.copy!;
     expect(copy.copyCode).toMatch(/code/i);
     expect(copy.copyLink).toMatch(/link/i);
     expect(copy.copyCode).not.toBe(copy.copyLink);
-    const { confirm } = view.leave;
-    expect(confirm.body).toBe(view.leave.note);
-    expect(new Set([confirm.title, confirm.confirm, confirm.cancel]).size).toBe(3);
+  });
+
+  it("offers a member no way to turn rewards off, and says nothing of one", () => {
+    for (const rewards of [member(), member({ codeActive: false }), null]) {
+      const view = rewardsView({ joined: true, rewards, config: season(100_000) });
+      expect(view).not.toHaveProperty("leave");
+      for (const text of strings(view))
+        expect(text, text).not.toMatch(/turn(s|ed|ing)? (it |rewards )?off/i);
+    }
   });
 
   it("gives the join button another label while it is joining", () => {
@@ -386,14 +392,19 @@ describe("the home card of a wallet that has joined", () => {
     expect(card.action).toBe(card.share!.shareLabel);
   });
 
-  it("says what unlocks the invite, and leads to Rewards, while the code is locked", () => {
+  it("says what unlocks the invite, and leads to a trade, while the code is locked", () => {
     const locked = rewardsInviteCardView(member({ codeActive: false }), season(100_000))!;
     const active = rewardsInviteCardView(member(), season(100_000))!;
+    const onScreen = rewardsView({ joined: true, rewards: member({ codeActive: false }) });
+    if (!onScreen.joined) throw new Error("not shown as joined");
     expect(locked.share).toBeNull();
     expect(locked.detail).toContain(`${INVITER_SCORE_SHARE_PERCENT}%`);
     expect(locked.detail).toMatch(/first trade/i);
+    expect(locked.title).toMatch(/trade/i);
     expect(locked.title).not.toBe(active.title);
     expect(locked.action).not.toBe(active.action);
+    // The same way out as on the Rewards screen: to where there is something to trade.
+    expect(locked.action).toBe(onScreen.standing!.invite.locked!.action);
     expect(strings(locked).join(" ")).not.toContain("K7M2QX9P");
   });
 });
@@ -434,6 +445,46 @@ describe("a wallet with an invite waiting on this device", () => {
     expect(banner.detail).toContain(`${INVITED_BOOST_PERCENT}%`);
     expect(banner.detail).toContain(`${INVITED_BOOST_WEEKS} weeks`);
     expect(banner.detail).toMatch(/optional/i);
+  });
+});
+
+describe("an invite link that unlocks after the first trade", () => {
+  const invite = (over: Partial<RewardsState>) => {
+    const view = rewardsView({ joined: true, rewards: member(over), config: season(100_000) });
+    if (!view.joined) throw new Error("not shown as joined");
+    return view.standing!.invite;
+  };
+
+  it("is said in the pitch to follow the first trade, with what inviting earns by the scoring's own numbers", () => {
+    const view = rewardsView({ joined: false, rewards: null, config: season(100_000) });
+    if (view.joined) throw new Error("shown as joined");
+    const lines = view.pitch!.lines.filter((text) => /invite/i.test(text));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/first trade/i);
+    for (const rule of RULES) expect(lines[0]).toContain(rule);
+  });
+
+  it("gives a member who has not traded the locked block: what unlocks it, what it earns and where to go", () => {
+    const { locked, headline, ask, share, copy } = invite({ codeActive: false, invited: 0 });
+    expect(share).toBeNull();
+    expect(copy).toBeNull();
+    expect(locked!.title).toMatch(/first trade/i);
+    expect(locked!.detail).toContain(`${INVITER_SCORE_SHARE_PERCENT}%`);
+    expect(locked!.detail).toMatch(/score/i);
+    expect(locked!.action).toMatch(/trade/i);
+    expect(new Set([locked!.title, locked!.detail, locked!.action]).size).toBe(3);
+    // The section is headed by what unlocks it, not by an ask that cannot be acted on yet.
+    expect(headline).toBe(locked!.title);
+    expect(ask).toContain(`${INVITER_SCORE_SHARE_PERCENT}%`);
+  });
+
+  it("gives a member whose code is active no locked block, and a headline that asks", () => {
+    const active = invite({ codeActive: true, invited: 0 });
+    const waiting = invite({ codeActive: false, invited: 0 });
+    expect(active.locked).toBeNull();
+    expect(active.share).not.toBeNull();
+    expect(active.headline).not.toBe(waiting.headline);
+    for (const text of strings(active)) expect(text, text).not.toMatch(/unlock/i);
   });
 });
 

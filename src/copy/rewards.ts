@@ -55,11 +55,12 @@ export const rewardsCopy = {
         `${share}% of their trading score counts for you too. They get a ${boost}% boost for their first ${weeks} weeks.`,
       action: "Share my invite",
     },
+    /** Until the member's first trade is credited. The action leads to where there is something to trade. */
     locked: {
-      title: "One trade unlocks your invite",
+      title: "One trade unlocks your invite link",
       detail: (share: number) =>
         `After your first trade you get an invite link. ${share}% of your friends' trading score counts for you too.`,
-      action: "See rewards",
+      action: "Find something to trade",
     },
   },
   /** What a member sends to bring someone in. Each text is whole: nothing is added around it. */
@@ -98,7 +99,7 @@ export const rewardsCopy = {
     invited: (boost: number, weeks: number) =>
       `Your invite gives your trading score a ${boost}% boost for your first ${weeks} weeks.`,
     invite: (share: number, boost: number, weeks: number) =>
-      `Invite someone after your first trade: ${share}% of their trading score counts for you too, and they get a ${boost}% boost for their first ${weeks} weeks.`,
+      `After your first trade you get an invite link: ${share}% of each invited person's trading score counts for you too, and they get a ${boost}% boost for their first ${weeks} weeks.`,
   },
   /** The only thing said about a token, anywhere. */
   token: "If NoirWire ever launches a token, points decide who gets it.",
@@ -139,7 +140,16 @@ export const rewardsCopy = {
     /** The accessible names of the two copy buttons. */
     copyCode: "Copy invite code",
     copyLink: "Copy invite link",
-    locked: "Your invite code unlocks after your first trade.",
+    /**
+     * The whole invite section until the member's first trade is credited:
+     * what unlocks the link, said as its headline, and where to go to do it.
+     */
+    locked: {
+      title: "Your invite link unlocks after your first trade",
+      detail: (share: number) =>
+        `Make one trade and you get a link to share. ${share}% of each invited person's trading score counts toward yours.`,
+      action: "Find something to trade",
+    },
     invited: "People you invited",
     /** The section's headline, by how many have joined with the code. */
     headline: {
@@ -161,14 +171,4 @@ export const rewardsCopy = {
   },
   /** Said when the wallet has joined and its points could not be read. */
   notNow: "Your points cannot be shown right now. They are kept.",
-  leave: {
-    button: "Turn off on this device",
-    note: "Your points are kept. Join again with the same recovery phrase to see them.",
-    /** Asked before it is turned off. The note above is its body. */
-    confirm: {
-      title: "Turn off rewards on this device?",
-      confirm: "Turn off",
-      cancel: "Keep rewards on",
-    },
-  },
 };

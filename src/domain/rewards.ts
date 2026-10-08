@@ -158,11 +158,3 @@ export function withoutClaim(wallet: Wallet, signature: string): Wallet {
   delete emptied.rewardClaims;
   return emptied;
 }
-
-/** `wallet` as it was before it joined: no flag, and nothing waiting. */
-export function withoutRewards(wallet: Wallet): Wallet {
-  const left = { ...wallet };
-  delete left.rewardsJoined;
-  delete left.rewardClaims;
-  return left;
-}

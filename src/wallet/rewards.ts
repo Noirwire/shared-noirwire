@@ -2,7 +2,6 @@ import {
   claimQueuedTrades as claimQueued,
   claimTrade as claim,
   joinRewards as join,
-  leaveRewardsOnThisDevice as leave,
   rewardsState as readState,
   type JoinRewardsResult,
 } from "../application/actions/rewards.js";
@@ -34,16 +33,6 @@ export function rewardsConfig(): Promise<RewardsConfig | null> {
  */
 export function joinRewards(inviteCode?: string): Promise<JoinRewardsResult> {
   return join(rewards, inviteCode);
-}
-
-/**
- * Turns rewards off on this device: the wallet forgets that it joined and
- * every trade still waiting to be claimed, and asks the server nothing more.
- * The server keeps the member's points, invite code and invited members,
- * and joining again with the same recovery phrase finds them.
- */
-export function leaveRewardsOnThisDevice(): Promise<void> {
-  return leave(rewards);
 }
 
 /**

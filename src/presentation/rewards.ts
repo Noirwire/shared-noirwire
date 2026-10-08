@@ -58,11 +58,11 @@ export type RewardsShareView = {
 };
 
 export type RewardsInviteView = {
-  /** The ask, by how many have joined with the code so far. */
+  /** The ask, by how many have joined with the code so far. Until the code can be used, what unlocks it (`locked.title`). */
   headline: string;
   /** What inviting earns, in the scoring's own terms. */
   ask: string;
-  /** What to send. Null until the code can be used, with `locked` saying when that is. */
+  /** What to send. Null until the code can be used, with `locked` saying what unlocks it. */
   share: RewardsShareView | null;
   /** The code and its link as figures, with the names of the buttons that copy each. Null until the code can be used. */
   copy: {
@@ -71,18 +71,13 @@ export type RewardsInviteView = {
     copyCode: string;
     copyLink: string;
   } | null;
-  locked: string | null;
+  /** What unlocks the invite link, and where to go to do it. Null once the code can be used. */
+  locked: RewardsInviteLockedView | null;
   invited: RewardsFigure;
 };
 
-/** Asked before rewards are turned off on this device. */
-export type RewardsLeaveConfirmView = {
-  title: string;
-  /** What turning them off does and does not lose. */
-  body: string;
-  confirm: string;
-  cancel: string;
-};
+/** The invite section before the member's first trade: what unlocks the link, and an action that leads to a trade. */
+export type RewardsInviteLockedView = { title: string; detail: string; action: string };
 
 /** What there is to earn: a title, how early it is this week when that is known, and a sentence to a line. */
 export type RewardsPitchView = {
@@ -110,7 +105,7 @@ export type RewardsInviteCardView = {
   title: string;
   detail: string;
   action: string;
-  /** What to send, once the code can be used. Null until then: the action then opens Rewards. */
+  /** What to send, once the code can be used. Null until then: the action then leads to where there is something to trade. */
   share: RewardsShareView | null;
   /** Which member this is, as one line. Null when the server does not say. */
   member: string | null;
@@ -169,7 +164,6 @@ export type RewardsView = {
       /** Null while it has not been read, or could not be: `notNow` then says so. */
       standing: RewardsStandingView | null;
       notNow: string | null;
-      leave: { label: string; note: string; confirm: RewardsLeaveConfirmView };
     }
 );
 
@@ -301,7 +295,7 @@ function standingView(state: RewardsState, config: RewardsConfig | null): Reward
   return {
     member: number === null ? null : { label: member.label, value: member.value(number) },
     invite: {
-      headline: inviteHeadline(state.invited),
+      headline: state.codeActive ? inviteHeadline(state.invited) : invite.locked.title,
       ask: invite.ask(INVITER_SCORE_SHARE_PERCENT),
       share: state.codeActive ? shareView(state.code, config, state.memberNumber) : null,
       copy: state.codeActive
@@ -312,7 +306,13 @@ function standingView(state: RewardsState, config: RewardsConfig | null): Reward
             copyLink: invite.copyLink,
           }
         : null,
-      locked: state.codeActive ? null : invite.locked,
+      locked: state.codeActive
+        ? null
+        : {
+            title: invite.locked.title,
+            detail: invite.locked.detail(INVITER_SCORE_SHARE_PERCENT),
+            action: invite.locked.action,
+          },
       invited: { label: invite.invited, value: wholeNumber(state.invited) },
     },
     boost: boostView(state),
@@ -363,7 +363,7 @@ export function rewardsView(state: {
   /** The invite code waiting on this device, as it arrived or was typed, for a wallet that has not joined. */
   inviteCode?: string;
 }): RewardsView {
-  const { title, nav, token, join, leave } = rewardsCopy;
+  const { title, nav, token, join } = rewardsCopy;
   if (!state.joined) {
     const field = rewardsInviteFieldView(state.inviteCode ?? "");
     return {
@@ -388,11 +388,6 @@ export function rewardsView(state: {
     joined: true,
     standing: state.rewards && standingView(state.rewards, state.config),
     notNow: state.rewards || state.loading ? null : rewardsCopy.notNow,
-    leave: {
-      label: leave.button,
-      note: leave.note,
-      confirm: { ...leave.confirm, body: leave.note },
-    },
   };
 }
 
@@ -433,7 +428,7 @@ export function rewardsPromoView(
 /**
  * The home screen's card for a wallet that has joined. With a code that can
  * be used it asks for an invite and carries what to send; before that it
- * says what unlocks the code and leads to Rewards. Null while the member's
+ * says what unlocks the code and leads to a trade. Null while the member's
  * standing is not known. `config` only adds the week's points to the post.
  */
 export function rewardsInviteCardView(

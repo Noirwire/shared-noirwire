@@ -2,7 +2,6 @@ import {
   inviteCodeAsSent,
   withClaimQueued,
   withoutClaim,
-  withoutRewards,
   type RewardsState,
 } from "../../domain/rewards.js";
 import type { Portfolio, RewardClaim } from "../../domain/wallet.js";
@@ -52,21 +51,6 @@ export async function joinRewards<K extends Signer>(
   if (joined.kind === "inviteNotValid") return joined;
   const kept = await deps.store.update((wallet) => ({ ...wallet, rewardsJoined: true }));
   return kept ? joined : { kind: "failed" };
-}
-
-/**
- * Turns rewards off on this device: the wallet forgets that it joined, and
- * every trade still waiting to be claimed. From then on it asks the server
- * nothing about rewards.
- *
- * Only this device changes. The server keeps the member, its points, its
- * invite code and who it invited, and joining again with the same recovery
- * phrase, here or anywhere, finds them as they were.
- */
-export async function leaveRewardsOnThisDevice<K extends Signer>(
-  deps: Pick<RewardsDeps<K>, "store">,
-): Promise<void> {
-  await deps.store.update(withoutRewards).catch(() => false);
 }
 
 /**

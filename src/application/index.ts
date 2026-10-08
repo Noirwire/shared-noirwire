@@ -57,7 +57,6 @@ export {
   claimQueuedTrades,
   claimTrade,
   joinRewards,
-  leaveRewardsOnThisDevice,
   rewardsState,
 } from "./actions/rewards.js";
 export {
