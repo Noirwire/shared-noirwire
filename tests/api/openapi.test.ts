@@ -260,6 +260,7 @@ const REWARDS_STATE = {
   codeActive: true,
   invited: 2,
   wasInvited: false,
+  memberNumber: 3,
   boostWeeksLeft: 0,
   points: "1250",
   week: null,
@@ -959,6 +960,8 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
       );
       // The two counts of traders are read when they are there, so they are only held to being documented.
       expect(config.properties).toHaveProperty("tradersThisWeek");
+      expect(config.properties).toHaveProperty("members");
+      expect(config.properties).toHaveProperty("doubleHour");
       const states = [
         fields("/v1/rewards/join"),
         fields("/v1/rewards/state"),
@@ -968,6 +971,7 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
         expect(state.required).toEqual(expect.arrayContaining(standing));
         // Read when it is there, like the counts: held only to being documented.
         expect(state.properties).toHaveProperty("boostWeeksLeft");
+        expect(state.properties).toHaveProperty("memberNumber");
         expect(state.properties!.week.required).toEqual(expect.arrayContaining(week));
         expect(state.properties!.week.properties).toHaveProperty("traders");
       }
@@ -981,22 +985,36 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
     it.each(spec ? success("/v1/rewards/config", "get") : [])(
       "the settings: the documented answer is the season, or off",
       async ({ body }) => {
-        const { enabled, ...season } = body as { enabled: boolean; tradersThisWeek?: number };
+        const { enabled, ...season } = body as {
+          enabled: boolean;
+          tradersThisWeek?: number;
+          members?: number;
+          doubleHour?: object;
+        };
         api = rewardsServer({ "GET /v1/rewards/config": () => answering(200, body) });
         expect(await ended(rewardsApi.config())).toEqual({
-          value: enabled ? { ...season, tradersThisWeek: season.tradersThisWeek ?? null } : null,
+          value: enabled
+            ? {
+                ...season,
+                tradersThisWeek: season.tradersThisWeek ?? null,
+                members: season.members ?? null,
+                doubleHour: season.doubleHour ?? null,
+              }
+            : null,
         });
       },
     );
 
     /** A documented standing as its client reads it: a count of traders that is not there is null. */
     const asRead = (state: unknown) => {
-      const { week, boostWeeksLeft, ...rest } = state as {
+      const { week, boostWeeksLeft, memberNumber, ...rest } = state as {
         week: { traders?: number } | null;
         boostWeeksLeft?: number;
+        memberNumber?: number;
       };
       return {
         ...rest,
+        memberNumber: memberNumber ?? null,
         boostWeeksLeft: boostWeeksLeft ?? null,
         week: week && { ...week, traders: week.traders ?? null },
       };

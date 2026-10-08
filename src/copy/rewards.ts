@@ -31,6 +31,22 @@ export const rewardsCopy = {
     few: (count: string) => `Only ${count} members have earned points this week.`,
     many: (count: string) => `${count} members have earned points this week.`,
   },
+  /** Which member someone is, by the order of joining. `number` comes formatted. */
+  member: {
+    label: "Member",
+    value: (number: string) => `#${number}`,
+    line: (number: string) => `Member #${number}`,
+  },
+  /**
+   * Which member someone would be if they joined now. The count is as old
+   * as the moment it was read, so both lines say "join now" and neither
+   * promises the number. `members` is "1 member" or "1,500 members".
+   */
+  next: {
+    first: "Join now and you are member #1.",
+    after: (members: string, next: string) =>
+      `${members} so far. Join now and you are member #${next}.`,
+  },
   /** The home screen's card for a wallet that has joined: bring someone in, or what unlocks that. */
   inviteCard: {
     active: {
@@ -48,11 +64,14 @@ export const rewardsCopy = {
   },
   /** What a member sends to bring someone in. Each text is whole: nothing is added around it. */
   share: {
-    chat: (link: string, boost: number, weeks: number, share: number) =>
-      `I joined NoirWire Points. Here is my invite: ${link}\nIf you opt in, your trading score gets a ${boost}% boost for ${weeks} weeks, and ${share}% of it counts toward mine too.`,
+    /** How both texts open: with the member's number when it is known, and without it otherwise. */
+    opening: "I joined NoirWire Points.",
+    openingAsMember: (number: string) => `I am member #${number} of NoirWire Points.`,
+    chat: (opening: string, link: string, boost: number, weeks: number, share: number) =>
+      `${opening} Here is my invite: ${link}\nIf you opt in, your trading score gets a ${boost}% boost for ${weeks} weeks, and ${share}% of it counts toward mine too.`,
     /** The post's text. The link goes beside it, not in it. `split` is the sentence about the week, or empty. */
-    x: (split: string, boost: number, weeks: number, share: number) =>
-      `I joined NoirWire Points. ${split}Opt in with my invite and your trading score gets a ${boost}% boost for ${weeks} weeks; ${share}% of your score counts for me too.`,
+    x: (opening: string, split: string, boost: number, weeks: number, share: number) =>
+      `${opening} ${split}Opt in with my invite and your trading score gets a ${boost}% boost for ${weeks} weeks; ${share}% of your score counts for me too.`,
     xSplit: (points: string) => `Each week, ${points} points are split by trading fees paid. `,
     shareLabel: "Share my invite",
     xLabel: "Post on X",

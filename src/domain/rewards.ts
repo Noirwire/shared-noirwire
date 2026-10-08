@@ -34,7 +34,14 @@ export type RewardsConfig = {
    * server sends it. Null when the server does not say.
    */
   tradersThisWeek: number | null;
+  /** How many members there are, at the moment it was read. Null when the server does not say. */
+  members: number | null;
+  /** An hour the server has set apart, or null when there is none or it does not say. */
+  doubleHour: RewardsDoubleHour | null;
 };
+
+/** The start and end of an hour the server has set apart, each as the server writes a moment. */
+export type RewardsDoubleHour = { startsAt: string; endsAt: string };
 
 /** The running week, as it stands for one member. */
 export type RewardsWeek = {
@@ -58,6 +65,8 @@ export type RewardsState = {
   /** How many members joined with the code. */
   invited: number;
   wasInvited: boolean;
+  /** Which member this is, counted from 1 in the order of joining. Null when the server does not say. */
+  memberNumber: number | null;
   /**
    * How many weeks of an invited member's boost are still to come: 0 for a
    * member who was not invited or whose boost is over. Null when the server

@@ -21,6 +21,7 @@ const STATE = {
   codeActive: false,
   invited: 0,
   wasInvited: false,
+  memberNumber: 1,
   boostWeeksLeft: 0,
   points: "0",
   week: {

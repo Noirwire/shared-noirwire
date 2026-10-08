@@ -5,6 +5,7 @@ import {
   isInviteCode,
   rewardsJoinMessage,
   rewardsMessage,
+  type RewardsDoubleHour,
   type RewardsState,
   type RewardsWeek,
 } from "../../domain/rewards.js";
@@ -65,6 +66,12 @@ const unsound = () => new Error("A rewards request was answered without a member
 /** A count the server may not send yet: the number, or null for anything else. */
 const countIn = (value: unknown): number | null => (typeof value === "number" ? value : null);
 
+/** The hour the server set apart, or null for none and for anything that is not a start and an end. */
+function doubleHourIn(value: unknown): RewardsDoubleHour | null {
+  const { startsAt, endsAt } = (value ?? {}) as Record<string, unknown>;
+  return typeof startsAt === "string" && typeof endsAt === "string" ? { startsAt, endsAt } : null;
+}
+
 /** The running week as the server sent it, or null when it sent none. */
 function weekIn(value: unknown): RewardsWeek | null {
   if (value === null || value === undefined) return null;
@@ -82,8 +89,8 @@ function weekIn(value: unknown): RewardsWeek | null {
 
 /** A member's standing, rebuilt field by field from what the server sent. Throws for anything else. */
 function stateIn(value: unknown): RewardsState {
-  const { code, codeActive, invited, wasInvited, boostWeeksLeft, points, week } = (value ??
-    {}) as Record<string, unknown>;
+  const { code, codeActive, invited, wasInvited, memberNumber, boostWeeksLeft, points, week } =
+    (value ?? {}) as Record<string, unknown>;
   // A code is put into a link people pass on, so only one the server could have issued is taken.
   if (
     !isInviteCode(code) ||
@@ -99,6 +106,7 @@ function stateIn(value: unknown): RewardsState {
     codeActive,
     invited,
     wasInvited,
+    memberNumber: countIn(memberNumber),
     boostWeeksLeft: countIn(boostWeeksLeft),
     points,
     week: weekIn(week),
@@ -109,8 +117,15 @@ export const rewardsApi: RewardsApi<Keypair> = {
   async config() {
     const response = await readFetch(apiUrl("rewards", "/config"));
     if (!response.ok) throw await failureOf(response, "the rewards settings");
-    const { enabled, seasonStart, seasonWeeks, weeklyPoints, tradersThisWeek } =
-      (await response.json()) as Record<string, unknown>;
+    const {
+      enabled,
+      seasonStart,
+      seasonWeeks,
+      weeklyPoints,
+      tradersThisWeek,
+      members,
+      doubleHour,
+    } = (await response.json()) as Record<string, unknown>;
     if (enabled !== true) return null;
     if (
       typeof seasonStart !== "string" ||
@@ -119,7 +134,14 @@ export const rewardsApi: RewardsApi<Keypair> = {
     ) {
       throw new Error("The rewards settings were answered without a season.");
     }
-    return { seasonStart, seasonWeeks, weeklyPoints, tradersThisWeek: countIn(tradersThisWeek) };
+    return {
+      seasonStart,
+      seasonWeeks,
+      weeklyPoints,
+      tradersThisWeek: countIn(tradersThisWeek),
+      members: countIn(members),
+      doubleHour: doubleHourIn(doubleHour),
+    };
   },
 
   async join(member, inviteCode, stillUnlocked) {

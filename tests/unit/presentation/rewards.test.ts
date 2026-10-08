@@ -29,11 +29,14 @@ const season = (
   weeklyPoints: number,
   seasonWeeks = 12,
   tradersThisWeek: number | null = null,
+  members: number | null = null,
 ): RewardsConfig => ({
   seasonStart: "2026-10-19T00:00:00.000Z",
   seasonWeeks,
   weeklyPoints,
   tradersThisWeek,
+  members,
+  doubleHour: null,
 });
 
 const RULES = [
@@ -52,6 +55,7 @@ const member = (over: Partial<RewardsState> = {}): RewardsState => ({
   codeActive: true,
   invited: 3,
   wasInvited: false,
+  memberNumber: 42,
   boostWeeksLeft: 0,
   points: "12500",
   week: { index: 2, endsAt: ENDS_AT, feeMicroUsdc: "4250000", shareBps: 125, traders: 4 },
@@ -293,10 +297,10 @@ describe("the early line, wherever it is shown", () => {
 });
 
 describe("the invite section of a member's screen", () => {
-  it("comes first in the standing", () => {
+  it("comes right after which member this is, ahead of everything else", () => {
     const view = rewardsView({ joined: true, rewards: member() });
     if (!view.joined) throw new Error("not shown as joined");
-    expect(Object.keys(view.standing!)[0]).toBe("invite");
+    expect(Object.keys(view.standing!).slice(0, 2)).toEqual(["member", "invite"]);
   });
 
   it("asks by how many have joined: nobody, one, two, then the number", () => {
@@ -508,7 +512,91 @@ describe("the boost of a member who joined with an invite", () => {
   it("sits directly after the invite section", () => {
     const view = rewardsView({ joined: true, rewards: member() });
     if (!view.joined) throw new Error("not shown as joined");
-    expect(Object.keys(view.standing!).slice(0, 2)).toEqual(["invite", "boost"]);
+    const order = Object.keys(view.standing!);
+    expect(order.indexOf("boost")).toBe(order.indexOf("invite") + 1);
+  });
+});
+
+describe("which member someone is", () => {
+  const standing = (over: Partial<RewardsState>) => {
+    const view = rewardsView({ joined: true, rewards: member(over) });
+    if (!view.joined) throw new Error("not shown as joined");
+    return view.standing!;
+  };
+
+  it("is the first thing a member sees, with the number grouped, and on the home card as one line", () => {
+    const shown = standing({ memberNumber: 1_234 });
+    expect(Object.keys(shown)[0]).toBe("member");
+    expect(shown.member?.value).toBe("#1,234");
+    expect(shown.member?.label.length).toBeGreaterThan(0);
+    for (const codeActive of [true, false]) {
+      const card = rewardsInviteCardView(member({ memberNumber: 1_234, codeActive }), null);
+      expect(card?.member).toContain("#1,234");
+    }
+  });
+
+  it("is left out for a server that does not number its members", () => {
+    expect(standing({ memberNumber: null }).member).toBeNull();
+    expect(rewardsInviteCardView(member({ memberNumber: null }), null)?.member).toBeNull();
+    expect(
+      rewardsInviteCardView(member({ memberNumber: null, codeActive: false }), null)?.member,
+    ).toBeNull();
+  });
+
+  it("opens what the member sends with the number, and without it when it is not known", () => {
+    const numbered = standing({ memberNumber: 1_234 }).invite.share!;
+    const plain = standing({ memberNumber: null }).invite.share!;
+    for (const text of [numbered.chat, numbered.x]) expect(text).toMatch(/^I am member #1,234\b/);
+    for (const text of [plain.chat, plain.x]) {
+      expect(text).not.toContain("#");
+      expect(text).not.toMatch(/\bmember\b/i);
+    }
+    expect(numbered.chat).toContain(numbered.link);
+    expect(numbered.link).toBe(plain.link);
+    expect(new URL(numbered.xUrl).searchParams.get("text")).toBe(numbered.x);
+  });
+
+  it("still fits a post with its link at a seven digit number and the largest week", () => {
+    const card = rewardsInviteCardView(member({ memberNumber: 9_999_999 }), season(999_999_999));
+    const { x } = card!.share!;
+    expect(x).toContain("9,999,999");
+    expect(x).toContain("999,999,999");
+    expect(x.length + 1 + 23).toBeLessThanOrEqual(280);
+  });
+});
+
+describe("which member someone would be, joining now", () => {
+  const next = (members: number | null) =>
+    rewardsPromoView(season(100_000, 12, null, members), false)?.next ?? null;
+
+  it("is not said when the server does not say how many members there are", () => {
+    expect(next(null)).toBeNull();
+    const view = rewardsView({ joined: false, rewards: null, config: season(100_000) });
+    if (view.joined) throw new Error("shown as joined");
+    expect(view.pitch?.next).toBeNull();
+  });
+
+  it.each([
+    [0, "#1", null],
+    [1, "#2", "1 member "],
+    [1_500, "#1,501", "1,500 members "],
+  ])("with %i members is %s, and only as of now", (members, number, counted) => {
+    const line = next(members)!;
+    expect(line.endsWith(`${number}.`)).toBe(true);
+    expect(line).toMatch(/\bnow\b/i);
+    if (counted === null) expect(line).not.toMatch(/so far/i);
+    else expect(line).toContain(counted);
+    expect(line).not.toContain("1 members");
+  });
+
+  it("is the same line on the promo, invited or not, and in the pitch", () => {
+    const config = season(100_000, 12, 3, 77);
+    const view = rewardsView({ joined: false, rewards: null, config });
+    if (view.joined) throw new Error("shown as joined");
+    const line = rewardsPromoView(config, false)?.next;
+    expect(line).toContain("#78");
+    expect(rewardsPromoView(config, false, true)?.next).toBe(line);
+    expect(view.pitch?.next).toBe(line);
   });
 });
 

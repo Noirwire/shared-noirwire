@@ -89,6 +89,8 @@ export type RewardsPitchView = {
   title: string;
   /** Shown before the lines. Null when the server does not say how many have traded. */
   early: string | null;
+  /** Which member the person would be, joining now. Null when the server does not say how many there are. */
+  next: string | null;
   lines: readonly string[];
 };
 
@@ -99,6 +101,8 @@ export type RewardsPromoView = {
   action: string;
   /** How early it is this week, or null when the server does not say. */
   early: string | null;
+  /** Which member the person would be, joining now. Null when the server does not say how many there are. */
+  next: string | null;
 };
 
 /** The home screen's card for a wallet that has joined: bring someone in, or what unlocks that. */
@@ -108,6 +112,8 @@ export type RewardsInviteCardView = {
   action: string;
   /** What to send, once the code can be used. Null until then: the action then opens Rewards. */
   share: RewardsShareView | null;
+  /** Which member this is, as one line. Null when the server does not say. */
+  member: string | null;
 };
 
 /** A member's boost from the invite they joined with. */
@@ -124,6 +130,8 @@ export type RewardsInviteFieldView = {
 
 /** How a member stands, ready to draw, in the order it is shown. */
 export type RewardsStandingView = {
+  /** Which member this is. Null when the server does not say. */
+  member: RewardsFigure | null;
   invite: RewardsInviteView;
   /** That the invite the member joined with is counting, while its boost lasts. Null otherwise. */
   boost: RewardsBoostView | null;
@@ -198,14 +206,21 @@ function encoded(text: string): string {
 const inviteLink = (code: string) => `${INVITE_LINK}${encoded(code)}`;
 
 /** What a member with a usable code sends. The post names the week's points only when the season is known. */
-function shareView(code: string, config: RewardsConfig | null): RewardsShareView {
+function shareView(
+  code: string,
+  config: RewardsConfig | null,
+  memberNumber: number | null,
+): RewardsShareView {
   const { share } = rewardsCopy;
   const link = inviteLink(code);
   const rules = [INVITED_BOOST_PERCENT, INVITED_BOOST_WEEKS, INVITER_SCORE_SHARE_PERCENT] as const;
-  const x = share.x(config ? share.xSplit(wholeNumber(config.weeklyPoints)) : "", ...rules);
+  const opening =
+    memberNumber === null ? share.opening : share.openingAsMember(wholeNumber(memberNumber));
+  const split = config ? share.xSplit(wholeNumber(config.weeklyPoints)) : "";
+  const x = share.x(opening, split, ...rules);
   return {
     link,
-    chat: share.chat(link, ...rules),
+    chat: share.chat(opening, link, ...rules),
     x,
     xUrl: `${X_POST}?text=${encoded(x)}&url=${encoded(link)}`,
     shareLabel: share.shareLabel,
@@ -213,6 +228,24 @@ function shareView(code: string, config: RewardsConfig | null): RewardsShareView
     copied: share.copied,
   };
 }
+
+/**
+ * Which member the person would be if they joined now, from how many there
+ * were when the season was read. Null when the server does not say. It is
+ * only ever true of this moment, which is why it says "now".
+ */
+function nextMemberLine(members: number | null): string | null {
+  const { next } = rewardsCopy;
+  if (members === null) return null;
+  if (members <= 0) return next.first;
+  // "1 member", "1,500 members": the noun by the rule every count goes through, the number grouped.
+  const counted = plural(members, "member").replace(/^\d+/, wholeNumber(members));
+  return next.after(counted, wholeNumber(members + 1));
+}
+
+/** Which member `state` is, formatted, or null when the server does not say. */
+const memberNumberOf = (state: RewardsState): string | null =>
+  state.memberNumber === null ? null : wholeNumber(state.memberNumber);
 
 function inviteHeadline(invited: number): string {
   const { headline } = rewardsCopy.invite;
@@ -262,13 +295,15 @@ export function rewardsInviteFieldView(text: string): RewardsInviteFieldView {
 }
 
 function standingView(state: RewardsState, config: RewardsConfig | null): RewardsStandingView {
-  const { week, invite } = rewardsCopy;
+  const { week, invite, member } = rewardsCopy;
   const endsAt = state.week ? Date.parse(state.week.endsAt) : Number.NaN;
+  const number = memberNumberOf(state);
   return {
+    member: number === null ? null : { label: member.label, value: member.value(number) },
     invite: {
       headline: inviteHeadline(state.invited),
       ask: invite.ask(INVITER_SCORE_SHARE_PERCENT),
-      share: state.codeActive ? shareView(state.code, config) : null,
+      share: state.codeActive ? shareView(state.code, config, state.memberNumber) : null,
       copy: state.codeActive
         ? {
             code: { label: invite.code, value: state.code },
@@ -300,6 +335,7 @@ function pitchView(config: RewardsConfig, invited: boolean): RewardsPitchView {
   return {
     title: promo.title,
     early: rewardsEarlyLine(config.tradersThisWeek, config.weeklyPoints),
+    next: nextMemberLine(config.members),
     lines: [
       ...(invited ? [pitch.invited(INVITED_BOOST_PERCENT, INVITED_BOOST_WEEKS)] : []),
       pitch.split(wholeNumber(config.weeklyPoints)),
@@ -375,12 +411,14 @@ export function rewardsPromoView(
   if (!config || joined) return null;
   const { promo } = rewardsCopy;
   const early = rewardsEarlyLine(config.tradersThisWeek, config.weeklyPoints);
+  const next = nextMemberLine(config.members);
   if (invited) {
     return {
       title: promo.invited.title,
       detail: promo.invited.detail(INVITED_BOOST_PERCENT, INVITED_BOOST_WEEKS),
       action: promo.invited.action,
       early,
+      next,
     };
   }
   return {
@@ -388,6 +426,7 @@ export function rewardsPromoView(
     detail: promo.detail(wholeNumber(config.weeklyPoints)),
     action: promo.action,
     early,
+    next,
   };
 }
 
@@ -403,19 +442,23 @@ export function rewardsInviteCardView(
 ): RewardsInviteCardView | null {
   if (!rewards) return null;
   const { active, locked } = rewardsCopy.inviteCard;
+  const number = memberNumberOf(rewards);
+  const member = number === null ? null : rewardsCopy.member.line(number);
   if (!rewards.codeActive) {
     return {
       title: locked.title,
       detail: locked.detail(INVITER_SCORE_SHARE_PERCENT),
       action: locked.action,
       share: null,
+      member,
     };
   }
   return {
     title: active.title,
     detail: active.detail(INVITER_SCORE_SHARE_PERCENT, INVITED_BOOST_PERCENT, INVITED_BOOST_WEEKS),
     action: active.action,
-    share: shareView(rewards.code, config),
+    share: shareView(rewards.code, config, rewards.memberNumber),
+    member,
   };
 }
 

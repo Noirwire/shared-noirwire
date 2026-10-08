@@ -23,6 +23,7 @@ const STATE: RewardsState = {
   codeActive: false,
   invited: 0,
   wasInvited: true,
+  memberNumber: 7,
   boostWeeksLeft: 8,
   points: "0",
   week: {
@@ -62,6 +63,8 @@ function fakeRewards() {
         seasonWeeks: 12,
         weeklyPoints: 100_000,
         tradersThisWeek: null,
+        members: null,
+        doubleHour: null,
       };
     },
     async join(member, inviteCode) {
