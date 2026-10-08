@@ -209,24 +209,47 @@ describe("how early it is this week", () => {
     expect(rewardsEarlyLine(null, 100_000)).toBeNull();
   });
 
-  it("names the week's own points when nobody has paid a fee yet, and no count", () => {
+  it("names the week's own points when no member has earned any yet, and promises them to nobody", () => {
     const line = rewardsEarlyLine(0, 250_000)!;
     expect(line).toContain("250,000");
-    expect(line).toMatch(/nobody/i);
     expect(line).not.toContain("100,000");
+    expect(line).not.toMatch(/\btakes?\b|\bwins?\b|\bgets?\b|\bfirst\b|\byours\b/i);
   });
 
   it.each([
-    [1, "1 trader has", true],
-    [2, "2 traders have", true],
-    [9, "9 traders have", true],
-    [10, "10 traders have", false],
-    [1_500, "1,500 traders have", false],
-  ])("says %i as a count, and as only that many under ten", (traders, counted, only) => {
-    const line = rewardsEarlyLine(traders, 100_000)!;
+    [1, "1 member has", true],
+    [2, "2 members have", true],
+    [9, "9 members have", true],
+    [10, "10 members have", false],
+    [1_500, "1,500 members have", false],
+  ])("says %i as a count of members, and as only that many under ten", (members, counted, only) => {
+    const line = rewardsEarlyLine(members, 100_000)!;
     expect(line).toContain(counted);
     expect(/^only\b/i.test(line)).toBe(only);
     expect(line).not.toContain("100,000");
+  });
+
+  it("counts members who earned points in every band, and never everyone who traded", () => {
+    for (const members of [0, 1, 5, 10, 400]) {
+      const line = rewardsEarlyLine(members, 100_000)!;
+      expect(line, line).toMatch(/\bmembers?\b/i);
+      expect(line, line).not.toMatch(/\btraders?\b/i);
+    }
+  });
+});
+
+describe("a share link", () => {
+  it("is built for any text at all without failing, and carries nothing that is not encoded", () => {
+    const odd = ["", "a b&c=d#e", "\uD800", "ok\uDFFFok", "<script>", "é".repeat(40)];
+    for (const code of odd) {
+      const card = rewardsInviteCardView(member({ code }), season(100_000));
+      const link = card!.share!.link;
+      expect(link.startsWith("https://app.noirwire.com/?ref=")).toBe(true);
+      expect(link.slice("https://app.noirwire.com/?ref=".length)).toMatch(
+        /^[A-Za-z0-9%_.!~*'()-]*$/,
+      );
+      expect(new URL(card!.share!.xUrl).searchParams.get("url")).toBe(link);
+    }
   });
 });
 

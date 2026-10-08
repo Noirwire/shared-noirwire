@@ -19,8 +19,8 @@ const X_POST = "https://x.com/intent/post";
 
 const MICRO_USDC = 1_000_000;
 
-/** Under this many traders, a week is said to have "only" that many. */
-const FEW_TRADERS_BELOW = 10;
+/** Under this many members with points, a week is said to have "only" that many. */
+const FEW_MEMBERS_BELOW = 10;
 
 /** One figure on the Rewards screen: what it is, and its value as it is shown. */
 export type RewardsFigure = { label: string; value: string };
@@ -144,21 +144,36 @@ export type RewardsView = {
 );
 
 /**
- * How early it is in the running week, by how many traders have paid a fee
- * in it: nobody yet, only a few, or simply how many. Null when the count is
- * not known. Said the same way wherever it is said.
+ * How early it is in the running week, by how many members have earned
+ * points in it: none yet, only a few, or simply how many. `members` is the
+ * server's count of members with a trade credited this week
+ * (`tradersThisWeek`, `week.traders`), which is not everyone who traded.
+ * Null when the count is not known. Said the same way wherever it is said.
  */
-export function rewardsEarlyLine(traders: number | null, weeklyPoints: number): string | null {
+export function rewardsEarlyLine(members: number | null, weeklyPoints: number): string | null {
   const { early } = rewardsCopy;
-  if (traders === null) return null;
-  if (traders <= 0) return early.nobody(wholeNumber(weeklyPoints));
-  if (traders === 1) return early.one;
-  return traders < FEW_TRADERS_BELOW
-    ? early.few(wholeNumber(traders))
-    : early.many(wholeNumber(traders));
+  if (members === null) return null;
+  if (members <= 0) return early.nobody(wholeNumber(weeklyPoints));
+  if (members === 1) return early.one;
+  return members < FEW_MEMBERS_BELOW
+    ? early.few(wholeNumber(members))
+    : early.many(wholeNumber(members));
 }
 
-const inviteLink = (code: string) => `${INVITE_LINK}${encodeURIComponent(code)}`;
+/**
+ * `text` as part of an address, for any string at all: a string that
+ * cannot be encoded as it stands, because half of a character pair is
+ * missing, is encoded without those halves.
+ */
+function encoded(text: string): string {
+  try {
+    return encodeURIComponent(text);
+  } catch {
+    return encodeURIComponent(text.replace(/[\uD800-\uDFFF]/g, ""));
+  }
+}
+
+const inviteLink = (code: string) => `${INVITE_LINK}${encoded(code)}`;
 
 /** What a member with a usable code sends. The post names the week's points only when the season is known. */
 function shareView(code: string, config: RewardsConfig | null): RewardsShareView {
@@ -170,7 +185,7 @@ function shareView(code: string, config: RewardsConfig | null): RewardsShareView
     link,
     chat: share.chat(link, ...rules),
     x,
-    xUrl: `${X_POST}?text=${encodeURIComponent(x)}&url=${encodeURIComponent(link)}`,
+    xUrl: `${X_POST}?text=${encoded(x)}&url=${encoded(link)}`,
     shareLabel: share.shareLabel,
     xLabel: share.xLabel,
     copied: share.copied,

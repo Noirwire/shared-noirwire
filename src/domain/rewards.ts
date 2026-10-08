@@ -28,7 +28,11 @@ export type RewardsConfig = {
   seasonWeeks: number;
   /** The points one week hands out between its members. */
   weeklyPoints: number;
-  /** How many members have had a trade's fee credited in the running week. Null when the server does not say. */
+  /**
+   * How many members have had a trade's fee credited in the running week:
+   * members with points to come, not everyone who traded. Named as the
+   * server sends it. Null when the server does not say.
+   */
   tradersThisWeek: number | null;
 };
 
@@ -41,7 +45,7 @@ export type RewardsWeek = {
   feeMicroUsdc: string;
   /** The part of the week's points those fees would earn as things stand, in hundredths of a percent. An estimate. */
   shareBps: number;
-  /** How many members have had a trade's fee credited this week. Null when the server does not say. */
+  /** The same count as `RewardsConfig.tradersThisWeek`: members with a trade's fee credited this week. Null when the server does not say. */
   traders: number | null;
 };
 
@@ -72,6 +76,22 @@ export function rewardsMessage(
   subject: string,
 ): string {
   return `NoirWire rewards v1\n${action}\n${rewardsKey}\n${subject}`;
+}
+
+/**
+ * An invite code as the server issues one: eight characters from the
+ * digits 2 to 9 and the capital letters without I and O, so none is taken
+ * for another when read aloud or typed.
+ */
+export const INVITE_CODE_PATTERN = /^[2-9A-HJ-NP-Z]{8}$/;
+
+/**
+ * Whether `text` is an invite code exactly as the server issues one. A
+ * member's own code is taken from the server only when it is, and a code
+ * that arrives in a link is worth offering only when it is.
+ */
+export function isInviteCode(text: unknown): text is string {
+  return typeof text === "string" && INVITE_CODE_PATTERN.test(text);
 }
 
 /** An invite code as it is signed and sent: trimmed, in capitals. Undefined when nothing is left. */

@@ -17,16 +17,19 @@ export const rewardsCopy = {
     },
   },
   /**
-   * How many traders have paid a fee in the running week, said wherever
-   * being early is worth saying. Which line applies is chosen by the count
+   * How many members have earned points in the running week, said wherever
+   * being early is worth saying. The count is of members with a trade
+   * credited, not of everyone who traded, and the lines say exactly that.
+   * None of them says who gets the points: a week is split between every
+   * member who earns in it. Which line applies is chosen by the count
    * (`rewardsEarlyLine`); `count` and `points` come formatted.
    */
   early: {
     nobody: (points: string) =>
-      `Nobody has paid a fee yet this week. The first trader takes all ${points} points.`,
-    one: "Only 1 trader has paid fees this week.",
-    few: (count: string) => `Only ${count} traders have paid fees this week.`,
-    many: (count: string) => `${count} traders have paid fees this week.`,
+      `No member has earned points yet this week. All ${points} points are still open.`,
+    one: "Only 1 member has earned points this week.",
+    few: (count: string) => `Only ${count} members have earned points this week.`,
+    many: (count: string) => `${count} members have earned points this week.`,
   },
   /** The home screen's card for a wallet that has joined: bring someone in, or what unlocks that. */
   inviteCard: {
@@ -69,7 +72,8 @@ export const rewardsCopy = {
   pitch: {
     split: (points: string) =>
       `${points} points are split among traders every week, by the fees each one paid.`,
-    fewer: "Fewer traders that week means a bigger share for you.",
+    /** The split is by fees paid, not by head count, and this says no more than that. */
+    fewer: "The less the others pay in fees that week, the more points yours earn.",
     season: (weeks: string) => `Season 1 runs ${weeks} weeks.`,
     /** Said first while an invite is waiting on this device. */
     invited: (boost: number, weeks: number) =>

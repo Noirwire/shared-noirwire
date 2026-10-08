@@ -2,6 +2,7 @@ import type { Keypair } from "@solana/web3.js";
 import type { RewardsApi } from "../../application/ports.js";
 import {
   inviteCodeAsSent,
+  isInviteCode,
   rewardsJoinMessage,
   rewardsMessage,
   type RewardsState,
@@ -85,8 +86,9 @@ function stateIn(value: unknown): RewardsState {
     string,
     unknown
   >;
+  // A code is put into a link people pass on, so only one the server could have issued is taken.
   if (
-    typeof code !== "string" ||
+    !isInviteCode(code) ||
     typeof codeActive !== "boolean" ||
     typeof invited !== "number" ||
     typeof wasInvited !== "boolean" ||

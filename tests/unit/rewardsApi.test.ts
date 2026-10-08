@@ -1,6 +1,7 @@
 import { createPublicKey, verify } from "node:crypto";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { inviteCodeAsSent, isInviteCode } from "../../src/domain/rewards.js";
 import { rewardsApi } from "../../src/infrastructure/solana/rewards.js";
 import {
   fakeApi,
@@ -239,6 +240,49 @@ describe("reading how a member stands", () => {
 
     serve({ "POST /v1/rewards/state": () => ({ ...STATE, points: 1250 }) });
     await expect(rewardsApi.state(Keypair.generate(), unlocked)).rejects.toThrow();
+  });
+
+  it.each(["k7m2qx9p", "K7M2QX9", "K7M2QX9PP", "K7M2QX1P", "K7M2&x=9", "", 12345678])(
+    "refuses a standing whose invite code is not one the server issues: %j",
+    async (code) => {
+      serve({
+        "POST /v1/rewards/state": () => ({ ...STATE, code }),
+        "POST /v1/rewards/join": () => ({ ...STATE, code }),
+      });
+      const member = Keypair.generate();
+      await expect(rewardsApi.state(member, unlocked)).rejects.toThrow();
+      await expect(rewardsApi.join(member, undefined, unlocked)).rejects.toThrow();
+    },
+  );
+});
+
+describe("an invite code as the server issues one", () => {
+  it("is eight characters of the digits 2 to 9 and the capitals without I and O, and nothing else", () => {
+    for (const code of ["K7M2QX9P", "22222222", "ZZZZZZZZ", "ABCDEFGH", "JKLMNPQR", "STUVWXYZ"]) {
+      expect(isInviteCode(code), code).toBe(true);
+    }
+    const refused = [
+      "k7m2qx9p",
+      "K7M2QX9",
+      "K7M2QX9PP",
+      " K7M2QX9P",
+      "K7M2QX9P\n",
+      "K7M2QX0P",
+      "K7M2QX1P",
+      "K7M2QXIP",
+      "K7M2QXOP",
+      "K7M2-X9P",
+      "K7M2QX9É",
+      "",
+      12345678,
+      null,
+      undefined,
+    ];
+    for (const code of refused) expect(isInviteCode(code), JSON.stringify(code)).toBe(false);
+  });
+
+  it("is what a typed code becomes once it is trimmed and put in capitals", () => {
+    expect(isInviteCode(inviteCodeAsSent("  k7m2qx9p "))).toBe(true);
   });
 });
 
