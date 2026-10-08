@@ -1,13 +1,10 @@
 import {
   claimQueuedTrades as claimQueued,
-  claimTrade as claim,
   joinRewards as join,
-  leaveRewardsOnThisDevice as leave,
   rewardsState as readState,
   type JoinRewardsResult,
 } from "../application/actions/rewards.js";
 import type { RewardsConfig, RewardsState } from "../domain/rewards.js";
-import type { Portfolio } from "../domain/wallet.js";
 import { rewardsApi } from "../infrastructure/solana/rewards.js";
 import { rewards } from "./money.js";
 
@@ -37,33 +34,11 @@ export function joinRewards(inviteCode?: string): Promise<JoinRewardsResult> {
 }
 
 /**
- * Turns rewards off on this device: the wallet forgets that it joined and
- * every trade still waiting to be claimed, and asks the server nothing more.
- * The server keeps the member's points, invite code and invited members,
- * and joining again with the same recovery phrase finds them.
- */
-export function leaveRewardsOnThisDevice(): Promise<void> {
-  return leave(rewards);
-}
-
-/**
  * How the member stands, or null: the wallet has not joined (nothing is
  * asked), is locked, or the server could not say. It never rejects.
  */
 export function rewardsState(): Promise<RewardsState | null> {
   return readState(rewards);
-}
-
-/**
- * Claims one trade for points. Every trade placed through the money wiring
- * is claimed this way already, without being waited for, so an app has no
- * need to call it for those. It never rejects.
- */
-export function claimTrade(
-  signature: string,
-  portfolio: Pick<Portfolio, "derivationIndex">,
-): Promise<void> {
-  return claim(rewards, signature, portfolio);
 }
 
 /**

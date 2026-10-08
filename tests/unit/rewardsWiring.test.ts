@@ -95,14 +95,13 @@ describe("rewards, wired for an app", () => {
   it("sends nothing for a wallet that has not joined, whatever it trades", async () => {
     const { store, rewards, api, tradeLanded } = await app({});
     tradeLanded();
-    await rewards.claimTrade("other-sig", { derivationIndex: 1 });
     await rewards.claimQueuedTrades();
     expect(await rewards.rewardsState()).toBeNull();
     expect(api.calls).toEqual([]);
     expect(store.getSnapshot()).not.toHaveProperty("rewardClaims");
   });
 
-  it("claims a landed trade as the member and its portfolio once joined, keeps it until it is final, and stops when turned off", async () => {
+  it("claims a landed trade as the member and its portfolio once joined, keeps it until it is final, and stops once the wallet is reset", async () => {
     let final = false;
     const { store, rewards, api, tradeLanded } = await app({
       "POST /v1/rewards/join": () => STATE,
@@ -131,8 +130,9 @@ describe("rewards, wired for an app", () => {
     expect(claims(api)).toHaveLength(2);
     expect(store.getSnapshot()).not.toHaveProperty("rewardClaims");
 
-    await rewards.leaveRewardsOnThisDevice();
-    expect(store.getSnapshot()).not.toHaveProperty("rewardsJoined");
+    // A reset takes the joining with the wallet: nothing more is claimed for it.
+    expect(await store.resetWallet()).toEqual({ ok: true });
+    expect(store.getSnapshot()).toBeNull();
     tradeLanded();
     await rewards.claimQueuedTrades();
     expect(claims(api)).toHaveLength(2);

@@ -4,6 +4,37 @@ All notable changes to this package are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The apps pin an exact tag; see [README.md](README.md#releasing) for how a tag becomes a release.
 
+## [0.12.1] - 2026-10-08
+
+A member who has not traded yet is told plainly what unlocks their invite link and where to go, and rewards can no longer be turned off on one device.
+
+### Breaking
+
+For both apps:
+
+- [ ] **The locked invite**: `standing.invite.locked` is no longer a line of text. It is `RewardsInviteLockedView | null`: `{ title, detail, action }`, or null once the code can be used. Draw the title, the detail, and a button with `action` that opens the markets screen. While it is not null the section's `headline` is that same title, so draw it once.
+- [ ] **The share view**: `RewardsShareView` no longer has `link` or `x`. Share `chat`, open `xUrl`, and take the link to show or copy from `invite.copy.link`.
+- [ ] **The navigation label**: `nav` is gone from `rewardsView` and from `rewardsCopy`. The label is the screen's title: read `rewardsCopy.title`.
+- [ ] **Always there**: `standing.member` and the invite card's `member` are never null. `RewardsState.memberNumber`, `RewardsState.boostWeeksLeft` and `RewardsWeek.traders` are numbers, never null: a standing without one is not read.
+
+### Changed
+
+- The pitch says the invite link comes after the first trade, with what inviting earns.
+- The locked home card (`rewardsInviteCardView` while the code is locked) is titled for the invite link, and its action is "Find something to trade": link it to the markets screen, not to Rewards.
+
+### Removed
+
+- `leaveRewardsOnThisDevice` from `@noirwire/shared/wallet` and `@noirwire/shared/application`.
+- `leave` from the joined side of `rewardsView`, `RewardsLeaveConfirmView` from `@noirwire/shared/presentation`, and `rewardsCopy.leave`.
+- `withoutRewards` from `@noirwire/shared/domain`: nothing else used it. A wallet reset removes the whole record, the joining and the waiting claims with it, as it always did.
+- `claimTrade` from `@noirwire/shared/wallet`: every landed trade claims itself through the money wiring, and no app called it. The action stays in `@noirwire/shared/application`.
+- `RewardsDoubleHour` and `RewardsConfig.doubleHour` from `@noirwire/shared/domain`: nothing showed it.
+- What was only there for a server that left a field out: the boost stated whole when its weeks were unknown, and share texts without a member number.
+
+For both apps:
+
+- [ ] Take out the button that turned rewards off on this device, its confirmation, and any call to `leaveRewardsOnThisDevice`.
+
 ## [0.12.0] - 2026-10-08
 
 Rewards: points for trades, for a wallet that chooses to join. Joining is optional and off until asked for. A wallet that has not joined sends the server nothing about rewards. A member is known by a key of its own that comes from the recovery phrase, which is no main wallet's and no portfolio's.

@@ -61,8 +61,6 @@ const STATE = {
   },
 };
 
-const DOUBLE_HOUR = { startsAt: "2026-10-09T18:00:00.000Z", endsAt: "2026-10-09T19:00:00.000Z" };
-
 const refusal = (code: string, status: number) =>
   new Response(JSON.stringify({ code, error: "A sentence nobody here reads." }), { status });
 
@@ -88,7 +86,7 @@ function server(over: Record<string, ApiHandler> = {}) {
       weeklyPoints: 100_000,
       tradersThisWeek: 5,
       members: 120,
-      doubleHour: DOUBLE_HOUR,
+      doubleHour: null,
     }),
     "POST /v1/rewards/join": (call) =>
       stamped("join", call) ? STATE : refusal("unauthorized", 401),
@@ -132,7 +130,6 @@ describe("the rewards settings", () => {
       weeklyPoints: 100_000,
       tradersThisWeek: 5,
       members: 120,
-      doubleHour: DOUBLE_HOUR,
     });
     expect(api!.calls).toHaveLength(1);
     expect(api!.calls[0].body).toBeNull();
@@ -149,51 +146,18 @@ describe("the rewards settings", () => {
     }
   });
 
-  it("read a server that does not count traders, or counts them as something else, as not saying", async () => {
-    const season = { enabled: true, seasonStart: "2026-09-28T00:00:00.000Z", seasonWeeks: 12 };
-    for (const count of [{}, { tradersThisWeek: null }, { tradersThisWeek: "5" }]) {
-      serve({ "GET /v1/rewards/config": () => ({ ...season, weeklyPoints: 100_000, ...count }) });
-      expect((await rewardsApi.config())?.tradersThisWeek, JSON.stringify(count)).toBeNull();
-      api!.restore();
-    }
-    for (const members of [{}, { members: null }, { members: "120" }]) {
-      serve({ "GET /v1/rewards/config": () => ({ ...season, weeklyPoints: 100_000, ...members }) });
-      expect((await rewardsApi.config())?.members, JSON.stringify(members)).toBeNull();
-      api!.restore();
-    }
-    for (const doubleHour of [
-      undefined,
-      null,
-      "soon",
-      { startsAt: DOUBLE_HOUR.startsAt },
-      { startsAt: 1, endsAt: 2 },
-    ]) {
-      serve({
-        "GET /v1/rewards/config": () => ({ ...season, weeklyPoints: 100_000, doubleHour }),
-      });
-      expect((await rewardsApi.config())?.doubleHour, JSON.stringify(doubleHour)).toBeNull();
-      api!.restore();
-    }
-    for (const number of [{ memberNumber: undefined }, { memberNumber: "42" }]) {
-      serve({ "POST /v1/rewards/state": () => ({ ...STATE, ...number }) });
-      const state = await rewardsApi.state(Keypair.generate(), unlocked);
-      expect(state?.memberNumber, JSON.stringify(number)).toBeNull();
-      api!.restore();
-    }
-    for (const boost of [{ boostWeeksLeft: undefined }, { boostWeeksLeft: "3" }]) {
-      serve({ "POST /v1/rewards/state": () => ({ ...STATE, ...boost }) });
-      const state = await rewardsApi.state(Keypair.generate(), unlocked);
-      expect(state?.boostWeeksLeft, JSON.stringify(boost)).toBeNull();
-      api!.restore();
-    }
-    const { index, endsAt, feeMicroUsdc, shareBps } = STATE.week;
-    const olderWeek = { index, endsAt, feeMicroUsdc, shareBps };
-    for (const week of [olderWeek, { ...olderWeek, traders: "7" }]) {
-      serve({ "POST /v1/rewards/state": () => ({ ...STATE, week }) });
-      const state = await rewardsApi.state(Keypair.generate(), unlocked);
-      expect(state?.week, JSON.stringify(week)).toEqual({ ...olderWeek, traders: null });
-      api!.restore();
-    }
+  it("read the two counts as null when the server has none", async () => {
+    serve({
+      "GET /v1/rewards/config": () => ({
+        enabled: true,
+        seasonStart: "2026-09-28T00:00:00.000Z",
+        seasonWeeks: 12,
+        weeklyPoints: 100_000,
+        tradersThisWeek: null,
+        members: null,
+      }),
+    });
+    expect(await rewardsApi.config()).toMatchObject({ tradersThisWeek: null, members: null });
   });
 });
 
@@ -277,6 +241,18 @@ describe("reading how a member stands", () => {
     api!.restore();
 
     serve({ "POST /v1/rewards/state": () => ({ ...STATE, points: 1250 }) });
+    await expect(rewardsApi.state(Keypair.generate(), unlocked)).rejects.toThrow();
+  });
+
+  it.each([
+    { memberNumber: undefined },
+    { memberNumber: "42" },
+    { boostWeeksLeft: undefined },
+    { boostWeeksLeft: null },
+    { week: { ...STATE.week, traders: undefined } },
+    { week: { ...STATE.week, traders: null } },
+  ])("refuses a standing without a number it always carries: %j", async (wrong) => {
+    serve({ "POST /v1/rewards/state": () => ({ ...STATE, ...wrong }) });
     await expect(rewardsApi.state(Keypair.generate(), unlocked)).rejects.toThrow();
   });
 

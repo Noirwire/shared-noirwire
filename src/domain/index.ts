@@ -93,7 +93,6 @@ export {
   INVITE_CODE_PATTERN,
   MAX_QUEUED_CLAIMS,
   type RewardsConfig,
-  type RewardsDoubleHour,
   type RewardsState,
   type RewardsWeek,
   inviteCodeAsSent,
@@ -102,7 +101,6 @@ export {
   rewardsMessage,
   withClaimQueued,
   withoutClaim,
-  withoutRewards,
 } from "./rewards.js";
 export { entryHref, safeDestination } from "./safeDestination.js";
 export {

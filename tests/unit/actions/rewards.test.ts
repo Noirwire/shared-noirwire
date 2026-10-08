@@ -3,7 +3,6 @@ import {
   claimQueuedTrades,
   claimTrade,
   joinRewards,
-  leaveRewardsOnThisDevice,
   rewardsState,
   type RewardsDeps,
 } from "../../../src/application/actions/rewards.js";
@@ -64,7 +63,6 @@ function fakeRewards() {
         weeklyPoints: 100_000,
         tradersThisWeek: null,
         members: null,
-        doubleHour: null,
       };
     },
     async join(member, inviteCode) {
@@ -261,18 +259,5 @@ describe("claiming what waits", () => {
     await claimQueuedTrades(r.deps);
     expect(r.server.claims).toHaveLength(2);
     expect(r.waiting()).toEqual(["trade-2", "trade-3"]);
-  });
-});
-
-describe("turning rewards off on this device", () => {
-  it("forgets the joining and what waited, and asks the server nothing then or after", async () => {
-    const r = joined({ rewardClaims: [{ signature: "trade-1", derivationIndex: 1 }] });
-    await leaveRewardsOnThisDevice(r.deps);
-    expect(r.h.wallet()).not.toHaveProperty("rewardsJoined");
-    expect(r.h.wallet()).not.toHaveProperty("rewardClaims");
-    await claimTrade(r.deps, "trade-2", p1);
-    await claimQueuedTrades(r.deps);
-    expect(await rewardsState(r.deps)).toBeNull();
-    expect(r.server.asked).toEqual([]);
   });
 });
