@@ -82,10 +82,8 @@ function weekIn(value: unknown): RewardsWeek | null {
 
 /** A member's standing, rebuilt field by field from what the server sent. Throws for anything else. */
 function stateIn(value: unknown): RewardsState {
-  const { code, codeActive, invited, wasInvited, points, week } = (value ?? {}) as Record<
-    string,
-    unknown
-  >;
+  const { code, codeActive, invited, wasInvited, boostWeeksLeft, points, week } = (value ??
+    {}) as Record<string, unknown>;
   // A code is put into a link people pass on, so only one the server could have issued is taken.
   if (
     !isInviteCode(code) ||
@@ -96,7 +94,15 @@ function stateIn(value: unknown): RewardsState {
   ) {
     throw unsound();
   }
-  return { code, codeActive, invited, wasInvited, points, week: weekIn(week) };
+  return {
+    code,
+    codeActive,
+    invited,
+    wasInvited,
+    boostWeeksLeft: countIn(boostWeeksLeft),
+    points,
+    week: weekIn(week),
+  };
 }
 
 export const rewardsApi: RewardsApi<Keypair> = {

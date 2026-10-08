@@ -1,4 +1,5 @@
 import type { JoinRewardsResult } from "../application/actions/rewards.js";
+import { plural } from "../copy/plural.js";
 import { rewardsCopy } from "../copy/rewards.js";
 import type { AppPlatform } from "../domain/appPlatform.js";
 import { dateAndTime, usd, wholeNumber } from "../domain/format.js";
@@ -6,6 +7,9 @@ import {
   INVITED_BOOST_PERCENT,
   INVITED_BOOST_WEEKS,
   INVITER_SCORE_SHARE_PERCENT,
+  INVITE_CODE_LENGTH,
+  inviteCodeAsSent,
+  isInviteCode,
   type RewardsConfig,
   type RewardsState,
 } from "../domain/rewards.js";
@@ -106,9 +110,23 @@ export type RewardsInviteCardView = {
   share: RewardsShareView | null;
 };
 
+/** A member's boost from the invite they joined with. */
+export type RewardsBoostView = { title: string; detail: string };
+
+/** The invite code that will be sent with a joining, shown so the person sees it is in use. */
+export type RewardsInviteAppliedView = { label: string; code: string; detail: string };
+
+/** What the invite code field says of the text in it: a code in use, or why the text is none. Neither for no text. */
+export type RewardsInviteFieldView = {
+  applied: RewardsInviteAppliedView | null;
+  problem: string | null;
+};
+
 /** How a member stands, ready to draw, in the order it is shown. */
 export type RewardsStandingView = {
   invite: RewardsInviteView;
+  /** That the invite the member joined with is counting, while its boost lasts. Null otherwise. */
+  boost: RewardsBoostView | null;
   /** How early it is this week. Null when no week is running or the server does not say. */
   early: string | null;
   points: RewardsFigure;
@@ -130,6 +148,10 @@ export type RewardsView = {
       /** What joining means, a sentence to a line. */
       explanation: readonly string[];
       inviteCodeLabel: string;
+      /** The code waiting on this device, when it could be one: it goes with the joining. */
+      inviteApplied: RewardsInviteAppliedView | null;
+      /** Why the text waiting on this device is no code. Null when there is none, or it could be one. */
+      inviteProblem: string | null;
       joinLabel: string;
       /** The join button's label while the joining is under way. */
       joiningLabel: string;
@@ -199,6 +221,46 @@ function inviteHeadline(invited: number): string {
   return invited === 2 ? headline.two : headline.many(wholeNumber(invited));
 }
 
+/**
+ * The boost of a member who joined with an invite: how much of it is left,
+ * or all of it stated when the server does not say. Nothing once it is
+ * over, and nothing for a member who was not invited.
+ */
+function boostView(state: RewardsState): RewardsBoostView | null {
+  const { boost } = rewardsCopy;
+  if (!state.wasInvited) return null;
+  if (state.boostWeeksLeft === null) {
+    return { title: boost.title, detail: boost.whole(INVITED_BOOST_PERCENT, INVITED_BOOST_WEEKS) };
+  }
+  if (state.boostWeeksLeft < 1) return null;
+  return {
+    title: boost.title,
+    detail: boost.left(INVITED_BOOST_PERCENT, plural(state.boostWeeksLeft, "week")),
+  };
+}
+
+/**
+ * What the invite code field says of `text`, as the person types or as it
+ * arrived in a link. Text that could be a code, once trimmed and put in
+ * capitals as it will be sent, is shown as in use. Any other text is said
+ * not to look like one. No text says nothing. Whether the server takes the
+ * code is only known once the joining is answered.
+ */
+export function rewardsInviteFieldView(text: string): RewardsInviteFieldView {
+  const { inviteApplied, inviteShape } = rewardsCopy.join;
+  const code = inviteCodeAsSent(text);
+  if (code === undefined) return { applied: null, problem: null };
+  if (!isInviteCode(code)) return { applied: null, problem: inviteShape(INVITE_CODE_LENGTH) };
+  return {
+    applied: {
+      label: inviteApplied.label,
+      code,
+      detail: inviteApplied.detail(INVITED_BOOST_PERCENT, INVITED_BOOST_WEEKS),
+    },
+    problem: null,
+  };
+}
+
 function standingView(state: RewardsState, config: RewardsConfig | null): RewardsStandingView {
   const { week, invite } = rewardsCopy;
   const endsAt = state.week ? Date.parse(state.week.endsAt) : Number.NaN;
@@ -218,6 +280,7 @@ function standingView(state: RewardsState, config: RewardsConfig | null): Reward
       locked: state.codeActive ? null : invite.locked,
       invited: { label: invite.invited, value: wholeNumber(state.invited) },
     },
+    boost: boostView(state),
     // Without the season the week's points are not known, and the line for nobody names them.
     early: state.week && config ? rewardsEarlyLine(state.week.traders, config.weeklyPoints) : null,
     points: { label: rewardsCopy.points, value: wholeNumber(Number(state.points)) },
@@ -261,19 +324,23 @@ export function rewardsView(state: {
   loading?: boolean;
   /** What the server says of the season, or null while that is not known. */
   config: RewardsConfig | null;
-  /** True while an invite code is waiting on this device, for a wallet that has not joined. */
-  invited?: boolean;
+  /** The invite code waiting on this device, as it arrived or was typed, for a wallet that has not joined. */
+  inviteCode?: string;
 }): RewardsView {
   const { title, nav, token, join, leave } = rewardsCopy;
   if (!state.joined) {
+    const field = rewardsInviteFieldView(state.inviteCode ?? "");
     return {
       title,
       nav,
       token,
       joined: false,
-      pitch: state.config && pitchView(state.config, state.invited === true),
+      // The pitch speaks of an invite only when one that could be used is waiting.
+      pitch: state.config && pitchView(state.config, field.applied !== null),
       explanation: join.explanation,
       inviteCodeLabel: join.inviteCode,
+      inviteApplied: field.applied,
+      inviteProblem: field.problem,
       joinLabel: join.button,
       joiningLabel: join.busy,
     };

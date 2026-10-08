@@ -58,6 +58,12 @@ export type RewardsState = {
   /** How many members joined with the code. */
   invited: number;
   wasInvited: boolean;
+  /**
+   * How many weeks of an invited member's boost are still to come: 0 for a
+   * member who was not invited or whose boost is over. Null when the server
+   * does not say.
+   */
+  boostWeeksLeft: number | null;
   /** Points of the weeks that have closed, a whole number as text. */
   points: string;
   /** Null when the server names no running week. */
@@ -83,6 +89,7 @@ export function rewardsMessage(
  * digits 2 to 9 and the capital letters without I and O, so none is taken
  * for another when read aloud or typed.
  */
+export const INVITE_CODE_LENGTH = 8;
 export const INVITE_CODE_PATTERN = /^[2-9A-HJ-NP-Z]{8}$/;
 
 /**

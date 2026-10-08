@@ -49,6 +49,7 @@ const STATE = {
   codeActive: true,
   invited: 3,
   wasInvited: false,
+  boostWeeksLeft: 0,
   points: "1250",
   week: {
     index: 2,
@@ -146,6 +147,12 @@ describe("the rewards settings", () => {
     for (const count of [{}, { tradersThisWeek: null }, { tradersThisWeek: "5" }]) {
       serve({ "GET /v1/rewards/config": () => ({ ...season, weeklyPoints: 100_000, ...count }) });
       expect((await rewardsApi.config())?.tradersThisWeek, JSON.stringify(count)).toBeNull();
+      api!.restore();
+    }
+    for (const boost of [{ boostWeeksLeft: undefined }, { boostWeeksLeft: "3" }]) {
+      serve({ "POST /v1/rewards/state": () => ({ ...STATE, ...boost }) });
+      const state = await rewardsApi.state(Keypair.generate(), unlocked);
+      expect(state?.boostWeeksLeft, JSON.stringify(boost)).toBeNull();
       api!.restore();
     }
     const { index, endsAt, feeMicroUsdc, shareBps } = STATE.week;

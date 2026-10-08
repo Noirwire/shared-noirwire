@@ -23,6 +23,7 @@ const STATE: RewardsState = {
   codeActive: false,
   invited: 0,
   wasInvited: true,
+  boostWeeksLeft: 8,
   points: "0",
   week: {
     index: 0,

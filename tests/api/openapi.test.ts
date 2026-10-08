@@ -260,6 +260,7 @@ const REWARDS_STATE = {
   codeActive: true,
   invited: 2,
   wasInvited: false,
+  boostWeeksLeft: 0,
   points: "1250",
   week: null,
 };
@@ -964,7 +965,9 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
         fields("/v1/rewards/claims").properties!.state,
       ];
       for (const state of states) {
-        expect(state.required?.slice().sort()).toEqual(standing);
+        expect(state.required).toEqual(expect.arrayContaining(standing));
+        // Read when it is there, like the counts: held only to being documented.
+        expect(state.properties).toHaveProperty("boostWeeksLeft");
         expect(state.properties!.week.required).toEqual(expect.arrayContaining(week));
         expect(state.properties!.week.properties).toHaveProperty("traders");
       }
@@ -988,8 +991,15 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
 
     /** A documented standing as its client reads it: a count of traders that is not there is null. */
     const asRead = (state: unknown) => {
-      const { week, ...rest } = state as { week: { traders?: number } | null };
-      return { ...rest, week: week && { ...week, traders: week.traders ?? null } };
+      const { week, boostWeeksLeft, ...rest } = state as {
+        week: { traders?: number } | null;
+        boostWeeksLeft?: number;
+      };
+      return {
+        ...rest,
+        boostWeeksLeft: boostWeeksLeft ?? null,
+        week: week && { ...week, traders: week.traders ?? null },
+      };
     };
 
     it.each(spec ? errorsOf("/v1/rewards/config", "get") : [])(

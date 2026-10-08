@@ -5,12 +5,14 @@ import {
   INVITED_BOOST_PERCENT,
   INVITED_BOOST_WEEKS,
   INVITER_SCORE_SHARE_PERCENT,
+  INVITE_CODE_LENGTH,
   type RewardsConfig,
   type RewardsState,
 } from "../../../src/domain/rewards.js";
 import {
   rewardsEarlyLine,
   rewardsInviteCardView,
+  rewardsInviteFieldView,
   rewardsInvitedBannerView,
   rewardsJoinProblem,
   rewardsPromoView,
@@ -50,6 +52,7 @@ const member = (over: Partial<RewardsState> = {}): RewardsState => ({
   codeActive: true,
   invited: 3,
   wasInvited: false,
+  boostWeeksLeft: 0,
   points: "12500",
   week: { index: 2, endsAt: ENDS_AT, feeMicroUsdc: "4250000", shareBps: 125, traders: 4 },
   ...over,
@@ -409,10 +412,13 @@ describe("a wallet with an invite waiting on this device", () => {
   it("reads its boost first in the pitch, ahead of the lines everyone reads", () => {
     const config = season(100_000);
     const plain = rewardsView({ joined: false, rewards: null, config });
-    const invited = rewardsView({ joined: false, rewards: null, config, invited: true });
-    if (plain.joined || invited.joined) throw new Error("shown as joined");
+    const invited = rewardsView({ joined: false, rewards: null, config, inviteCode: "K7M2QX9P" });
+    const mistyped = rewardsView({ joined: false, rewards: null, config, inviteCode: "hello" });
+    if (plain.joined || invited.joined || mistyped.joined) throw new Error("shown as joined");
     const [first, ...rest] = invited.pitch!.lines;
     expect(rest).toEqual(plain.pitch!.lines);
+    // Text that no code could be promises no boost.
+    expect(mistyped.pitch!.lines).toEqual(plain.pitch!.lines);
     expect(first).toContain(`${INVITED_BOOST_PERCENT}%`);
     expect(first).toContain(`${INVITED_BOOST_WEEKS} weeks`);
   });
@@ -427,6 +433,85 @@ describe("a wallet with an invite waiting on this device", () => {
   });
 });
 
+describe("the invite code field", () => {
+  it("shows a code that could be one as in use, as it will be sent, with what it brings", () => {
+    for (const typed of ["K7M2QX9P", "  k7m2qx9p "]) {
+      const { applied, problem } = rewardsInviteFieldView(typed);
+      expect(problem).toBeNull();
+      expect(applied?.code).toBe("K7M2QX9P");
+      expect(applied?.detail).toContain(`${INVITED_BOOST_PERCENT}%`);
+      expect(applied?.detail).toContain(`${INVITED_BOOST_WEEKS} weeks`);
+      expect(applied?.label.length).toBeGreaterThan(0);
+    }
+  });
+
+  it.each(["K7M2", "K7M2QX9PP", "K7M2QX1P", "hello there", "<b>"])(
+    "says %j does not look like a code, with how long one is, and applies nothing",
+    (typed) => {
+      const { applied, problem } = rewardsInviteFieldView(typed);
+      expect(applied).toBeNull();
+      expect(problem).toContain(String(INVITE_CODE_LENGTH));
+      expect(problem).not.toContain(typed);
+    },
+  );
+
+  it.each(["", "   ", "\n"])("says nothing of no text: %j", (typed) => {
+    expect(rewardsInviteFieldView(typed)).toEqual({ applied: null, problem: null });
+  });
+
+  it("is what the screen shows for the code waiting on this device, and nothing for none", () => {
+    const view = (inviteCode?: string) => {
+      const shown = rewardsView({ joined: false, rewards: null, inviteCode });
+      if (shown.joined) throw new Error("shown as joined");
+      return { applied: shown.inviteApplied, problem: shown.inviteProblem };
+    };
+    expect(view("k7m2qx9p")).toEqual(rewardsInviteFieldView("k7m2qx9p"));
+    expect(view("nope")).toEqual(rewardsInviteFieldView("nope"));
+    expect(view()).toEqual({ applied: null, problem: null });
+    expect(
+      rewardsView({ joined: true, rewards: member(), inviteCode: "K7M2QX9P" }),
+    ).not.toHaveProperty("inviteApplied");
+  });
+});
+
+describe("the boost of a member who joined with an invite", () => {
+  const boost = (over: Partial<RewardsState>) => {
+    const view = rewardsView({ joined: true, rewards: member(over) });
+    if (!view.joined) throw new Error("not shown as joined");
+    return view.standing!.boost;
+  };
+
+  it("says how many weeks are left, and one week as one", () => {
+    const eight = boost({ wasInvited: true, boostWeeksLeft: 8 })!;
+    const one = boost({ wasInvited: true, boostWeeksLeft: 1 })!;
+    expect(eight.detail).toContain(`${INVITED_BOOST_PERCENT}%`);
+    expect(eight.detail).toContain("8 weeks");
+    expect(one.detail).toContain("1 week ");
+    expect(one.detail).not.toContain("1 weeks");
+    expect(one.title).toBe(eight.title);
+  });
+
+  it("states the whole boost when the server does not say what is left", () => {
+    const whole = boost({ wasInvited: true, boostWeeksLeft: null })!;
+    expect(whole.detail).toContain(`${INVITED_BOOST_PERCENT}%`);
+    expect(whole.detail).toContain(`${INVITED_BOOST_WEEKS} weeks`);
+    expect(whole.detail).not.toMatch(/left/i);
+  });
+
+  it("is not shown once the boost is over, or to a member who was not invited", () => {
+    expect(boost({ wasInvited: true, boostWeeksLeft: 0 })).toBeNull();
+    expect(boost({ wasInvited: false, boostWeeksLeft: 0 })).toBeNull();
+    expect(boost({ wasInvited: false, boostWeeksLeft: null })).toBeNull();
+    expect(boost({ wasInvited: false, boostWeeksLeft: 5 })).toBeNull();
+  });
+
+  it("sits directly after the invite section", () => {
+    const view = rewardsView({ joined: true, rewards: member() });
+    if (!view.joined) throw new Error("not shown as joined");
+    expect(Object.keys(view.standing!).slice(0, 2)).toEqual(["invite", "boost"]);
+  });
+});
+
 describe("what inviting is said to earn", () => {
   it("is a share of a trading score everywhere, and never money", () => {
     const config = season(100_000, 12, 3);
@@ -435,7 +520,7 @@ describe("what inviting is said to earn", () => {
       rewardsInviteCardView(member(), config),
       rewardsInviteCardView(member({ codeActive: false }), config),
       rewardsInvitedBannerView(true),
-      rewardsView({ joined: false, rewards: null, config, invited: true }),
+      rewardsView({ joined: false, rewards: null, config, inviteCode: "K7M2QX9P" }),
     ]);
     const member0 = rewardsView({ joined: true, rewards: member(), config });
     if (!member0.joined) throw new Error("not shown as joined");

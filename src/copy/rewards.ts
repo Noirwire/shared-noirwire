@@ -91,6 +91,15 @@ export const rewardsCopy = {
       "Your points are tied to a separate key that comes from your recovery phrase.",
     ],
     inviteCode: "Invite code (optional)",
+    /** Said beside the field while a code that could be one is in it, so the person sees it will be used. */
+    inviteApplied: {
+      label: "Invite code in use",
+      detail: (boost: number, weeks: number) =>
+        `Joining with this code gives your trading score a ${boost}% boost for your first ${weeks} weeks.`,
+    },
+    /** Said of text in the field that no code could be. `length` is how long a code is. */
+    inviteShape: (length: number) =>
+      `That does not look like an invite code. Codes are ${length} letters and numbers.`,
     button: "Join rewards",
     /** The button's label while the joining is under way. */
     busy: "Joining",
@@ -121,6 +130,15 @@ export const rewardsCopy = {
       many: (count: string) => `${count} joined. Who's next?`,
     },
     ask: (share: number) => `${share}% of each invited person's trading score counts toward yours.`,
+  },
+  /** Said to a member who joined with an invite, while its boost lasts. `left` is "3 weeks" or "1 week". */
+  boost: {
+    title: "Your invite worked",
+    left: (boost: number, left: string) =>
+      `Your trading score has a ${boost}% boost. ${left} left.`,
+    /** Said when the server does not say how much of it is left. */
+    whole: (boost: number, weeks: number) =>
+      `Your trading score has a ${boost}% boost for your first ${weeks} weeks.`,
   },
   /** Said when the wallet has joined and its points could not be read. */
   notNow: "Your points cannot be shown right now. They are kept.",
