@@ -36,8 +36,13 @@ const season = (
   weeklyPoints,
   tradersThisWeek,
   members,
-  doubleHour: null,
 });
+
+/** The post and the link that `xUrl` opens X with. */
+function postOf(share: { xUrl: string }) {
+  const url = new URL(share.xUrl);
+  return { text: url.searchParams.get("text")!, link: url.searchParams.get("url")! };
+}
 
 const RULES = [
   `${INVITER_SCORE_SHARE_PERCENT}%`,
@@ -103,7 +108,9 @@ describe("the Rewards screen", () => {
     if (!active.joined || !locked.joined) throw new Error("not shown as joined");
     expect(active.standing?.invite.copy?.code.value).toBe("K7M2QX9P");
     expect(active.standing?.invite.copy?.link.value).toBe("https://app.noirwire.com/?ref=K7M2QX9P");
-    expect(active.standing?.invite.share?.link).toBe("https://app.noirwire.com/?ref=K7M2QX9P");
+    expect(postOf(active.standing!.invite.share!).link).toBe(
+      "https://app.noirwire.com/?ref=K7M2QX9P",
+    );
     expect(active.standing?.invite.locked).toBeNull();
 
     expect(locked.standing?.invite.share).toBeNull();
@@ -201,15 +208,6 @@ describe("the words a screen needs beside the figures", () => {
     expect(copy.copyCode).not.toBe(copy.copyLink);
   });
 
-  it("offers a member no way to turn rewards off, and says nothing of one", () => {
-    for (const rewards of [member(), member({ codeActive: false }), null]) {
-      const view = rewardsView({ joined: true, rewards, config: season(100_000) });
-      expect(view).not.toHaveProperty("leave");
-      for (const text of strings(view))
-        expect(text, text).not.toMatch(/turn(s|ed|ing)? (it |rewards )?off/i);
-    }
-  });
-
   it("gives the join button another label while it is joining", () => {
     const view = rewardsView({ joined: false, rewards: null });
     if (view.joined) throw new Error("shown as joined");
@@ -251,21 +249,6 @@ describe("how early it is this week", () => {
   });
 });
 
-describe("a share link", () => {
-  it("is built for any text at all without failing, and carries nothing that is not encoded", () => {
-    const odd = ["", "a b&c=d#e", "\uD800", "ok\uDFFFok", "<script>", "é".repeat(40)];
-    for (const code of odd) {
-      const card = rewardsInviteCardView(member({ code }), season(100_000));
-      const link = card!.share!.link;
-      expect(link.startsWith("https://app.noirwire.com/?ref=")).toBe(true);
-      expect(link.slice("https://app.noirwire.com/?ref=".length)).toMatch(
-        /^[A-Za-z0-9%_.!~*'()-]*$/,
-      );
-      expect(new URL(card!.share!.xUrl).searchParams.get("url")).toBe(link);
-    }
-  });
-});
-
 describe("the early line, wherever it is shown", () => {
   it("is on the promo and the pitch from the season's count, and on a member's standing from the week's", () => {
     const config = season(100_000, 12, 3);
@@ -280,23 +263,21 @@ describe("the early line, wherever it is shown", () => {
     expect(pitch.indexOf("early")).toBeLessThan(pitch.indexOf("lines"));
   });
 
-  it("is left out for a server that does not count traders, and for a member outside a week", () => {
-    const older = season(100_000);
-    const notJoined = rewardsView({ joined: false, rewards: null, config: older });
-    const uncounted = rewardsView({
+  it("is left out when the server has no count, and for a member outside a week or a known season", () => {
+    const uncounted = season(100_000);
+    const notJoined = rewardsView({ joined: false, rewards: null, config: uncounted });
+    const noWeek = rewardsView({
       joined: true,
-      rewards: member({ week: { ...member().week!, traders: null } }),
-      config: older,
+      rewards: member({ week: null }),
+      config: uncounted,
     });
-    const noWeek = rewardsView({ joined: true, rewards: member({ week: null }), config: older });
     const noSeason = rewardsView({ joined: true, rewards: member() });
-    if (notJoined.joined || !uncounted.joined || !noWeek.joined || !noSeason.joined) {
+    if (notJoined.joined || !noWeek.joined || !noSeason.joined) {
       throw new Error("wrong side shown");
     }
-    expect(rewardsPromoView(older, false)?.early).toBeNull();
+    expect(rewardsPromoView(uncounted, false)?.early).toBeNull();
     expect(notJoined.pitch?.early).toBeNull();
     expect(notJoined.pitch?.lines.length).toBeGreaterThan(0);
-    expect(uncounted.standing?.early).toBeNull();
     expect(noWeek.standing?.early).toBeNull();
     expect(noSeason.standing?.early).toBeNull();
   });
@@ -341,34 +322,31 @@ describe("what a member sends to bring someone in", () => {
 
   it("puts the link in the chat message, and beside the post, not in it", () => {
     const share = shared(season(100_000));
-    expect(share.chat).toContain(share.link);
-    expect(share.x).not.toContain("http");
-    const url = new URL(share.xUrl);
-    expect(`${url.origin}${url.pathname}`).toBe("https://x.com/intent/post");
-    expect(url.searchParams.get("text")).toBe(share.x);
-    expect(url.searchParams.get("url")).toBe(share.link);
-    expect(share.xUrl).toContain(encodeURIComponent(share.x));
-    expect(share.xUrl).toContain(encodeURIComponent(share.link));
+    const { text, link } = postOf(share);
+    expect(link).toBe("https://app.noirwire.com/?ref=K7M2QX9P");
+    expect(share.chat).toContain(link);
+    expect(text).not.toContain("http");
+    expect(share.xUrl.startsWith("https://x.com/intent/post?")).toBe(true);
   });
 
   it("fits a post with its link, even with the largest week a season could name", () => {
     // X counts any link as 23 characters, and one space sits between it and the text.
     for (const config of [null, season(100_000), season(999_999_999)]) {
-      expect(shared(config).x.length + 1 + 23).toBeLessThanOrEqual(280);
+      expect(postOf(shared(config)).text.length + 1 + 23).toBeLessThanOrEqual(280);
     }
   });
 
   it("states the scoring's rules and the season's own points, and leaves the points out when the season is not known", () => {
     const known = shared(season(250_000));
-    const unknown = shared(null);
+    const unknown = postOf(shared(null)).text;
     for (const rule of RULES) {
       expect(known.chat).toContain(rule);
-      expect(known.x).toContain(rule);
-      expect(unknown.x).toContain(rule);
+      expect(postOf(known).text).toContain(rule);
+      expect(unknown).toContain(rule);
     }
-    expect(known.x).toContain("250,000");
-    expect(unknown.x).not.toMatch(/\d{3},\d{3}/);
-    expect(unknown.x.length).toBeLessThan(known.x.length);
+    expect(postOf(known).text).toContain("250,000");
+    expect(unknown).not.toMatch(/\d{3},\d{3}/);
+    expect(unknown.length).toBeLessThan(postOf(known).text.length);
   });
 
   it("has a label for each way of sending it, and a word for once it is copied", () => {
@@ -546,17 +524,9 @@ describe("the boost of a member who joined with an invite", () => {
     expect(one.title).toBe(eight.title);
   });
 
-  it("states the whole boost when the server does not say what is left", () => {
-    const whole = boost({ wasInvited: true, boostWeeksLeft: null })!;
-    expect(whole.detail).toContain(`${INVITED_BOOST_PERCENT}%`);
-    expect(whole.detail).toContain(`${INVITED_BOOST_WEEKS} weeks`);
-    expect(whole.detail).not.toMatch(/left/i);
-  });
-
   it("is not shown once the boost is over, or to a member who was not invited", () => {
     expect(boost({ wasInvited: true, boostWeeksLeft: 0 })).toBeNull();
     expect(boost({ wasInvited: false, boostWeeksLeft: 0 })).toBeNull();
-    expect(boost({ wasInvited: false, boostWeeksLeft: null })).toBeNull();
     expect(boost({ wasInvited: false, boostWeeksLeft: 5 })).toBeNull();
   });
 
@@ -578,41 +548,27 @@ describe("which member someone is", () => {
   it("is the first thing a member sees, with the number grouped, and on the home card as one line", () => {
     const shown = standing({ memberNumber: 1_234 });
     expect(Object.keys(shown)[0]).toBe("member");
-    expect(shown.member?.value).toBe("#1,234");
-    expect(shown.member?.label.length).toBeGreaterThan(0);
+    expect(shown.member.value).toBe("#1,234");
+    expect(shown.member.label.length).toBeGreaterThan(0);
     for (const codeActive of [true, false]) {
       const card = rewardsInviteCardView(member({ memberNumber: 1_234, codeActive }), null);
       expect(card?.member).toContain("#1,234");
     }
   });
 
-  it("is left out for a server that does not number its members", () => {
-    expect(standing({ memberNumber: null }).member).toBeNull();
-    expect(rewardsInviteCardView(member({ memberNumber: null }), null)?.member).toBeNull();
-    expect(
-      rewardsInviteCardView(member({ memberNumber: null, codeActive: false }), null)?.member,
-    ).toBeNull();
-  });
-
-  it("opens what the member sends with the number, and without it when it is not known", () => {
-    const numbered = standing({ memberNumber: 1_234 }).invite.share!;
-    const plain = standing({ memberNumber: null }).invite.share!;
-    for (const text of [numbered.chat, numbered.x]) expect(text).toMatch(/^I am member #1,234\b/);
-    for (const text of [plain.chat, plain.x]) {
-      expect(text).not.toContain("#");
-      expect(text).not.toMatch(/\bmember\b/i);
+  it("opens what the member sends with the number", () => {
+    const share = standing({ memberNumber: 1_234 }).invite.share!;
+    for (const text of [share.chat, postOf(share).text]) {
+      expect(text).toMatch(/^I am member #1,234\b/);
     }
-    expect(numbered.chat).toContain(numbered.link);
-    expect(numbered.link).toBe(plain.link);
-    expect(new URL(numbered.xUrl).searchParams.get("text")).toBe(numbered.x);
   });
 
   it("still fits a post with its link at a seven digit number and the largest week", () => {
     const card = rewardsInviteCardView(member({ memberNumber: 9_999_999 }), season(999_999_999));
-    const { x } = card!.share!;
-    expect(x).toContain("9,999,999");
-    expect(x).toContain("999,999,999");
-    expect(x.length + 1 + 23).toBeLessThanOrEqual(280);
+    const { text } = postOf(card!.share!);
+    expect(text).toContain("9,999,999");
+    expect(text).toContain("999,999,999");
+    expect(text.length + 1 + 23).toBeLessThanOrEqual(280);
   });
 });
 

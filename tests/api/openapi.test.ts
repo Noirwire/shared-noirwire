@@ -952,28 +952,35 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
     it("names every field this package reads from each success", () => {
       const fields = (template: string, method = "post") =>
         jsonOf(spec!.paths[template][method].responses["200"].content)!.schema!;
-      const standing = ["code", "codeActive", "invited", "points", "wasInvited", "week"];
-      const week = ["endsAt", "feeMicroUsdc", "index", "shareBps"];
-      const config = fields("/v1/rewards/config", "get");
-      expect(config.required).toEqual(
-        expect.arrayContaining(["enabled", "seasonStart", "seasonWeeks", "weeklyPoints"]),
+      const standing = [
+        "boostWeeksLeft",
+        "code",
+        "codeActive",
+        "invited",
+        "memberNumber",
+        "points",
+        "wasInvited",
+        "week",
+      ];
+      const week = ["endsAt", "feeMicroUsdc", "index", "shareBps", "traders"];
+      expect(fields("/v1/rewards/config", "get").required).toEqual(
+        expect.arrayContaining([
+          "enabled",
+          "seasonStart",
+          "seasonWeeks",
+          "weeklyPoints",
+          "members",
+          "tradersThisWeek",
+        ]),
       );
-      // The two counts of traders are read when they are there, so they are only held to being documented.
-      expect(config.properties).toHaveProperty("tradersThisWeek");
-      expect(config.properties).toHaveProperty("members");
-      expect(config.properties).toHaveProperty("doubleHour");
       const states = [
         fields("/v1/rewards/join"),
         fields("/v1/rewards/state"),
         fields("/v1/rewards/claims").properties!.state,
       ];
       for (const state of states) {
-        expect(state.required).toEqual(expect.arrayContaining(standing));
-        // Read when it is there, like the counts: held only to being documented.
-        expect(state.properties).toHaveProperty("boostWeeksLeft");
-        expect(state.properties).toHaveProperty("memberNumber");
-        expect(state.properties!.week.required).toEqual(expect.arrayContaining(week));
-        expect(state.properties!.week.properties).toHaveProperty("traders");
+        expect(state.required?.slice().sort()).toEqual(standing);
+        expect(state.properties!.week.required?.slice().sort()).toEqual(week);
       }
       expect(fields("/v1/rewards/claims").required?.slice().sort()).toEqual([
         "credited",
@@ -985,40 +992,17 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
     it.each(spec ? success("/v1/rewards/config", "get") : [])(
       "the settings: the documented answer is the season, or off",
       async ({ body }) => {
-        const { enabled, ...season } = body as {
-          enabled: boolean;
-          tradersThisWeek?: number;
-          members?: number;
-          doubleHour?: object;
-        };
+        // The file documents more of the season than this package reads.
+        const { enabled, seasonStart, seasonWeeks, weeklyPoints, tradersThisWeek, members } =
+          body as Record<string, unknown>;
         api = rewardsServer({ "GET /v1/rewards/config": () => answering(200, body) });
         expect(await ended(rewardsApi.config())).toEqual({
           value: enabled
-            ? {
-                ...season,
-                tradersThisWeek: season.tradersThisWeek ?? null,
-                members: season.members ?? null,
-                doubleHour: season.doubleHour ?? null,
-              }
+            ? { seasonStart, seasonWeeks, weeklyPoints, tradersThisWeek, members }
             : null,
         });
       },
     );
-
-    /** A documented standing as its client reads it: a count of traders that is not there is null. */
-    const asRead = (state: unknown) => {
-      const { week, boostWeeksLeft, memberNumber, ...rest } = state as {
-        week: { traders?: number } | null;
-        boostWeeksLeft?: number;
-        memberNumber?: number;
-      };
-      return {
-        ...rest,
-        memberNumber: memberNumber ?? null,
-        boostWeeksLeft: boostWeeksLeft ?? null,
-        week: week && { ...week, traders: week.traders ?? null },
-      };
-    };
 
     it.each(spec ? errorsOf("/v1/rewards/config", "get") : [])(
       "the settings: %s (%i) is a failure, never taken for on",
@@ -1032,14 +1016,14 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
       for (const { body } of success("/v1/rewards/join")) {
         api = rewardsServer({ "POST /v1/rewards/join": () => answering(200, body) });
         expect(await ended(rewardsApi.join(Keypair.generate(), undefined, stillUnlocked))).toEqual({
-          value: { kind: "joined", state: asRead(body) },
+          value: { kind: "joined", state: body },
         });
         api.restore();
       }
       for (const { body } of success("/v1/rewards/state")) {
         api = rewardsServer({ "POST /v1/rewards/state": () => answering(200, body) });
         expect(await ended(rewardsApi.state(Keypair.generate(), stillUnlocked))).toEqual({
-          value: asRead(body),
+          value: body,
         });
         api.restore();
       }
@@ -1047,7 +1031,7 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
         api = rewardsServer({ "POST /v1/rewards/claims": () => answering(200, body) });
         const { feeMicroUsdc, state } = body as { feeMicroUsdc: string; state: object };
         expect(await ended(claim())).toEqual({
-          value: { kind: "credited", feeMicroUsdc, state: asRead(state) },
+          value: { kind: "credited", feeMicroUsdc, state },
         });
         api.restore();
       }

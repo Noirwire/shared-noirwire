@@ -39,17 +39,13 @@ export type RewardsWeekView = {
 };
 
 /**
- * What a member sends to bring someone in: the link, a message for a chat
- * with the link in it, a post for X whose link goes beside the text, and
- * the words for the buttons that send them.
+ * What a member sends to bring someone in: a message for a chat with the
+ * link in it, an address that opens X with a post written and the link
+ * beside it, and the words for the buttons that send them.
  */
 export type RewardsShareView = {
-  link: string;
   /** The whole message, link included, for the device's share sheet or the clipboard. */
   chat: string;
-  /** The post's text. The link is not in it: `xUrl` carries both. */
-  x: string;
-  /** Opens X with the post written and the link attached. */
   xUrl: string;
   shareLabel: string;
   xLabel: string;
@@ -82,9 +78,9 @@ export type RewardsInviteLockedView = { title: string; detail: string; action: s
 /** What there is to earn: a title, how early it is this week when that is known, and a sentence to a line. */
 export type RewardsPitchView = {
   title: string;
-  /** Shown before the lines. Null when the server does not say how many have traded. */
+  /** Shown before the lines. Null when the server has no count of who has earned. */
   early: string | null;
-  /** Which member the person would be, joining now. Null when the server does not say how many there are. */
+  /** Which member the person would be, joining now. Null when the server has no count of members. */
   next: string | null;
   lines: readonly string[];
 };
@@ -94,9 +90,7 @@ export type RewardsPromoView = {
   title: string;
   detail: string;
   action: string;
-  /** How early it is this week, or null when the server does not say. */
   early: string | null;
-  /** Which member the person would be, joining now. Null when the server does not say how many there are. */
   next: string | null;
 };
 
@@ -107,8 +101,8 @@ export type RewardsInviteCardView = {
   action: string;
   /** What to send, once the code can be used. Null until then: the action then leads to where there is something to trade. */
   share: RewardsShareView | null;
-  /** Which member this is, as one line. Null when the server does not say. */
-  member: string | null;
+  /** Which member this is, as one line. */
+  member: string;
 };
 
 /** A member's boost from the invite they joined with. */
@@ -125,12 +119,11 @@ export type RewardsInviteFieldView = {
 
 /** How a member stands, ready to draw, in the order it is shown. */
 export type RewardsStandingView = {
-  /** Which member this is. Null when the server does not say. */
-  member: RewardsFigure | null;
+  member: RewardsFigure;
   invite: RewardsInviteView;
   /** That the invite the member joined with is counting, while its boost lasts. Null otherwise. */
   boost: RewardsBoostView | null;
-  /** How early it is this week. Null when no week is running or the server does not say. */
+  /** How early it is this week. Null when no week is running or the season is not known. */
   early: string | null;
   points: RewardsFigure;
   /** Null when no week is running. */
@@ -138,9 +131,8 @@ export type RewardsStandingView = {
 };
 
 export type RewardsView = {
+  /** The screen's title, which is also what the app's navigation calls it (`rewardsCopy.title`). */
   title: string;
-  /** What the app's navigation calls the screen. */
-  nav: string;
   /** The one sentence said about a token, on both sides of joining. */
   token: string;
 } & (
@@ -184,39 +176,19 @@ export function rewardsEarlyLine(members: number | null, weeklyPoints: number): 
     : early.many(wholeNumber(members));
 }
 
-/**
- * `text` as part of an address, for any string at all: a string that
- * cannot be encoded as it stands, because half of a character pair is
- * missing, is encoded without those halves.
- */
-function encoded(text: string): string {
-  try {
-    return encodeURIComponent(text);
-  } catch {
-    return encodeURIComponent(text.replace(/[\uD800-\uDFFF]/g, ""));
-  }
-}
-
-const inviteLink = (code: string) => `${INVITE_LINK}${encoded(code)}`;
+const inviteLink = (code: string) => `${INVITE_LINK}${encodeURIComponent(code)}`;
 
 /** What a member with a usable code sends. The post names the week's points only when the season is known. */
-function shareView(
-  code: string,
-  config: RewardsConfig | null,
-  memberNumber: number | null,
-): RewardsShareView {
+function shareView(state: RewardsState, config: RewardsConfig | null): RewardsShareView {
   const { share } = rewardsCopy;
-  const link = inviteLink(code);
+  const link = inviteLink(state.code);
   const rules = [INVITED_BOOST_PERCENT, INVITED_BOOST_WEEKS, INVITER_SCORE_SHARE_PERCENT] as const;
-  const opening =
-    memberNumber === null ? share.opening : share.openingAsMember(wholeNumber(memberNumber));
+  const opening = share.opening(wholeNumber(state.memberNumber));
   const split = config ? share.xSplit(wholeNumber(config.weeklyPoints)) : "";
   const x = share.x(opening, split, ...rules);
   return {
-    link,
     chat: share.chat(opening, link, ...rules),
-    x,
-    xUrl: `${X_POST}?text=${encoded(x)}&url=${encoded(link)}`,
+    xUrl: `${X_POST}?text=${encodeURIComponent(x)}&url=${encodeURIComponent(link)}`,
     shareLabel: share.shareLabel,
     xLabel: share.xLabel,
     copied: share.copied,
@@ -225,7 +197,7 @@ function shareView(
 
 /**
  * Which member the person would be if they joined now, from how many there
- * were when the season was read. Null when the server does not say. It is
+ * were when the season was read. Null when the server has no count. It is
  * only ever true of this moment, which is why it says "now".
  */
 function nextMemberLine(members: number | null): string | null {
@@ -237,10 +209,6 @@ function nextMemberLine(members: number | null): string | null {
   return next.after(counted, wholeNumber(members + 1));
 }
 
-/** Which member `state` is, formatted, or null when the server does not say. */
-const memberNumberOf = (state: RewardsState): string | null =>
-  state.memberNumber === null ? null : wholeNumber(state.memberNumber);
-
 function inviteHeadline(invited: number): string {
   const { headline } = rewardsCopy.invite;
   if (invited <= 0) return headline.none;
@@ -248,18 +216,10 @@ function inviteHeadline(invited: number): string {
   return invited === 2 ? headline.two : headline.many(wholeNumber(invited));
 }
 
-/**
- * The boost of a member who joined with an invite: how much of it is left,
- * or all of it stated when the server does not say. Nothing once it is
- * over, and nothing for a member who was not invited.
- */
+/** Nothing once the boost is over, and nothing for a member who was not invited. */
 function boostView(state: RewardsState): RewardsBoostView | null {
   const { boost } = rewardsCopy;
-  if (!state.wasInvited) return null;
-  if (state.boostWeeksLeft === null) {
-    return { title: boost.title, detail: boost.whole(INVITED_BOOST_PERCENT, INVITED_BOOST_WEEKS) };
-  }
-  if (state.boostWeeksLeft < 1) return null;
+  if (!state.wasInvited || state.boostWeeksLeft < 1) return null;
   return {
     title: boost.title,
     detail: boost.left(INVITED_BOOST_PERCENT, plural(state.boostWeeksLeft, "week")),
@@ -291,13 +251,12 @@ export function rewardsInviteFieldView(text: string): RewardsInviteFieldView {
 function standingView(state: RewardsState, config: RewardsConfig | null): RewardsStandingView {
   const { week, invite, member } = rewardsCopy;
   const endsAt = state.week ? Date.parse(state.week.endsAt) : Number.NaN;
-  const number = memberNumberOf(state);
   return {
-    member: number === null ? null : { label: member.label, value: member.value(number) },
+    member: { label: member.label, value: member.value(wholeNumber(state.memberNumber)) },
     invite: {
       headline: state.codeActive ? inviteHeadline(state.invited) : invite.locked.title,
       ask: invite.ask(INVITER_SCORE_SHARE_PERCENT),
-      share: state.codeActive ? shareView(state.code, config, state.memberNumber) : null,
+      share: state.codeActive ? shareView(state, config) : null,
       copy: state.codeActive
         ? {
             code: { label: invite.code, value: state.code },
@@ -363,12 +322,11 @@ export function rewardsView(state: {
   /** The invite code waiting on this device, as it arrived or was typed, for a wallet that has not joined. */
   inviteCode?: string;
 }): RewardsView {
-  const { title, nav, token, join } = rewardsCopy;
+  const { title, token, join } = rewardsCopy;
   if (!state.joined) {
     const field = rewardsInviteFieldView(state.inviteCode ?? "");
     return {
       title,
-      nav,
       token,
       joined: false,
       // The pitch speaks of an invite only when one that could be used is waiting.
@@ -383,7 +341,6 @@ export function rewardsView(state: {
   }
   return {
     title,
-    nav,
     token,
     joined: true,
     standing: state.rewards && standingView(state.rewards, state.config),
@@ -437,8 +394,7 @@ export function rewardsInviteCardView(
 ): RewardsInviteCardView | null {
   if (!rewards) return null;
   const { active, locked } = rewardsCopy.inviteCard;
-  const number = memberNumberOf(rewards);
-  const member = number === null ? null : rewardsCopy.member.line(number);
+  const member = rewardsCopy.member.line(wholeNumber(rewards.memberNumber));
   if (!rewards.codeActive) {
     return {
       title: locked.title,
@@ -452,7 +408,7 @@ export function rewardsInviteCardView(
     title: active.title,
     detail: active.detail(INVITER_SCORE_SHARE_PERCENT, INVITED_BOOST_PERCENT, INVITED_BOOST_WEEKS),
     action: active.action,
-    share: shareView(rewards.code, config, rewards.memberNumber),
+    share: shareView(rewards, config),
     member,
   };
 }

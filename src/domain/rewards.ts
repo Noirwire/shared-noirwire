@@ -31,17 +31,12 @@ export type RewardsConfig = {
   /**
    * How many members have had a trade's fee credited in the running week:
    * members with points to come, not everyone who traded. Named as the
-   * server sends it. Null when the server does not say.
+   * server sends it. Null when the server has no count.
    */
   tradersThisWeek: number | null;
-  /** How many members there are, at the moment it was read. Null when the server does not say. */
+  /** How many members there are, at the moment it was read. Null when the server has no count. */
   members: number | null;
-  /** An hour the server has set apart, or null when there is none or it does not say. */
-  doubleHour: RewardsDoubleHour | null;
 };
-
-/** The start and end of an hour the server has set apart, each as the server writes a moment. */
-export type RewardsDoubleHour = { startsAt: string; endsAt: string };
 
 /** The running week, as it stands for one member. */
 export type RewardsWeek = {
@@ -52,8 +47,8 @@ export type RewardsWeek = {
   feeMicroUsdc: string;
   /** The part of the week's points those fees would earn as things stand, in hundredths of a percent. An estimate. */
   shareBps: number;
-  /** The same count as `RewardsConfig.tradersThisWeek`: members with a trade's fee credited this week. Null when the server does not say. */
-  traders: number | null;
+  /** The same count as `RewardsConfig.tradersThisWeek`: members with a trade's fee credited this week. */
+  traders: number;
 };
 
 /** How a member stands. */
@@ -65,14 +60,10 @@ export type RewardsState = {
   /** How many members joined with the code. */
   invited: number;
   wasInvited: boolean;
-  /** Which member this is, counted from 1 in the order of joining. Null when the server does not say. */
-  memberNumber: number | null;
-  /**
-   * How many weeks of an invited member's boost are still to come: 0 for a
-   * member who was not invited or whose boost is over. Null when the server
-   * does not say.
-   */
-  boostWeeksLeft: number | null;
+  /** Which member this is, counted from 1 in the order of joining. */
+  memberNumber: number;
+  /** How many weeks of an invited member's boost are still to come: 0 for a member who was not invited or whose boost is over. */
+  boostWeeksLeft: number;
   /** Points of the weeks that have closed, a whole number as text. */
   points: string;
   /** Null when the server names no running week. */

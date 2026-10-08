@@ -1,8 +1,7 @@
 /** The Rewards screen: points for trades, for a wallet that chose to join. */
 export const rewardsCopy = {
+  /** The screen's title, and what the app's navigation calls it. */
   title: "Rewards",
-  /** What the app's navigation calls the screen. */
-  nav: "Rewards",
   /** The home screen's way in, for a wallet that has not joined. `points` is what one week splits. */
   promo: {
     title: "Earn points when you trade",
@@ -65,9 +64,8 @@ export const rewardsCopy = {
   },
   /** What a member sends to bring someone in. Each text is whole: nothing is added around it. */
   share: {
-    /** How both texts open: with the member's number when it is known, and without it otherwise. */
-    opening: "I joined NoirWire Points.",
-    openingAsMember: (number: string) => `I am member #${number} of NoirWire Points.`,
+    /** How both texts open. */
+    opening: (number: string) => `I am member #${number} of NoirWire Points.`,
     chat: (opening: string, link: string, boost: number, weeks: number, share: number) =>
       `${opening} Here is my invite: ${link}\nIf you opt in, your trading score gets a ${boost}% boost for ${weeks} weeks, and ${share}% of it counts toward mine too.`,
     /** The post's text. The link goes beside it, not in it. `split` is the sentence about the week, or empty. */
@@ -165,9 +163,6 @@ export const rewardsCopy = {
     title: "Your invite worked",
     left: (boost: number, left: string) =>
       `Your trading score has a ${boost}% boost. ${left} left.`,
-    /** Said when the server does not say how much of it is left. */
-    whole: (boost: number, weeks: number) =>
-      `Your trading score has a ${boost}% boost for your first ${weeks} weeks.`,
   },
   /** Said when the wallet has joined and its points could not be read. */
   notNow: "Your points cannot be shown right now. They are kept.",

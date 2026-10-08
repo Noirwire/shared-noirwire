@@ -93,7 +93,6 @@ export {
   INVITE_CODE_PATTERN,
   MAX_QUEUED_CLAIMS,
   type RewardsConfig,
-  type RewardsDoubleHour,
   type RewardsState,
   type RewardsWeek,
   inviteCodeAsSent,

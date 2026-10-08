@@ -13,6 +13,9 @@ A member who has not traded yet is told plainly what unlocks their invite link a
 For both apps:
 
 - [ ] **The locked invite**: `standing.invite.locked` is no longer a line of text. It is `RewardsInviteLockedView | null`: `{ title, detail, action }`, or null once the code can be used. Draw the title, the detail, and a button with `action` that opens the markets screen. While it is not null the section's `headline` is that same title, so draw it once.
+- [ ] **The share view**: `RewardsShareView` no longer has `link` or `x`. Share `chat`, open `xUrl`, and take the link to show or copy from `invite.copy.link`.
+- [ ] **The navigation label**: `nav` is gone from `rewardsView` and from `rewardsCopy`. The label is the screen's title: read `rewardsCopy.title`.
+- [ ] **Always there**: `standing.member` and the invite card's `member` are never null. `RewardsState.memberNumber`, `RewardsState.boostWeeksLeft` and `RewardsWeek.traders` are numbers, never null: a standing without one is not read.
 
 ### Changed
 
@@ -24,6 +27,9 @@ For both apps:
 - `leaveRewardsOnThisDevice` from `@noirwire/shared/wallet` and `@noirwire/shared/application`.
 - `leave` from the joined side of `rewardsView`, `RewardsLeaveConfirmView` from `@noirwire/shared/presentation`, and `rewardsCopy.leave`.
 - `withoutRewards` from `@noirwire/shared/domain`: nothing else used it. A wallet reset removes the whole record, the joining and the waiting claims with it, as it always did.
+- `claimTrade` from `@noirwire/shared/wallet`: every landed trade claims itself through the money wiring, and no app called it. The action stays in `@noirwire/shared/application`.
+- `RewardsDoubleHour` and `RewardsConfig.doubleHour` from `@noirwire/shared/domain`: nothing showed it.
+- What was only there for a server that left a field out: the boost stated whole when its weeks were unknown, and share texts without a member number.
 
 For both apps:
 

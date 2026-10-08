@@ -95,7 +95,6 @@ describe("rewards, wired for an app", () => {
   it("sends nothing for a wallet that has not joined, whatever it trades", async () => {
     const { store, rewards, api, tradeLanded } = await app({});
     tradeLanded();
-    await rewards.claimTrade("other-sig", { derivationIndex: 1 });
     await rewards.claimQueuedTrades();
     expect(await rewards.rewardsState()).toBeNull();
     expect(api.calls).toEqual([]);

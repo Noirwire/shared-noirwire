@@ -63,7 +63,6 @@ function fakeRewards() {
         weeklyPoints: 100_000,
         tradersThisWeek: null,
         members: null,
-        doubleHour: null,
       };
     },
     async join(member, inviteCode) {

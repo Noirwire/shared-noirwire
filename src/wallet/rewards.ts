@@ -1,12 +1,10 @@
 import {
   claimQueuedTrades as claimQueued,
-  claimTrade as claim,
   joinRewards as join,
   rewardsState as readState,
   type JoinRewardsResult,
 } from "../application/actions/rewards.js";
 import type { RewardsConfig, RewardsState } from "../domain/rewards.js";
-import type { Portfolio } from "../domain/wallet.js";
 import { rewardsApi } from "../infrastructure/solana/rewards.js";
 import { rewards } from "./money.js";
 
@@ -41,18 +39,6 @@ export function joinRewards(inviteCode?: string): Promise<JoinRewardsResult> {
  */
 export function rewardsState(): Promise<RewardsState | null> {
   return readState(rewards);
-}
-
-/**
- * Claims one trade for points. Every trade placed through the money wiring
- * is claimed this way already, without being waited for, so an app has no
- * need to call it for those. It never rejects.
- */
-export function claimTrade(
-  signature: string,
-  portfolio: Pick<Portfolio, "derivationIndex">,
-): Promise<void> {
-  return claim(rewards, signature, portfolio);
 }
 
 /**
