@@ -1,12 +1,29 @@
 import { describe, expect, it } from "vitest";
 import { refused } from "../../../src/application/result.js";
 import { dateAndTime } from "../../../src/domain/format.js";
-import type { RewardsState } from "../../../src/domain/rewards.js";
+import {
+  INVITED_BOOST_PERCENT,
+  INVITED_BOOST_WEEKS,
+  INVITER_SCORE_SHARE_PERCENT,
+  type RewardsState,
+} from "../../../src/domain/rewards.js";
 import {
   rewardsJoinProblem,
   rewardsPromoView,
-  rewardsView,
+  rewardsView as viewOf,
 } from "../../../src/presentation/rewards.js";
+
+type ViewState = Parameters<typeof viewOf>[0];
+
+/** The screen with the season not known, unless a test says what it is. */
+const rewardsView = (state: Omit<ViewState, "config"> & Partial<Pick<ViewState, "config">>) =>
+  viewOf({ config: null, ...state });
+
+const season = (weeklyPoints: number, seasonWeeks = 12) => ({
+  seasonStart: "2026-10-19T00:00:00.000Z",
+  seasonWeeks,
+  weeklyPoints,
+});
 
 const ENDS_AT = "2026-10-12T00:00:00.000Z";
 
@@ -95,6 +112,7 @@ describe("the Rewards screen", () => {
   it("says one thing about a token, the same on both sides of joining, and promises no amount, date or value", () => {
     const views = [
       rewardsView({ joined: false, rewards: null }),
+      rewardsView({ joined: false, rewards: null, config: season(100_000) }),
       rewardsView({ joined: true, rewards: member() }),
       rewardsView({ joined: true, rewards: null }),
     ];
@@ -106,12 +124,37 @@ describe("the Rewards screen", () => {
   });
 });
 
-describe("the way into Rewards on the home screen", () => {
-  const config = (weeklyPoints: number) => ({
-    seasonStart: "2026-10-19T00:00:00.000Z",
-    seasonWeeks: 12,
-    weeklyPoints,
+describe("what there is to earn, said before joining", () => {
+  it("opens the screen with the season's own points and weeks and the inviting rules, ahead of what joining means", () => {
+    const view = rewardsView({ joined: false, rewards: null, config: season(250_000, 9) });
+    if (view.joined || !view.pitch) throw new Error("no pitch shown");
+    const said = view.pitch.lines.join(" ");
+    expect(said).toContain("250,000 points");
+    expect(said).toContain("9 weeks");
+    expect(said).not.toContain("100,000");
+    expect(said).not.toContain("12 weeks");
+    expect(said).toContain(`${INVITER_SCORE_SHARE_PERCENT}%`);
+    expect(said).toContain(`${INVITED_BOOST_PERCENT}%`);
+    expect(said).toContain(`first ${INVITED_BOOST_WEEKS} weeks`);
+    expect(view.pitch.title).toBe(rewardsPromoView(season(250_000, 9), false)?.title);
+    expect(Object.keys(view).indexOf("pitch")).toBeLessThan(
+      Object.keys(view).indexOf("explanation"),
+    );
   });
+
+  it("says nothing of it while the season is not known, and nothing to a member", () => {
+    const unknown = rewardsView({ joined: false, rewards: null, config: null });
+    if (unknown.joined) throw new Error("shown as joined");
+    expect(unknown.pitch).toBeNull();
+    expect(unknown.explanation.length).toBeGreaterThan(0);
+    expect(
+      rewardsView({ joined: true, rewards: member(), config: season(250_000) }),
+    ).not.toHaveProperty("pitch");
+  });
+});
+
+describe("the way into Rewards on the home screen", () => {
+  const config = season;
 
   it("is shown only to a wallet that has not joined where rewards run, with the server's own number", () => {
     expect(rewardsPromoView(null, false)).toBeNull();

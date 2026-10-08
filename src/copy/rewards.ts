@@ -9,6 +9,19 @@ export const rewardsCopy = {
     detail: (points: string) => `${points} points are split among traders every week.`,
     action: "See rewards",
   },
+  /**
+   * What there is to earn, said first to a wallet that has not joined. Its
+   * title is the promo's. Every number is passed in: the season's from the
+   * server, the inviting rules from the constants the scoring keeps to.
+   */
+  pitch: {
+    split: (points: string) =>
+      `${points} points are split among traders every week, by the fees each one paid.`,
+    fewer: "Fewer traders that week means a bigger share for you.",
+    season: (weeks: string) => `Season 1 runs ${weeks} weeks.`,
+    invite: (share: number, boost: number, weeks: number) =>
+      `Invite someone after your first trade: ${share}% of their trading score counts for you too, and they get a ${boost}% boost for their first ${weeks} weeks.`,
+  },
   /** The only thing said about a token, anywhere. */
   token: "If NoirWire ever launches a token, points decide who gets it.",
 

@@ -183,6 +183,7 @@ export {
   type RewardsFigure,
   type RewardsInviteView,
   type RewardsLeaveConfirmView,
+  type RewardsPitchView,
   type RewardsPromoView,
   type RewardsStandingView,
   type RewardsView,

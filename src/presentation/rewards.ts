@@ -2,7 +2,13 @@ import type { JoinRewardsResult } from "../application/actions/rewards.js";
 import { rewardsCopy } from "../copy/rewards.js";
 import type { AppPlatform } from "../domain/appPlatform.js";
 import { dateAndTime, usd, wholeNumber } from "../domain/format.js";
-import type { RewardsConfig, RewardsState } from "../domain/rewards.js";
+import {
+  INVITED_BOOST_PERCENT,
+  INVITED_BOOST_WEEKS,
+  INVITER_SCORE_SHARE_PERCENT,
+  type RewardsConfig,
+  type RewardsState,
+} from "../domain/rewards.js";
 import { refusalMessage } from "./actionResult.js";
 
 /** Where an invite link opens the app, with the code after it. */
@@ -44,6 +50,9 @@ export type RewardsLeaveConfirmView = {
   cancel: string;
 };
 
+/** What there is to earn: a title, and a sentence to a line. */
+export type RewardsPitchView = { title: string; lines: readonly string[] };
+
 /** The home screen's way into Rewards, for a wallet that has not joined. */
 export type RewardsPromoView = { title: string; detail: string; action: string };
 
@@ -64,6 +73,8 @@ export type RewardsView = {
 } & (
   | {
       joined: false;
+      /** What there is to earn, shown first. Null while the season is not known. */
+      pitch: RewardsPitchView | null;
       /** What joining means, a sentence to a line. */
       explanation: readonly string[];
       inviteCodeLabel: string;
@@ -111,6 +122,19 @@ function standingView(state: RewardsState): RewardsStandingView {
   };
 }
 
+function pitchView(config: RewardsConfig): RewardsPitchView {
+  const { pitch, promo } = rewardsCopy;
+  return {
+    title: promo.title,
+    lines: [
+      pitch.split(wholeNumber(config.weeklyPoints)),
+      pitch.fewer,
+      pitch.season(wholeNumber(config.seasonWeeks)),
+      pitch.invite(INVITER_SCORE_SHARE_PERCENT, INVITED_BOOST_PERCENT, INVITED_BOOST_WEEKS),
+    ],
+  };
+}
+
 /**
  * The Rewards screen. `joined` is the wallet's own record of having joined
  * (`Wallet.rewardsJoined`), and `rewards` is how the member stands, or null
@@ -123,6 +147,8 @@ export function rewardsView(state: {
   rewards: RewardsState | null;
   /** True while the member's standing is being read, so its absence is not yet said to be a failure. */
   loading?: boolean;
+  /** What the server says of the season, or null while that is not known. */
+  config: RewardsConfig | null;
 }): RewardsView {
   const { title, nav, token, join, leave } = rewardsCopy;
   if (!state.joined) {
@@ -131,6 +157,7 @@ export function rewardsView(state: {
       nav,
       token,
       joined: false,
+      pitch: state.config && pitchView(state.config),
       explanation: join.explanation,
       inviteCodeLabel: join.inviteCode,
       joinLabel: join.button,

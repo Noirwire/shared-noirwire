@@ -86,6 +86,9 @@ export {
   hasForeignCharacters,
 } from "./recipients.js";
 export {
+  INVITED_BOOST_PERCENT,
+  INVITED_BOOST_WEEKS,
+  INVITER_SCORE_SHARE_PERCENT,
   MAX_QUEUED_CLAIMS,
   type RewardsConfig,
   type RewardsState,

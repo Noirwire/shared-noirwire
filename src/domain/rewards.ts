@@ -11,6 +11,16 @@ import type { RewardClaim, Wallet } from "./wallet.js";
  * and the member are one person's, for the moment the server checks it.
  */
 
+/**
+ * The rules of inviting, which the server scores by and a screen states:
+ * the part of an invited member's weekly score that also counts for whoever
+ * invited them, and the boost an invited member's own fees get, for their
+ * first weeks as a member. In whole percent, and in weeks.
+ */
+export const INVITER_SCORE_SHARE_PERCENT = 20;
+export const INVITED_BOOST_PERCENT = 10;
+export const INVITED_BOOST_WEEKS = 8;
+
 /** What the server says of rewards as a whole, while it runs them. */
 export type RewardsConfig = {
   /** When the season's first week starts, as the server writes a moment. */
