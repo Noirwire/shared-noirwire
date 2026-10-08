@@ -123,6 +123,7 @@ Every request this package makes goes to NoirWire's own server, at the one place
 | `jupiter`         | `/v1/jupiter/*`              | `GET`, `POST`                                  |
 | `privatePayments` | `/v1/private-payments/*`     | `POST`                                         |
 | `profile`         | `/v1/profile/*`              | `GET /config`, `POST` for the rest             |
+| `rewards`         | `/v1/rewards/*`              | `GET /config`, `POST` for the rest             |
 | `relayer`         | `/v1/relayer`                | `GET`, `POST`                                  |
 | `prices`          | `/v1/prices`                 | `GET`                                          |
 | `history`         | `/v1/history/:symbol/:range` | `GET`                                          |
@@ -136,6 +137,8 @@ Every request this package makes goes to NoirWire's own server, at the one place
 Every `/v1` request carries `Authorization: Bearer <token>`, the token of an anonymous session the server issued.
 
 **What it is, and is not.** The session is a quota bucket, not an identity. It lets the server count one running copy of the app's requests apart from another's, so one copy cannot use up what is meant for everyone. It has no email and no account behind it. It is not derived from the wallet: it is asked for with no body at all, before a wallet exists, and it is the same whether a wallet is unlocked or not. No address, key, phrase or password goes into it or can be worked out from it. It is kept in the `sessionStore`, in plain storage, and never in the encrypted wallet record.
+
+**The one thing that rides on it by choice.** A wallet that joined rewards sends its rewards requests (a rewards key, and for a claim the portfolio that traded) under the same session as everything else, so for that wallet the server could tell that those requests and the day's other requests came from one copy of the app. The server is built to keep no such link. A wallet that never joined sends none of it.
 
 **It rotates.** A session older than `SESSION_MAX_AGE_MS` (24 hours, the server's own default; `env.sessionMaxAgeMs` sets another) is replaced by a new one, not renewed, and the server retires an old one on its side too. What could be counted under one session never spans more than a day. **A wallet reset drops it at once**, in the tab that reset and in every other tab that hears of it, and the next request starts a new one: a session that outlived a reset would let the server tie the wallet imported afterwards to the one that was deleted, which is the link a reset is expected to cut.
 

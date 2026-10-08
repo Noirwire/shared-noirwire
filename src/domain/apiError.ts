@@ -23,6 +23,22 @@ export const API_ERRORS = {
   request_too_large: { status: 413, asksAgain: false },
   refused: { status: 422, asksAgain: false },
   insufficient_payment: { status: 422, asksAgain: false },
+  /** Rewards: a signature that is not the key's over the request, or one made too long ago or too far ahead by the server's clock. */
+  signature_invalid: { status: 403, asksAgain: false },
+  clock_skew: { status: 403, asksAgain: false },
+  /** Rewards: the server knows no member by the key. `not_found` on a rewards route says it runs no rewards at all. */
+  not_a_member: { status: 404, asksAgain: false },
+  /** Rewards: the trade was claimed before, by anyone. */
+  already_claimed: { status: 409, asksAgain: false },
+  /** Rewards: the invite code sent with a joining is not one the server takes. */
+  invite_code_invalid: { status: 422, asksAgain: false },
+  /** A trade claimed for rewards that the server cannot see as final yet. Nothing was credited, and it may be shortly. */
+  transaction_not_finalized: { status: 422, asksAgain: true },
+  /** Rewards: why a trade can never be claimed. It failed, was not the portfolio's, paid NoirWire no fee, or is too old. */
+  transaction_failed: { status: 422, asksAgain: false },
+  not_a_signer: { status: 422, asksAgain: false },
+  no_referral_fee: { status: 422, asksAgain: false },
+  outside_claim_window: { status: 422, asksAgain: false },
   rate_limited: { status: 429, asksAgain: true },
   internal_error: { status: 500, asksAgain: true },
   upstream_failed: { status: 502, asksAgain: true },

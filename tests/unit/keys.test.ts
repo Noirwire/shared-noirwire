@@ -9,6 +9,7 @@ import {
   deriveCandidateKeypairs,
   deriveKeypair,
   deriveProfileKeys,
+  deriveRewardsKey,
   generateWalletMnemonic,
   parseRecoveryPhrase,
   phraseWords,
@@ -141,6 +142,33 @@ describe("deriveProfileKeys", () => {
     }
     expect(accounts.size).toBe(122);
     for (const key of profile) expect(accounts.has(key)).toBe(false);
+  });
+});
+
+describe("deriveRewardsKey", () => {
+  it("gives the published test phrase the same key every time, at the path written down for it", () => {
+    const key = deriveRewardsKey(BIP39_TEST_MNEMONIC);
+    expect(key.publicKey.toBase58()).toBe("C8YSnNDZ5neh1q81Apvkgc4dhXsaoXEV9MDb3E7B3wWY");
+    expect(deriveRewardsKey(BIP39_TEST_MNEMONIC).secretKey).toEqual(key.secretKey);
+    const seedHex = Buffer.from(mnemonicToSeedSync(BIP39_TEST_MNEMONIC)).toString("hex");
+    expect(key.secretKey.slice(0, 32)).toEqual(
+      new Uint8Array(derivePath("m/20056'/0'/0'", seedHex).key),
+    );
+  });
+
+  it("is no profile key, no funding wallet's key and no portfolio's, under either scheme", () => {
+    const mnemonic = generateWalletMnemonic();
+    const hex = (key: Uint8Array) => Buffer.from(key.slice(0, 32)).toString("hex");
+    const rewards = hex(deriveRewardsKey(mnemonic).secretKey);
+    const profile = deriveProfileKeys(mnemonic);
+    const others = new Set([hex(profile.owner.secretKey), hex(profile.secret)]);
+    for (let index = 0; index <= 60; index += 1) {
+      for (const keypair of Object.values(deriveCandidateKeypairs(mnemonic, index))) {
+        others.add(hex(keypair.secretKey));
+      }
+    }
+    expect(others.size).toBe(124);
+    expect(others.has(rewards)).toBe(false);
   });
 });
 

@@ -23,6 +23,7 @@ describe("the server's own errors", () => {
     (code) => {
       const again = [
         "request_timeout",
+        "transaction_not_finalized",
         "rate_limited",
         "internal_error",
         "upstream_failed",

@@ -71,6 +71,7 @@ export {
   type PhraseProblem,
   deriveKeypair,
   deriveProfileKeys,
+  deriveRewardsKey,
   generateWalletMnemonic,
   parseRecoveryPhrase,
   phraseWords,
@@ -115,6 +116,7 @@ export {
   quoteRelayed,
   runRelayed,
 } from "./solana/relayer.js";
+export { rewardsApi } from "./solana/rewards.js";
 export {
   type SigningGuard,
   guardSigningWith,

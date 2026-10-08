@@ -4,6 +4,44 @@ All notable changes to this package are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The apps pin an exact tag; see [README.md](README.md#releasing) for how a tag becomes a release.
 
+## [0.12.0] - 2026-10-08
+
+Rewards: points for trades, for a wallet that chooses to join. Joining is optional and off until asked for. A wallet that has not joined sends the server nothing about rewards. A member is known by a key of its own that comes from the recovery phrase, which is no main wallet's and no portfolio's.
+
+### Added
+
+- From `@noirwire/shared/wallet`:
+  - `rewardsConfig()`: what the server says of rewards, or null while it runs none. It names no wallet and no key. Show nothing of rewards while it is null.
+  - `joinRewards(inviteCode?)`: joins, and answers `joined` with how the member stands, `inviteNotValid`, `failed`, or refused while locked. The invite code is sent trimmed and in capitals, and the member's signature covers it, so it cannot be swapped on the way.
+  - `rewardsState()`: how the member stands, or null when the wallet has not joined or it could not be read.
+  - `claimQueuedTrades()`: claims the trades still waiting, one at a time.
+  - `claimTrade(signature, portfolio)`: claims one trade. Every trade placed through the money wiring already does this without being waited for.
+  - `leaveRewardsOnThisDevice()`: turns rewards off on this device. The server keeps the member's points.
+- `Wallet.rewardsJoined` and `Wallet.rewardClaims`, kept inside the wallet's own encrypted record: whether this device joined, and at most 20 trades waiting to be claimed. A record stored before this reads as not joined. Neither is mirrored with the labels, so each device is joined on its own.
+- `rewardsView({ joined, rewards, loading, config })` and `rewardsJoinProblem(result)` from `@noirwire/shared/presentation`, and `rewardsCopy` from `@noirwire/shared/copy`: the Rewards screen and its words. Before joining it opens with `pitch` (a title and lines saying what there is to earn, from the server's own weekly points and season length and the inviting rules), or null while `config` is null. The inviting rules are `INVITER_SCORE_SHARE_PERCENT`, `INVITED_BOOST_PERCENT` and `INVITED_BOOST_WEEKS` in `@noirwire/shared/domain`. The view carries the navigation label (`nav`), the join button's label while joining (`joiningLabel`), the accessible names of the two copy buttons (`invite.copy.copyCode`, `copyLink`) and the confirmation asked before rewards are turned off (`leave.confirm`: title, body, confirm, cancel).
+- A member's screen leads with inviting: `standing.invite` comes first, with a `headline` by how many have joined, an `ask`, and `share` (the link, a chat message, a post for X with its `xUrl`, and the labels), or null until the code can be used. The code and link as figures are `invite.copy`. What inviting earns is said as a share of the invited person's trading score, never as money.
+- `isInviteCode(text)` and `INVITE_CODE_PATTERN` from `@noirwire/shared/domain`: an invite code exactly as the server issues one (eight characters of the digits 2 to 9 and the capitals without I and O). A member's standing whose code is anything else is not read, so no link is built from it, and an app checks a `?ref=` code with the same predicate.
+- `rewardsEarlyLine(members, weeklyPoints)`: how many members have earned points this week (members with a trade credited, not everyone who traded), said one way everywhere: on the promo, the pitch and a member's standing (`early`), and null when the server does not say. `RewardsConfig.tradersThisWeek` and `RewardsWeek.traders` carry the counts, each null from a server that does not send it.
+- `rewardsPromoView(config, joined, invited?)` from `@noirwire/shared/presentation`: the home screen's way into Rewards (`title`, `detail`, `action`, `early`) for a wallet that has not joined, or null when the server runs no rewards or the wallet has joined. With `invited`, it says what joining with the waiting invite brings.
+- An invite code is shown to be in use, and to have worked. `rewardsView` takes `inviteCode`, the text waiting on the device: when it could be a code, the not-joined view carries `inviteApplied` (label, the code as it will be sent, what it brings) and the pitch says so first; when it could not, `inviteProblem`. `rewardsInviteFieldView(text)` answers the same as the person types. After joining, `standing.boost` (title, detail) follows the invite section while an invited member's boost lasts, from the server's `RewardsState.boostWeeksLeft` (null from a server that does not send it, and the whole boost is then stated).
+- Which member someone is. A member's standing opens with `member` (label, "#<n>"), the home card carries it as one line (`member`), and what a member sends opens with the number, from the server's `RewardsState.memberNumber`. Before joining, the promo and the pitch carry `next`: which member the person would be joining now, from `RewardsConfig.members`. It is true only of the moment it was read, so it is never kept. Each is null from a server that does not send its number.
+- `RewardsConfig.doubleHour` (`RewardsDoubleHour`: `startsAt`, `endsAt`, or null) is read and typed. Nothing shows it yet.
+- `rewardsInviteCardView(rewards, config)`: the home card of a wallet that has joined, asking for an invite with what to send, or saying what unlocks the code.
+- `rewardsInvitedBannerView(invited)`: the banner where a wallet is created or restored while an invite is waiting.
+- `deriveRewardsKey(mnemonic)` and `rewardsApi` from `@noirwire/shared/infrastructure`, the `rewards` route of `apiUrl`, and `Session.rewardsKey()`.
+- `ActionDeps.tradeLanded`, optional: told of each trade that landed and never waited for. `installMoney` sets it.
+- The server's rewards codes in `API_ERRORS` (`signature_invalid`, `clock_skew`, `not_a_member`, `already_claimed`, `invite_code_invalid`, `transaction_not_finalized`, `transaction_failed`, `not_a_signer`, `no_referral_fee`, `outside_claim_window`), and `wholeNumber` in the formatters.
+
+### For both apps
+
+- [ ] Ask `rewardsConfig()` when the place that leads to Rewards is about to be shown, and show nothing of rewards while it is null.
+- [ ] Draw the Rewards screen from `rewardsView({ joined: wallet.rewardsJoined === true, rewards, loading, config, inviteCode })`, with `rewards` from `rewardsState()`, `config` from `rewardsConfig()` and `inviteCode` the text in the invite field. Before joining: the pitch when it is not null, the explanation, an optional invite code field with `inviteApplied` or `inviteProblem` under it, and the join button. After, in the standing's own order: the invite section (headline, ask, the share buttons when `invite.share` is not null, the code and link from `invite.copy`, or `invite.locked`, and the people invited), the boost when it is not null, the early line, points, the week, and the button that turns rewards off on this device with its note. Show `token` on both.
+- [ ] On join, call `joinRewards(code)` and show `rewardsJoinProblem(result)` when it is not null. A code that arrived as `?ref=<code>` in the link is offered in the field.
+- [ ] Call `claimQueuedTrades()` after an unlock and when the Rewards screen opens, and do not wait for it: a trade is usually too new to be claimed the moment it lands. Read `rewardsState()` again after it.
+- [ ] On the home screen draw `rewardsPromoView(config, joined, invited)` for a wallet that has not joined and `rewardsInviteCardView(rewards, config)` for one that has. Where a wallet is created or restored, draw `rewardsInvitedBannerView(invited)`. `invited` is true while a code from `?ref=<code>` is waiting on the device.
+- [ ] Share with `share.chat` through the device's share sheet or the clipboard (then say `share.copied`), and open `share.xUrl` for X. Add nothing around either text.
+- [ ] A `Session` made by hand in an app's own tests needs `rewardsKey`.
+
 ## [0.11.1] - 2026-10-07
 
 ### Fixed

@@ -367,6 +367,13 @@ export async function placeTrade<K extends Signer, P extends TradeOrder>(
     await ended(reservation, outcome);
   }
   deps.track("trade_placed", { side: plan.side });
+  // Rewards hear of the trade and are not waited for. Whatever they do with
+  // it, the trade has landed and is answered as it would be without them.
+  try {
+    deps.tradeLanded?.(signature, portfolio);
+  } catch {
+    /* no part of the trade */
+  }
 
   // Settle. From here the trade has landed, so nothing below may report it
   // as failed: a pie would retry an order that already went through. When

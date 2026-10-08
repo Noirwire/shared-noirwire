@@ -12,6 +12,7 @@ export {
   symbolAmount,
   tokenAmount,
   usd,
+  wholeNumber,
 } from "./format.js";
 export {
   type Freshness,
@@ -84,6 +85,25 @@ export {
   classifyRecipient,
   hasForeignCharacters,
 } from "./recipients.js";
+export {
+  INVITED_BOOST_PERCENT,
+  INVITED_BOOST_WEEKS,
+  INVITER_SCORE_SHARE_PERCENT,
+  INVITE_CODE_LENGTH,
+  INVITE_CODE_PATTERN,
+  MAX_QUEUED_CLAIMS,
+  type RewardsConfig,
+  type RewardsDoubleHour,
+  type RewardsState,
+  type RewardsWeek,
+  inviteCodeAsSent,
+  isInviteCode,
+  rewardsJoinMessage,
+  rewardsMessage,
+  withClaimQueued,
+  withoutClaim,
+  withoutRewards,
+} from "./rewards.js";
 export { entryHref, safeDestination } from "./safeDestination.js";
 export {
   ACTIVITY_KINDS,
@@ -97,6 +117,7 @@ export {
   type PendingAction,
   type PieSlice,
   type Portfolio,
+  type RewardClaim,
   type Wallet,
 } from "./wallet.js";
 export {

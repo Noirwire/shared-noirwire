@@ -178,6 +178,15 @@ function isPendingAction(value: unknown) {
   );
 }
 
+function isRewardClaims(value: unknown) {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (claim) => record(claim) && text(claim.signature) && nonnegative(claim.derivationIndex),
+    )
+  );
+}
+
 function isTokenBalanceMap(value: unknown): value is Record<string, number> {
   return record(value) && Object.values(value).every(nonnegative);
 }
@@ -198,7 +207,9 @@ function isStoredWallet(value: unknown): value is StoredWallet {
     !Array.isArray(value.activity) ||
     !Array.isArray(value.watchlist) ||
     !value.watchlist.every(text) ||
-    (value.syncedProfile !== undefined && !text(value.syncedProfile))
+    (value.syncedProfile !== undefined && !text(value.syncedProfile)) ||
+    (value.rewardsJoined !== undefined && value.rewardsJoined !== true) ||
+    (value.rewardClaims !== undefined && !isRewardClaims(value.rewardClaims))
   )
     return false;
   const portfolioIds = new Set<string>();

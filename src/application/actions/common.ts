@@ -52,6 +52,12 @@ export type ActionDeps<K extends Signer> = {
     ): Promise<Reservation | null>;
   };
   words: PendingWords;
+  /**
+   * Told of each trade once it has landed, for rewards. It is no part of
+   * the trade: called and never waited for, and nothing it does, a throw
+   * included, changes what the trade answers. Left out where there are none.
+   */
+  tradeLanded?(signature: string, portfolio: Portfolio): void;
 };
 
 /** The session, or the refusal that stands in for it. */
