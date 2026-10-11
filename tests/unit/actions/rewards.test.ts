@@ -57,13 +57,7 @@ function fakeRewards() {
   const api: RewardsApi<FakeSigner> = {
     async config() {
       reached("config");
-      return {
-        seasonStart: "2026-09-28T00:00:00.000Z",
-        seasonWeeks: 12,
-        weeklyPoints: 100_000,
-        tradersThisWeek: null,
-        members: null,
-      };
+      return { members: null };
     },
     async join(member, inviteCode) {
       reached("join");

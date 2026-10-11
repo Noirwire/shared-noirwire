@@ -1,55 +1,40 @@
-/** The Rewards screen: points for trades, for a wallet that chose to join. */
+/** The Rewards screen: the Insider Preview, for a wallet that chose to join. */
 export const rewardsCopy = {
   /** The screen's title, and what the app's navigation calls it. */
   title: "Rewards",
-  /** The home screen's way in, for a wallet that has not joined. `points` is what one week splits. */
+  /** The home screen's way in, for a wallet that has not joined. */
   promo: {
-    title: "Earn points when you trade",
-    detail: (points: string) => `${points} points are split among traders every week.`,
+    title: "Join the Insider Preview",
+    detail: "What you trade now is recorded and counts when Season 1 opens.",
     action: "See rewards",
     /** The same card while an invite is waiting on this device. */
     invited: {
-      title: "You were invited to NoirWire Points",
+      title: "You were invited to the NoirWire Insider Preview",
       detail: (boost: number, weeks: number) =>
         `Join with your invite and your trading score gets a ${boost}% boost for your first ${weeks} weeks.`,
       action: "Join now",
     },
   },
-  /**
-   * How many members have earned points in the running week, said wherever
-   * being early is worth saying. The count is of members with a trade
-   * credited, not of everyone who traded, and the lines say exactly that.
-   * None of them says who gets the points: a week is split between every
-   * member who earns in it. Which line applies is chosen by the count
-   * (`rewardsEarlyLine`); `count` and `points` come formatted.
-   */
-  early: {
-    nobody: (points: string) =>
-      `No member has earned points yet this week. All ${points} points are still open.`,
-    one: "Only 1 member has earned points this week.",
-    few: (count: string) => `Only ${count} members have earned points this week.`,
-    many: (count: string) => `${count} members have earned points this week.`,
-  },
   /** Which member someone is, by the order of joining. `number` comes formatted. */
   member: {
-    label: "Member",
+    label: "Insider",
     value: (number: string) => `#${number}`,
-    line: (number: string) => `Member #${number}`,
+    line: (number: string) => `Insider #${number}`,
   },
   /**
-   * Which member someone would be if they joined now. The count is as old
+   * Which insider someone would be if they joined now. The count is as old
    * as the moment it was read, so both lines say "join now" and neither
-   * promises the number. `members` is "1 member" or "1,500 members".
+   * promises the number. `insiders` is "1 insider" or "1,500 insiders".
    */
   next: {
-    first: "Join now and you are member #1.",
-    after: (members: string, next: string) =>
-      `${members} so far. Join now and you are member #${next}.`,
+    first: "Join now and you are insider #1.",
+    after: (insiders: string, next: string) =>
+      `${insiders} so far. Join now and you are insider #${next}.`,
   },
   /** The home screen's card for a wallet that has joined: bring someone in, or what unlocks that. */
   inviteCard: {
     active: {
-      title: "Bring a friend into Points",
+      title: "Bring a friend into the preview",
       detail: (share: number, boost: number, weeks: number) =>
         `${share}% of their trading score counts for you too. They get a ${boost}% boost for their first ${weeks} weeks.`,
       action: "Share my invite",
@@ -65,34 +50,33 @@ export const rewardsCopy = {
   /** What a member sends to bring someone in. Each text is whole: nothing is added around it. */
   share: {
     /** How both texts open. */
-    opening: (number: string) => `I am member #${number} of NoirWire Points.`,
+    opening: (number: string) => `I am insider #${number} of the NoirWire Insider Preview.`,
     chat: (opening: string, link: string, boost: number, weeks: number, share: number) =>
       `${opening} Here is my invite: ${link}\nIf you opt in, your trading score gets a ${boost}% boost for ${weeks} weeks, and ${share}% of it counts toward mine too.`,
-    /** The post's text. The link goes beside it, not in it. `split` is the sentence about the week, or empty. */
-    x: (opening: string, split: string, boost: number, weeks: number, share: number) =>
-      `${opening} ${split}Opt in with my invite and your trading score gets a ${boost}% boost for ${weeks} weeks; ${share}% of your score counts for me too.`,
-    xSplit: (points: string) => `Each week, ${points} points are split by trading fees paid. `,
+    /** The post's text. The link goes beside it, not in it. */
+    x: (opening: string, boost: number, weeks: number, share: number) =>
+      `${opening} Join with my invite and your trading score gets a ${boost}% boost for ${weeks} weeks; ${share}% of your score counts for me too.`,
     shareLabel: "Share my invite",
     xLabel: "Post on X",
     copied: "Invite copied",
   },
   /** Shown where a wallet is created or restored, while an invite is waiting on this device. */
   invitedBanner: {
-    title: "Someone invited you to NoirWire Points",
+    title: "Someone invited you to the NoirWire Insider Preview",
     detail: (boost: number, weeks: number) =>
       `Create a wallet, then join in Rewards. Your trading score gets a ${boost}% boost for your first ${weeks} weeks, and joining is optional.`,
   },
   /**
    * What there is to earn, said first to a wallet that has not joined. Its
-   * title is the promo's. Every number is passed in: the season's from the
-   * server, the inviting rules from the constants the scoring keeps to.
+   * title is the promo's. The inviting rules come from the constants the
+   * scoring keeps to.
    */
   pitch: {
-    split: (points: string) =>
-      `${points} points are split among traders every week, by the fees each one paid.`,
-    /** The split is by fees paid, not by head count, and this says no more than that. */
-    fewer: "The less the others pay in fees that week, the more points yours earn.",
-    season: (weeks: string) => `Season 1 runs ${weeks} weeks.`,
+    preview: "This is the Insider Preview: NoirWire before Season 1.",
+    recorded: "The fees your trades pay are recorded as your trading score, week by week.",
+    credited: "When Season 1 opens, insiders are credited for what they did in the preview.",
+    until:
+      "The preview runs until at least 100 insiders are in. Season 1's rules are published before it starts.",
     /** Said first while an invite is waiting on this device. */
     invited: (boost: number, weeks: number) =>
       `Your invite gives your trading score a ${boost}% boost for your first ${weeks} weeks.`,
@@ -125,13 +109,9 @@ export const rewardsCopy = {
     failed: "You have not joined yet. Try again in a moment.",
   },
 
-  points: "Points",
   week: {
-    fee: "Your trade fees this week",
-    share: "Estimated share of this week's points",
-    ends: "This week ends",
+    fee: "Your trade fees recorded this week",
   },
-  percent: (percent: string) => `${percent}%`,
   invite: {
     code: "Your invite code",
     link: "Your invite link",
@@ -164,6 +144,8 @@ export const rewardsCopy = {
     left: (boost: number, left: string) =>
       `Your trading score has a ${boost}% boost. ${left} left.`,
   },
-  /** Said when the wallet has joined and its points could not be read. */
-  notNow: "Your points cannot be shown right now. They are kept.",
+  /** Said on a member's standing, of what the preview keeps of their trading. */
+  recorded: "What you do in the preview is recorded and counts when Season 1 opens.",
+  /** Said when the wallet has joined and its standing could not be read. */
+  notNow: "Your rewards cannot be shown right now. Everything is kept.",
 };

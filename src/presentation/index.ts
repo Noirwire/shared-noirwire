@@ -193,7 +193,6 @@ export {
   type RewardsStandingView,
   type RewardsView,
   type RewardsWeekView,
-  rewardsEarlyLine,
   rewardsInviteCardView,
   rewardsInviteFieldView,
   rewardsInvitedBannerView,
