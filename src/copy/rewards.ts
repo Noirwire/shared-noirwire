@@ -90,7 +90,7 @@ export const rewardsCopy = {
     explanation: [
       "Joining is optional.",
       "While a trade is being checked, our server sees which portfolio earned it, and does not keep that.",
-      "Your points are tied to a separate key that comes from your recovery phrase.",
+      "Your rewards are tied to a separate key that comes from your recovery phrase.",
     ],
     inviteCode: "Invite code (optional)",
     /** Said beside the field while a code that could be one is in it, so the person sees it will be used. */
