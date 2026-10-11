@@ -9,9 +9,10 @@ import { rewardsApi } from "../infrastructure/solana/rewards.js";
 import { rewards } from "./money.js";
 
 /**
- * Rewards, wired for the app: points for trades, for a wallet that chose to
- * join. Until it has, only `rewardsConfig` and `joinRewards` ask the server
- * anything, and each only when the app calls it.
+ * Rewards, wired for the app: a member's trading is recorded during the
+ * Insider Preview, for a wallet that chose to join. Until it has, only
+ * `rewardsConfig` and `joinRewards` ask the server anything, and each only
+ * when the app calls it.
  */
 
 /**

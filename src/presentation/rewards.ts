@@ -2,7 +2,7 @@ import type { JoinRewardsResult } from "../application/actions/rewards.js";
 import { plural } from "../copy/plural.js";
 import { rewardsCopy } from "../copy/rewards.js";
 import type { AppPlatform } from "../domain/appPlatform.js";
-import { dateAndTime, usd, wholeNumber } from "../domain/format.js";
+import { usd, wholeNumber } from "../domain/format.js";
 import {
   INVITED_BOOST_PERCENT,
   INVITED_BOOST_WEEKS,
@@ -23,20 +23,11 @@ const X_POST = "https://x.com/intent/post";
 
 const MICRO_USDC = 1_000_000;
 
-/** Under this many members with points, a week is said to have "only" that many. */
-const FEW_MEMBERS_BELOW = 10;
-
 /** One figure on the Rewards screen: what it is, and its value as it is shown. */
 export type RewardsFigure = { label: string; value: string };
 
-/** The running week: the member's own fees, the share of the week's points they would earn as things stand, and when it ends. */
-export type RewardsWeekView = {
-  fee: RewardsFigure;
-  /** An estimate, and labelled as one. */
-  share: RewardsFigure;
-  /** Null when the server's moment cannot be read as one. */
-  ends: RewardsFigure | null;
-};
+/** The running week: the fees of the member's own trades recorded so far. */
+export type RewardsWeekView = { fee: RewardsFigure };
 
 /**
  * What a member sends to bring someone in: a message for a chat with the
@@ -75,11 +66,9 @@ export type RewardsInviteView = {
 /** The invite section before the member's first trade: what unlocks the link, and an action that leads to a trade. */
 export type RewardsInviteLockedView = { title: string; detail: string; action: string };
 
-/** What there is to earn: a title, how early it is this week when that is known, and a sentence to a line. */
+/** What there is to earn: a title, which insider the person would be joining now when that is known, and a sentence to a line. */
 export type RewardsPitchView = {
   title: string;
-  /** Shown before the lines. Null when the server has no count of who has earned. */
-  early: string | null;
   /** Which member the person would be, joining now. Null when the server has no count of members. */
   next: string | null;
   lines: readonly string[];
@@ -90,7 +79,6 @@ export type RewardsPromoView = {
   title: string;
   detail: string;
   action: string;
-  early: string | null;
   next: string | null;
 };
 
@@ -123,9 +111,8 @@ export type RewardsStandingView = {
   invite: RewardsInviteView;
   /** That the invite the member joined with is counting, while its boost lasts. Null otherwise. */
   boost: RewardsBoostView | null;
-  /** How early it is this week. Null when no week is running or the season is not known. */
-  early: string | null;
-  points: RewardsFigure;
+  /** What the preview keeps of the member's trading, said plainly. */
+  recorded: string;
   /** Null when no week is running. */
   week: RewardsWeekView | null;
 };
@@ -159,33 +146,15 @@ export type RewardsView = {
     }
 );
 
-/**
- * How early it is in the running week, by how many members have earned
- * points in it: none yet, only a few, or simply how many. `members` is the
- * server's count of members with a trade credited this week
- * (`tradersThisWeek`, `week.traders`), which is not everyone who traded.
- * Null when the count is not known. Said the same way wherever it is said.
- */
-export function rewardsEarlyLine(members: number | null, weeklyPoints: number): string | null {
-  const { early } = rewardsCopy;
-  if (members === null) return null;
-  if (members <= 0) return early.nobody(wholeNumber(weeklyPoints));
-  if (members === 1) return early.one;
-  return members < FEW_MEMBERS_BELOW
-    ? early.few(wholeNumber(members))
-    : early.many(wholeNumber(members));
-}
-
 const inviteLink = (code: string) => `${INVITE_LINK}${encodeURIComponent(code)}`;
 
-/** What a member with a usable code sends. The post names the week's points only when the season is known. */
-function shareView(state: RewardsState, config: RewardsConfig | null): RewardsShareView {
+/** What a member with a usable code sends. */
+function shareView(state: RewardsState): RewardsShareView {
   const { share } = rewardsCopy;
   const link = inviteLink(state.code);
   const rules = [INVITED_BOOST_PERCENT, INVITED_BOOST_WEEKS, INVITER_SCORE_SHARE_PERCENT] as const;
   const opening = share.opening(wholeNumber(state.memberNumber));
-  const split = config ? share.xSplit(wholeNumber(config.weeklyPoints)) : "";
-  const x = share.x(opening, split, ...rules);
+  const x = share.x(opening, ...rules);
   return {
     chat: share.chat(opening, link, ...rules),
     xUrl: `${X_POST}?text=${encodeURIComponent(x)}&url=${encodeURIComponent(link)}`,
@@ -196,16 +165,16 @@ function shareView(state: RewardsState, config: RewardsConfig | null): RewardsSh
 }
 
 /**
- * Which member the person would be if they joined now, from how many there
- * were when the season was read. Null when the server has no count. It is
+ * Which insider the person would be if they joined now, from how many there
+ * were when the config was read. Null when the server has no count. It is
  * only ever true of this moment, which is why it says "now".
  */
 function nextMemberLine(members: number | null): string | null {
   const { next } = rewardsCopy;
   if (members === null) return null;
   if (members <= 0) return next.first;
-  // "1 member", "1,500 members": the noun by the rule every count goes through, the number grouped.
-  const counted = plural(members, "member").replace(/^\d+/, wholeNumber(members));
+  // "1 insider", "1,500 insiders": the noun by the rule every count goes through, the number grouped.
+  const counted = plural(members, "insider").replace(/^\d+/, wholeNumber(members));
   return next.after(counted, wholeNumber(members + 1));
 }
 
@@ -248,15 +217,14 @@ export function rewardsInviteFieldView(text: string): RewardsInviteFieldView {
   };
 }
 
-function standingView(state: RewardsState, config: RewardsConfig | null): RewardsStandingView {
-  const { week, invite, member } = rewardsCopy;
-  const endsAt = state.week ? Date.parse(state.week.endsAt) : Number.NaN;
+function standingView(state: RewardsState): RewardsStandingView {
+  const { invite, member } = rewardsCopy;
   return {
     member: { label: member.label, value: member.value(wholeNumber(state.memberNumber)) },
     invite: {
       headline: state.codeActive ? inviteHeadline(state.invited) : invite.locked.title,
       ask: invite.ask(INVITER_SCORE_SHARE_PERCENT),
-      share: state.codeActive ? shareView(state, config) : null,
+      share: state.codeActive ? shareView(state) : null,
       copy: state.codeActive
         ? {
             code: { label: invite.code, value: state.code },
@@ -275,16 +243,12 @@ function standingView(state: RewardsState, config: RewardsConfig | null): Reward
       invited: { label: invite.invited, value: wholeNumber(state.invited) },
     },
     boost: boostView(state),
-    // Without the season the week's points are not known, and the line for nobody names them.
-    early: state.week && config ? rewardsEarlyLine(state.week.traders, config.weeklyPoints) : null,
-    points: { label: rewardsCopy.points, value: wholeNumber(Number(state.points)) },
+    recorded: rewardsCopy.recorded,
     week: state.week && {
-      fee: { label: week.fee, value: usd(Number(state.week.feeMicroUsdc) / MICRO_USDC) },
-      share: {
-        label: week.share,
-        value: rewardsCopy.percent((state.week.shareBps / 100).toFixed(2)),
+      fee: {
+        label: rewardsCopy.week.fee,
+        value: usd(Number(state.week.feeMicroUsdc) / MICRO_USDC),
       },
-      ends: Number.isFinite(endsAt) ? { label: week.ends, value: dateAndTime(endsAt) } : null,
     },
   };
 }
@@ -293,13 +257,13 @@ function pitchView(config: RewardsConfig, invited: boolean): RewardsPitchView {
   const { pitch, promo } = rewardsCopy;
   return {
     title: promo.title,
-    early: rewardsEarlyLine(config.tradersThisWeek, config.weeklyPoints),
     next: nextMemberLine(config.members),
     lines: [
       ...(invited ? [pitch.invited(INVITED_BOOST_PERCENT, INVITED_BOOST_WEEKS)] : []),
-      pitch.split(wholeNumber(config.weeklyPoints)),
-      pitch.fewer,
-      pitch.season(wholeNumber(config.seasonWeeks)),
+      pitch.preview,
+      pitch.recorded,
+      pitch.credited,
+      pitch.until,
       pitch.invite(INVITER_SCORE_SHARE_PERCENT, INVITED_BOOST_PERCENT, INVITED_BOOST_WEEKS),
     ],
   };
@@ -317,7 +281,7 @@ export function rewardsView(state: {
   rewards: RewardsState | null;
   /** True while the member's standing is being read, so its absence is not yet said to be a failure. */
   loading?: boolean;
-  /** What the server says of the season, or null while that is not known. */
+  /** What the server says of rewards, or null while that is not known. */
   config: RewardsConfig | null;
   /** The invite code waiting on this device, as it arrived or was typed, for a wallet that has not joined. */
   inviteCode?: string;
@@ -343,7 +307,7 @@ export function rewardsView(state: {
     title,
     token,
     joined: true,
-    standing: state.rewards && standingView(state.rewards, state.config),
+    standing: state.rewards && standingView(state.rewards),
     notNow: state.rewards || state.loading ? null : rewardsCopy.notNow,
   };
 }
@@ -351,9 +315,8 @@ export function rewardsView(state: {
 /**
  * The home screen's way into Rewards: shown to a wallet that has not joined,
  * where the server runs rewards. Null for a wallet that has joined, and
- * while `config` is null. The numbers in it are the server's own and the
- * scoring's. With `invited`, an invite code is waiting on this device, and
- * the card says what joining with it brings.
+ * while `config` is null. With `invited`, an invite code is waiting on this
+ * device, and the card says what joining with it brings.
  */
 export function rewardsPromoView(
   config: RewardsConfig | null,
@@ -362,22 +325,19 @@ export function rewardsPromoView(
 ): RewardsPromoView | null {
   if (!config || joined) return null;
   const { promo } = rewardsCopy;
-  const early = rewardsEarlyLine(config.tradersThisWeek, config.weeklyPoints);
   const next = nextMemberLine(config.members);
   if (invited) {
     return {
       title: promo.invited.title,
       detail: promo.invited.detail(INVITED_BOOST_PERCENT, INVITED_BOOST_WEEKS),
       action: promo.invited.action,
-      early,
       next,
     };
   }
   return {
     title: promo.title,
-    detail: promo.detail(wholeNumber(config.weeklyPoints)),
+    detail: promo.detail,
     action: promo.action,
-    early,
     next,
   };
 }
@@ -386,12 +346,9 @@ export function rewardsPromoView(
  * The home screen's card for a wallet that has joined. With a code that can
  * be used it asks for an invite and carries what to send; before that it
  * says what unlocks the code and leads to a trade. Null while the member's
- * standing is not known. `config` only adds the week's points to the post.
+ * standing is not known.
  */
-export function rewardsInviteCardView(
-  rewards: RewardsState | null,
-  config: RewardsConfig | null,
-): RewardsInviteCardView | null {
+export function rewardsInviteCardView(rewards: RewardsState | null): RewardsInviteCardView | null {
   if (!rewards) return null;
   const { active, locked } = rewardsCopy.inviteCard;
   const member = rewardsCopy.member.line(wholeNumber(rewards.memberNumber));
@@ -408,7 +365,7 @@ export function rewardsInviteCardView(
     title: active.title,
     detail: active.detail(INVITER_SCORE_SHARE_PERCENT, INVITED_BOOST_PERCENT, INVITED_BOOST_WEEKS),
     action: active.action,
-    share: shareView(rewards, config),
+    share: shareView(rewards),
     member,
   };
 }

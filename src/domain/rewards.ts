@@ -1,9 +1,9 @@
 import type { RewardClaim, Wallet } from "./wallet.js";
 
 /**
- * Rewards: points for trades, for a wallet that chose to join. Joining is
- * kept in the wallet's own record, and a wallet that has not joined asks the
- * server nothing about them.
+ * Rewards: a member's trading is recorded during the Insider Preview, for a
+ * wallet that chose to join. Joining is kept in the wallet's own record, and
+ * a wallet that has not joined asks the server nothing about them.
  *
  * A member is known to the server by a key of its own (see `deriveRewardsKey`
  * in src/infrastructure/solana/keys.ts), which is no main wallet's and no
@@ -21,19 +21,8 @@ export const INVITER_SCORE_SHARE_PERCENT = 20;
 export const INVITED_BOOST_PERCENT = 10;
 export const INVITED_BOOST_WEEKS = 8;
 
-/** What the server says of rewards as a whole, while it runs them. */
+/** What the server says of rewards while it runs them: how many members there are. */
 export type RewardsConfig = {
-  /** When the season's first week starts, as the server writes a moment. */
-  seasonStart: string;
-  seasonWeeks: number;
-  /** The points one week hands out between its members. */
-  weeklyPoints: number;
-  /**
-   * How many members have had a trade's fee credited in the running week:
-   * members with points to come, not everyone who traded. Named as the
-   * server sends it. Null when the server has no count.
-   */
-  tradersThisWeek: number | null;
   /** How many members there are, at the moment it was read. Null when the server has no count. */
   members: number | null;
 };
@@ -47,7 +36,7 @@ export type RewardsWeek = {
   feeMicroUsdc: string;
   /** The part of the week's points those fees would earn as things stand, in hundredths of a percent. An estimate. */
   shareBps: number;
-  /** The same count as `RewardsConfig.tradersThisWeek`: members with a trade's fee credited this week. */
+  /** How many members have had a trade's fee credited in the running week. */
   traders: number;
 };
 

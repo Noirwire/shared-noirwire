@@ -4,6 +4,24 @@ All notable changes to this package are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The apps pin an exact tag; see [README.md](README.md#releasing) for how a tag becomes a release.
 
+## [0.13.0] - 2026-10-11
+
+Rewards are in the Insider Preview. No points are handed out; a member's trade fees are recorded and count when Season 1 opens. Joining, the number, the invite and the boost are as before, and a member is called an insider.
+
+### Breaking
+
+For both apps:
+
+- [ ] **No early line**: `rewardsEarlyLine` is gone, and so is `early` on the pitch, the promo and the standing. Stop drawing it.
+- [ ] **The standing**: `standing.points` is gone. Draw `standing.recorded`, a sentence, after the boost. `standing.week` is `{ fee }` only: `share` and `ends` are gone.
+- [ ] **The promo**: `promo.detail` is unchanged to draw, and no longer names a number of points.
+- [ ] **The invite card**: `rewardsInviteCardView(rewards)` takes the member's standing alone.
+- [ ] **The config**: `RewardsConfig` is `{ members }`. Pass it on as before.
+
+### Changed
+
+- The server's config is read without a season: an answer that says rewards are on is enough.
+
 ## [0.12.1] - 2026-10-08
 
 A member who has not traded yet is told plainly what unlocks their invite link and where to go, and rewards can no longer be turned off on one device.

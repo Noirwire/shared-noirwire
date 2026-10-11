@@ -16,7 +16,8 @@ import { signMessage } from "./profile.js";
 import { WalletLockedError, type StillUnlocked } from "./signerAccounts.js";
 
 /**
- * Rewards on NoirWire's server: points for trades, for a wallet that joined.
+ * Rewards on NoirWire's server: a member's trades recorded during the
+ * Insider Preview, for a wallet that joined.
  *
  * A member is the public key of a key derived for this alone. It holds
  * nothing and is no funding wallet's and no portfolio's, and what it asks is
@@ -112,23 +113,9 @@ export const rewardsApi: RewardsApi<Keypair> = {
   async config() {
     const response = await readFetch(apiUrl("rewards", "/config"));
     if (!response.ok) throw await failureOf(response, "the rewards settings");
-    const { enabled, seasonStart, seasonWeeks, weeklyPoints, tradersThisWeek, members } =
-      (await response.json()) as Record<string, unknown>;
+    const { enabled, members } = (await response.json()) as Record<string, unknown>;
     if (enabled !== true) return null;
-    if (
-      typeof seasonStart !== "string" ||
-      typeof seasonWeeks !== "number" ||
-      typeof weeklyPoints !== "number"
-    ) {
-      throw new Error("The rewards settings were answered without a season.");
-    }
-    return {
-      seasonStart,
-      seasonWeeks,
-      weeklyPoints,
-      tradersThisWeek: countIn(tradersThisWeek),
-      members: countIn(members),
-    };
+    return { members: countIn(members) };
   },
 
   async join(member, inviteCode, stillUnlocked) {

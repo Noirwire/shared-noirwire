@@ -271,8 +271,9 @@ const REWARDS_ROUTES = {
   "GET /v1/rewards/config": () => ({
     enabled: true,
     seasonStart: "2026-10-19T00:00:00.000Z",
-    seasonWeeks: 12,
-    weeklyPoints: 100_000,
+    tradersThisWeek: null,
+    doubleHour: null,
+    members: 120,
   }),
   "POST /v1/rewards/join": () => REWARDS_STATE,
   "POST /v1/rewards/state": () => REWARDS_STATE,
@@ -964,14 +965,7 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
       ];
       const week = ["endsAt", "feeMicroUsdc", "index", "shareBps", "traders"];
       expect(fields("/v1/rewards/config", "get").required).toEqual(
-        expect.arrayContaining([
-          "enabled",
-          "seasonStart",
-          "seasonWeeks",
-          "weeklyPoints",
-          "members",
-          "tradersThisWeek",
-        ]),
+        expect.arrayContaining(["enabled", "members"]),
       );
       const states = [
         fields("/v1/rewards/join"),
@@ -990,16 +984,13 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
     });
 
     it.each(spec ? success("/v1/rewards/config", "get") : [])(
-      "the settings: the documented answer is the season, or off",
+      "the settings: the documented answer is read for its member count, or off",
       async ({ body }) => {
-        // The file documents more of the season than this package reads.
-        const { enabled, seasonStart, seasonWeeks, weeklyPoints, tradersThisWeek, members } =
-          body as Record<string, unknown>;
+        // The file documents more than this package reads.
+        const { enabled, members } = body as Record<string, unknown>;
         api = rewardsServer({ "GET /v1/rewards/config": () => answering(200, body) });
         expect(await ended(rewardsApi.config())).toEqual({
-          value: enabled
-            ? { seasonStart, seasonWeeks, weeklyPoints, tradersThisWeek, members }
-            : null,
+          value: enabled ? { members: typeof members === "number" ? members : null } : null,
         });
       },
     );

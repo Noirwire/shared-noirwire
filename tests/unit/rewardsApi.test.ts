@@ -82,8 +82,6 @@ function server(over: Record<string, ApiHandler> = {}) {
     "GET /v1/rewards/config": () => ({
       enabled: true,
       seasonStart: "2026-09-28T00:00:00.000Z",
-      seasonWeeks: 12,
-      weeklyPoints: 100_000,
       tradersThisWeek: 5,
       members: 120,
       doubleHour: null,
@@ -124,21 +122,15 @@ afterEach(() => {
 describe("the rewards settings", () => {
   it("are asked for without a key or a body, and say off unless the server says on", async () => {
     serve();
-    expect(await rewardsApi.config()).toEqual({
-      seasonStart: "2026-09-28T00:00:00.000Z",
-      seasonWeeks: 12,
-      weeklyPoints: 100_000,
-      tradersThisWeek: 5,
-      members: 120,
-    });
+    expect(await rewardsApi.config()).toEqual({ members: 120 });
     expect(api!.calls).toHaveLength(1);
     expect(api!.calls[0].body).toBeNull();
     expect(api!.calls[0].url.search).toBe("");
     api!.restore();
 
     for (const config of [
-      { enabled: false, seasonStart: null, seasonWeeks: null, weeklyPoints: null },
-      { enabled: "true", seasonStart: "2026-09-28T00:00:00.000Z", seasonWeeks: 12 },
+      { enabled: false, members: null },
+      { enabled: "true", members: 120 },
     ]) {
       serve({ "GET /v1/rewards/config": () => config });
       expect(await rewardsApi.config(), JSON.stringify(config)).toBeNull();
@@ -146,18 +138,22 @@ describe("the rewards settings", () => {
     }
   });
 
-  it("read the two counts as null when the server has none", async () => {
+  it("reads members as null when the server has no count", async () => {
+    serve({ "GET /v1/rewards/config": () => ({ enabled: true, members: null }) });
+    expect(await rewardsApi.config()).toEqual({ members: null });
+  });
+
+  it("accepts an answer that carries none of the fields the season used to: only `enabled` and `members` are read", async () => {
     serve({
       "GET /v1/rewards/config": () => ({
         enabled: true,
         seasonStart: "2026-09-28T00:00:00.000Z",
-        seasonWeeks: 12,
-        weeklyPoints: 100_000,
-        tradersThisWeek: null,
-        members: null,
+        tradersThisWeek: 5,
+        doubleHour: null,
+        members: 3,
       }),
     });
-    expect(await rewardsApi.config()).toMatchObject({ tradersThisWeek: null, members: null });
+    expect(await rewardsApi.config()).toEqual({ members: 3 });
   });
 });
 
