@@ -84,10 +84,10 @@
     "ed25519-hd-key": "2.0.0",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
-    "prettier": "^3.9.9",
+    "prettier": "^3.9.10",
     "typescript": "~5.9.3",
-    "typescript-eslint": "^8.71.1",
-    "vitest": "^5.0.1"
+    "typescript-eslint": "^8.71.2",
+    "vitest": "^5.0.4"
   },
   "engines": {
     "node": ">=22"
