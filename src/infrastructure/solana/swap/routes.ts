@@ -59,6 +59,12 @@ export const DFLOW_AGGREGATOR = new PublicKey("DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEA
  */
 export const OKX_ROUTER = new PublicKey("proVF4pMXVaYqmy4NjniPh4pqKNfMmsihgd4wdkCX3u");
 
+/**
+ * The routers an order asks Jupiter to leave out, because the DFlow and OKX
+ * programs above are refused. The server forwards this value and no other.
+ */
+export const UNREADABLE_ROUTERS = "dflow,okx";
+
 const VENUE_PROGRAMS = [JUPITER_AGGREGATOR, JUPITER_RFQ, DFLOW_AGGREGATOR, OKX_ROUTER];
 
 /**

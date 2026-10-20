@@ -18,6 +18,7 @@ import {
   type SwapRequest,
 } from "./types.js";
 import { outcomeWithin, signatureOf, signaturesOf } from "../settlement.js";
+import { UNREADABLE_ROUTERS } from "./routes.js";
 
 /**
  * Jupiter, the swap venue. Mainnet-only by nature, not by choice: the router
@@ -116,6 +117,9 @@ async function getOrder(request: SwapRequest, taker: PublicKey): Promise<Jupiter
     amount: request.amount.toString(),
     ...(request.priceOnly ? {} : { taker: taker.toBase58() }),
     slippageBps: String(slippageBps),
+    // Routes through these routers are refused before signing, so Jupiter is
+    // asked never to offer them rather than to quote what cannot be bought.
+    excludeRouters: UNREADABLE_ROUTERS,
     ...(referralAccount && request.noirwireFee !== false
       ? { referralAccount, referralFee: String(noirwireFeeBps()) }
       : {}),

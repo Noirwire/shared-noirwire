@@ -98,12 +98,12 @@ describe("a quote taken from the venue", () => {
     transaction: "",
   };
 
-  const quoteFor = (order: Record<string, unknown>) => {
+  const quoteFor = (order: Record<string, unknown>, priceOnly = false) => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(JSON.stringify(order), { status: 200 })),
     );
-    return jupiterVenue(TAKER).quote(REQUEST);
+    return jupiterVenue(TAKER).quote(priceOnly ? { ...REQUEST, priceOnly } : REQUEST);
   };
 
   afterEach(() => vi.unstubAllGlobals());
@@ -121,6 +121,19 @@ describe("a quote taken from the venue", () => {
       outputMint: REQUEST.outputMint.toBase58(),
       amount: REQUEST.amount.toString(),
     });
+  });
+
+  it("asks Jupiter to leave out the DFlow and OKX routes, in a priced order and a built one", async () => {
+    const bodies: unknown[] = [];
+    for (const priceOnly of [false, true]) {
+      await quoteFor(ORDER, priceOnly);
+      const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+      bodies.push(JSON.parse(init.body as string));
+    }
+    expect(bodies).toHaveLength(2);
+    for (const body of bodies) {
+      expect(body).toHaveProperty("excludeRouters", "dflow,okx");
+    }
   });
 
   it("reports who pays: the venue only when it says so, and the rent only as the order names it", async () => {
