@@ -104,7 +104,16 @@ import { installMoney } from "@noirwire/shared/wallet";
 assertRuntime();
 installPlatform({
   vault,
-  env: envFrom({ network, referralAccount, feeBps, apiBaseUrl, platform, development }),
+  env: envFrom({
+    network,
+    referralAccount,
+    feeBps,
+    relayerFeePayers,
+    relayerPaymentWallet,
+    apiBaseUrl,
+    platform,
+    development,
+  }),
   activity,
   track,
   locks: inProcessLocks(),
@@ -123,6 +132,8 @@ installMoney(inProcessLocks());
   | `development`               | True in a development build. Without it, plain http is refused everywhere.                                                                                                                                                                                                  |
   | `network`                   | `"mainnet"` or `"devnet"`; devnet when unset.                                                                                                                                                                                                                               |
   | `referralAccount`, `feeBps` | The trade fee and where it goes: both or neither.                                                                                                                                                                                                                           |
+  | `relayerFeePayers`          | The relayer's fee payer addresses for this network, separated by commas. Pinned in the build so NoirWire's server cannot change them.                                                                                                                                       |
+  | `relayerPaymentWallet`      | The wallet the relayer is paid into on this network. Both relayer settings or neither; with neither, no relayer is used.                                                                                                                                                    |
   | `rpcUrl`                    | An RPC provider asked directly, with no session. Only for code with no visitor behind it: a server, or a test against a local validator. An app leaves it out.                                                                                                              |
 
 - **`sessionStore`** is three calls over one small JSON value in plain app storage (`localStorage` on the web, the app's key-value storage on the phone): `get(): Promise<string | null>`, `set(value): Promise<void>`, `remove(): Promise<void>`. It is not the vault and the value is never put in the encrypted wallet record: requests are made before a wallet is unlocked, and before one exists. It holds the app's anonymous session with NoirWire's server, which every request carries. That session is a quota bucket, not an identity: it is not derived from the wallet, it is replaced by a new one every day, and a wallet reset drops it. See [docs/architecture.md](docs/architecture.md#the-session-with-noirwires-server).

@@ -4,6 +4,33 @@ All notable changes to this package are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The apps pin an exact tag; see [README.md](README.md#releasing) for how a tag becomes a release.
 
+## [0.14.0] - 2026-10-20
+
+Security fixes from a review of what is checked before signing. A swap is held to the minimum its own route enforces on chain, a swap is never called failed while it can still land, Earn opens and pays for nothing but the portfolio's own account, the relayer's keys come from the build, and the page to return to after unlocking can no longer be another site.
+
+### Breaking
+
+For both apps:
+
+- [ ] **The relayer's keys**: pass `relayerFeePayers` (comma-separated) and `relayerPaymentWallet` to `envFrom`, from build-time settings, per network: the same addresses the server's `KORA_FEE_PAYERS` and `KORA_PAYMENT_WALLET` hold. Without them no relayer is used, and a network cost is met another way. `Env.relayer` holds them for a platform built by hand.
+- [ ] **No unchecked price**: `priceUnchecked` is gone from the trade review and `someUnchecked` from the pie review. Stop drawing them. A quote with no live price to hold it against is not offered at all: `quoteTrade` answers it as `noPrice`, as for any quote that cannot be had.
+- [ ] **Fewer routes**: an order Jupiter routes through DFlow, OKX or one of its own first-generation or exact-out route instructions is refused before signing, with a reason to get a new quote. In a sample of sixteen live buys with NoirWire's fee, fifteen went through Jupiter's own `route_v2` and one through OKX. The server's order route does not forward `excludeRouters`, so nothing steers an order away from these routers yet. Watch for these after the update; see the first note under Security.
+
+### Security
+
+- **The swap's own on-chain minimum is read and held to the quote.** Every instruction of a swap venue's program is decoded from the program's published IDL. There may be only one, it must spend from the taker's own input account and no more than the quote's input, it must pay only into the taker's own output account, and the minimum the program enforces on chain must be no lower than the quote's floor. Both of the taker's accounts must be among the transaction's own keys, not loaded from a lookup table, which is read from the same server that built the order. Readable are Jupiter's `route_v2` and `shared_accounts_route_v2` and its RFQ engine's `fill`; every other instruction of those programs, and every DFlow and OKX instruction, is refused. In Jupiter's other routes and DFlow's the minimum follows a route plan of variable length that the program reads from the front, so its last bytes can say anything; OKX's published IDL is not known to match its deployed program. The simulation stays as the second line.
+- **A swap is never reported failed while its signed transaction can still land.** Its expiry is the newest blockhash's last valid height, read from the chain before it is handed over and written into the reservation before it is sent, never the height the venue's order states. A trade the chain cannot give that height for is not signed.
+- **Earn opens nothing for anyone else.** A self-paid deposit or withdrawal may open only the portfolio's own receipt or USDC account (`BalanceLimits.creates`), and may spend only the network fee, plus what opening that account costs when it is missing.
+- **What arrives must arrive in the right hands.** The check before signing holds the cash, spent and received accounts to their owners after the transaction, including one the transaction creates: the sender, or for a send the recipient (`BalanceLimits.receive.owner`).
+- **A quote is held to its guaranteed floor.** The ten percent check against the price index measures the price the order can fill at worst, not the one it is expected to fill at, and a quote with no live price is refused.
+- **The relayer's fee payers and payment wallet are pinned by the build**, not read from the server. A fee payer only the server names is not used, and a different payment wallet means no relayer.
+- **`safeDestination` refuses any control character, any whitespace, any backslash and any `.` or `..` segment**, plain or as `%2e`, as well as `//`. A browser's URL parser drops tab, CR and LF and resolves dot segments, which turned `/<tab>/evil.example` and `/.//evil.example` into another site.
+
+### Changed
+
+- `checkQuotedPrice` throws when there is no market price and returns nothing otherwise. `TradePlan.priceChecked` and `PricedOrder.priceChecked` are gone.
+- `BuiltSwap.lastValidBlockHeight` is gone: no swap expiry is taken from the venue.
+
 ## [0.13.0] - 2026-10-11
 
 Rewards are in the Insider Preview. No points are handed out; a member's trade fees are recorded and count when Season 1 opens. Joining, the number, the invite and the boost are as before, and a member is called an insider.

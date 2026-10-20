@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  AddressLookupTableAccount,
+  AddressLookupTableProgram,
   ComputeBudgetProgram,
   Keypair,
   PublicKey,
@@ -58,41 +60,92 @@ describe("audit: the swap guard and the order come from one origin", () => {
     };
   }
 
-  it("signs a route paying the attacker when the API answers every RPC call", async () => {
-    // The route's only writable destination is the attacker's account. The
-    // taker's output account is not even in the transaction.
-    const route = new TransactionInstruction({
+  /** A lookup table's account data as the chain stores it: a 56-byte header, then the addresses. */
+  function lookupTableData(addresses: PublicKey[]): string {
+    const data = Buffer.alloc(56 + 32 * addresses.length);
+    data.writeUInt32LE(1, 0);
+    data.writeBigUInt64LE(2n ** 64n - 1n, 4);
+    addresses.forEach((address, index) => address.toBuffer().copy(data, 56 + 32 * index));
+    return data.toString("base64");
+  }
+
+  /**
+   * Jupiter's `route_v2` as its IDL lays it out, with an honest floor
+   * (500,000 quoted at 1% slippage: 495,000), spending `inAmount` from the
+   * taker's input account and paying `destination`.
+   */
+  function route(destination: PublicKey, inAmount = quote.inAmount): TransactionInstruction {
+    const data = Buffer.alloc(34);
+    Buffer.from([187, 100, 250, 204, 49, 196, 175, 20]).copy(data);
+    data.writeBigUInt64LE(inAmount, 8);
+    data.writeBigUInt64LE(quote.outAmount, 16);
+    data.writeUInt16LE(100, 24);
+    const account = (pubkey: PublicKey, isWritable = false) => ({
+      pubkey,
+      isSigner: false,
+      isWritable,
+    });
+    return new TransactionInstruction({
       programId: JUPITER,
       keys: [
         { pubkey: taker, isSigner: true, isWritable: true },
-        { pubkey: inputAta, isSigner: false, isWritable: true },
-        { pubkey: attackerAta, isSigner: false, isWritable: true },
-        { pubkey: attacker, isSigner: false, isWritable: false },
+        account(inputAta, true),
+        account(destination, true),
+        account(quote.inputMint),
+        account(stockMint),
+        account(TOKEN_PROGRAM_ID),
+        account(TOKEN_PROGRAM_ID),
+        account(JUPITER),
+        account(attacker),
+        account(JUPITER),
       ],
-      data: Buffer.alloc(24),
+      data,
     });
-    const transaction = new VersionedTransaction(
+  }
+
+  function order(instruction: TransactionInstruction, tables: AddressLookupTableAccount[] = []) {
+    return new VersionedTransaction(
       new TransactionMessage({
         payerKey: taker,
         recentBlockhash: PublicKey.default.toBase58(),
-        instructions: [ComputeBudgetProgram.setComputeUnitLimit({ units: 1 }), route],
-      }).compileToV0Message(),
+        instructions: [ComputeBudgetProgram.setComputeUnitLimit({ units: 1 }), instruction],
+      }).compileToV0Message(tables),
     );
+  }
 
+  /**
+   * Fakes the API origin alone and runs the guard unchanged. Every answer
+   * says the swap is exactly what the quote promised; `tables` are the lookup
+   * tables the origin claims exist. Returns the verdict and what was asked.
+   */
+  async function verifyAgainstLyingOrigin(
+    transaction: VersionedTransaction,
+    tables: AddressLookupTableAccount[] = [],
+  ) {
     const rpcRoute = apiUrl("rpc");
     const asked: string[] = [];
     const mint = mintAccount();
-    // Only the API origin is faked. The Connection, the guard and every
-    // check inside it run unchanged.
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string, init?: RequestInit) => {
         expect(String(input)).toBe(rpcRoute);
-        const call = JSON.parse(String(init?.body)) as { id: string; method: string };
+        const call = JSON.parse(String(init?.body)) as {
+          id: string;
+          method: string;
+          params: unknown[];
+        };
         asked.push(call.method);
         const context = { slot: 1 };
         let result: unknown;
-        if (call.method === "getTokenAccountsByOwner") {
+        if (call.method === "getAccountInfo") {
+          const table = tables.find((entry) => entry.key.toBase58() === call.params[0]);
+          result = {
+            context,
+            value: table
+              ? account(lookupTableData(table.state.addresses), AddressLookupTableProgram.programId)
+              : null,
+          };
+        } else if (call.method === "getTokenAccountsByOwner") {
           result = { context, value: [] };
         } else if (call.method === "getMultipleAccounts") {
           result = {
@@ -137,11 +190,50 @@ describe("audit: the swap guard and the order come from one origin", () => {
       { mint: stockMint, acquiring: true },
       5_000_000n,
     );
+    return { verdict, asked };
+  }
 
-    expect(asked).toContain("simulateTransaction");
-    // The guard accepts it: every input it judged by came from the same
-    // origin that would have built the order.
-    expect(verdict).toEqual({ ok: true, expectedOut: 500_000n });
+  it("refuses a route paying the attacker even when the API answers every RPC call", async () => {
+    // The route's destination is the attacker's account. The taker's output
+    // account is not even in the transaction.
+    const transaction = order(route(attackerAta));
+    const { verdict, asked } = await verifyAgainstLyingOrigin(transaction);
+
+    // Every answer the origin gave says the taker was paid. The route itself
+    // says otherwise, and it is read before any of those answers is asked for.
+    expect(verdict.ok).toBe(false);
+    expect(asked).not.toContain("simulateTransaction");
     expect(transaction.message.staticAccountKeys.some((key) => key.equals(outputAta))).toBe(false);
+  });
+
+  it("refuses a destination loaded from a lookup table the origin answers for", async () => {
+    // The real table could map this index to the attacker. The origin's
+    // answer for it maps it to the taker, and is not believed.
+    const table = new AddressLookupTableAccount({
+      key: Keypair.generate().publicKey,
+      state: {
+        deactivationSlot: 2n ** 64n - 1n,
+        lastExtendedSlot: 0,
+        lastExtendedSlotStartIndex: 0,
+        addresses: [outputAta],
+      },
+    });
+    const transaction = order(route(outputAta), [table]);
+    expect(transaction.message.staticAccountKeys.some((key) => key.equals(outputAta))).toBe(false);
+
+    const { verdict, asked } = await verifyAgainstLyingOrigin(transaction, [table]);
+
+    expect(verdict).toMatchObject({ ok: false, reason: expect.stringContaining("not yours") });
+    expect(asked).not.toContain("simulateTransaction");
+  });
+
+  it("refuses a route spending more than the quote, though the origin's simulation says it does not", async () => {
+    // An honest floor into the taker's own account, but the route takes five
+    // times the quoted input: the taker's whole balance, say.
+    const transaction = order(route(outputAta, quote.inAmount * 5n));
+    const { verdict, asked } = await verifyAgainstLyingOrigin(transaction);
+
+    expect(verdict).toMatchObject({ ok: false, reason: expect.stringContaining("spend from") });
+    expect(asked).not.toContain("simulateTransaction");
   });
 });

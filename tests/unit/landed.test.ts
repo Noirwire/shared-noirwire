@@ -381,7 +381,6 @@ const priced: Plan = {
   receiveAtLeast: 1.9,
   unitPrice: 10,
   venue: "Jupiter",
-  priceChecked: true,
   built: true,
   quote: { feeBps: 50, gasless: true },
 };

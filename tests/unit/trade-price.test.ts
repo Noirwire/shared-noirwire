@@ -42,12 +42,9 @@ afterEach(() => {
 describe("a quote held against the market price", () => {
   it("offers a buy priced at the market, and one priced better", async () => {
     venueQuotes(HUNDRED_USDC, raw(0.2));
-    expect(await plan("buy", 100, MARKET_PRICE)).toMatchObject({
-      unitPrice: 500,
-      priceChecked: true,
-    });
+    expect(await plan("buy", 100, MARKET_PRICE)).toMatchObject({ unitPrice: 500 });
     venueQuotes(HUNDRED_USDC, raw(0.4));
-    expect((await plan("buy", 100, MARKET_PRICE)).priceChecked).toBe(true);
+    await expect(plan("buy", 100, MARKET_PRICE)).resolves.toMatchObject({ unitPrice: 250 });
   });
 
   it("refuses a buy that hands back one raw unit for a hundred dollars", async () => {
@@ -59,12 +56,9 @@ describe("a quote held against the market price", () => {
 
   it("offers a sell priced at the market, and one priced better", async () => {
     venueQuotes(raw(0.2), HUNDRED_USDC);
-    expect(await plan("sell", 0.2, MARKET_PRICE)).toMatchObject({
-      unitPrice: 500,
-      priceChecked: true,
-    });
+    expect(await plan("sell", 0.2, MARKET_PRICE)).toMatchObject({ unitPrice: 500 });
     venueQuotes(raw(0.2), "150000000");
-    expect((await plan("sell", 0.2, MARKET_PRICE)).priceChecked).toBe(true);
+    await expect(plan("sell", 0.2, MARKET_PRICE)).resolves.toMatchObject({ unitPrice: 750 });
   });
 
   it("refuses a sell that pays a dollar for a hundred dollars of stock", async () => {
@@ -73,17 +67,21 @@ describe("a quote held against the market price", () => {
   });
 
   it("draws the line at ten percent, in the direction that hurts", () => {
-    expect(checkQuotedPrice("buy", 550, 500)).toBe(true);
+    expect(() => checkQuotedPrice("buy", 550, 500)).not.toThrow();
     expect(() => checkQuotedPrice("buy", 550.01, 500)).toThrow();
-    expect(checkQuotedPrice("buy", 1, 500)).toBe(true);
-    expect(checkQuotedPrice("sell", 450, 500)).toBe(true);
+    expect(() => checkQuotedPrice("buy", 1, 500)).not.toThrow();
+    expect(() => checkQuotedPrice("sell", 450, 500)).not.toThrow();
     expect(() => checkQuotedPrice("sell", 449.99, 500)).toThrow();
-    expect(checkQuotedPrice("sell", 5_000, 500)).toBe(true);
+    expect(() => checkQuotedPrice("sell", 5_000, 500)).not.toThrow();
   });
 
-  it("does not block when there is no market price, and says the price went unchecked", async () => {
-    venueQuotes(HUNDRED_USDC, "1");
-    expect((await plan("buy", 100)).priceChecked).toBe(false);
-    expect(checkQuotedPrice("buy", 500, 0)).toBe(false);
+  it("offers nothing when there is no live market price to hold the quote against", async () => {
+    // A price at the market is still refused: the order builder's word alone
+    // is not enough to sign on. So the order, which names the taker, is
+    // never asked for.
+    venueQuotes(HUNDRED_USDC, raw(0.2));
+    await expect(plan("buy", 100)).rejects.toThrow(/No live price/);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(() => checkQuotedPrice("buy", 500, 0)).toThrow(/No live price/);
   });
 });

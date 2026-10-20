@@ -35,33 +35,28 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("audit: the price check measures the expected output, not the floor", () => {
-  it("passes a buy whose guaranteed floor is about 15.8 percent worse than market", async () => {
+describe("audit: the price check measures the guaranteed floor", () => {
+  // Each quote's expected price is inside the ten percent the check allows;
+  // only its floor, what the transaction actually promises, is outside it.
+  it("refuses a buy whose guaranteed floor is about 15.8 percent worse than market", async () => {
     const out = BigInt(Math.ceil((100 / 549.9) * RAW_PER_TOKEN));
     const floor = minimumOut(out, MAX_SLIPPAGE_BPS);
+    expect(100 / (Number(floor) / RAW_PER_TOKEN) / MARKET_PRICE - 1).toBeGreaterThan(0.15);
     venueQuotes("100000000", String(out), String(floor));
-    const p = await plan("buy", 100, MARKET_PRICE);
-    expect(p.priceChecked).toBe(true);
-    const floorUnitPrice = p.spend / p.receiveAtLeast;
-    const worseBy = floorUnitPrice / MARKET_PRICE - 1;
-    expect(worseBy).toBeGreaterThan(0.15);
+    await expect(plan("buy", 100, MARKET_PRICE)).rejects.toThrow(/worse than the current market/);
   });
 
-  it("passes a sell whose guaranteed floor is about 14.5 percent below market", async () => {
+  it("refuses a sell whose guaranteed floor is about 14.5 percent below market", async () => {
     const sharesRaw = String(Math.round(0.2 * RAW_PER_TOKEN));
     const out = 90_000_000n;
     const floor = minimumOut(out, MAX_SLIPPAGE_BPS);
+    expect(1 - Number(floor) / 1e6 / 0.2 / MARKET_PRICE).toBeGreaterThan(0.14);
     venueQuotes(sharesRaw, String(out), String(floor));
-    const p = await plan("sell", 0.2, MARKET_PRICE);
-    expect(p.priceChecked).toBe(true);
-    const floorUnitPrice = p.receiveAtLeast / p.spend;
-    const worseBy = 1 - floorUnitPrice / MARKET_PRICE;
-    expect(worseBy).toBeGreaterThan(0.14);
+    await expect(plan("sell", 0.2, MARKET_PRICE)).rejects.toThrow(/worse than the current market/);
   });
 
-  it("plans a quote at any price when no market price is supplied", async () => {
+  it("refuses a quote at any price when no market price is supplied", async () => {
     venueQuotes("100000000", "1", "1");
-    const p = await plan("buy", 100, undefined);
-    expect(p.priceChecked).toBe(false);
+    await expect(plan("buy", 100, undefined)).rejects.toThrow(/No live price/);
   });
 });

@@ -48,14 +48,15 @@ const UNIT = 10 ** DECIMALS;
 const PROGRAMS: ProgramRule[] = [COMPUTE_BUDGET_RULE, CREATE_ATA_RULE, { programId: LEND_PROGRAM }];
 
 /**
- * SOL a first deposit may cost, and the guard's ceiling for every Earn
- * transaction. The receipt account's rent alone is 2,039,280 lamports, but
- * simulating real first deposits showed up to 3,656,268: Jupiter also opens an
- * account of its own for some first-time depositors. A withdrawal to a wallet
- * with no USDC account opens one too (2,039,280).
+ * SOL a first deposit may cost on top of the network fee. The receipt
+ * account's rent alone is 2,039,280 lamports, but simulating real first
+ * deposits showed up to 3,656,268: Jupiter also opens an account of its own
+ * for some first-time depositors.
  */
 export const EARN_FIRST_DEPOSIT_LAMPORTS = 5_000_000;
 export const EARN_NETWORK_FEE_LAMPORTS = 50_000;
+/** The rent of a classic token account such as USDC's, which a withdrawal to a wallet without one opens. */
+const TOKEN_ACCOUNT_RENT_LAMPORTS = 2_039_280;
 
 /** Shares-to-assets drift allowed between reading the rate and the transaction landing. */
 const SLACK_BPS = 50n;
@@ -300,9 +301,23 @@ function redeeming(transaction: VersionedTransaction, shares: bigint): Versioned
 }
 
 /**
+ * The SOL an Earn transaction the owner pays for may spend: the network fee,
+ * and, only when the account it pays into is missing, what opening it
+ * costs. Anything looser is lamports a builder could spend for the owner.
+ */
+function earnLamports(action: "deposit" | "withdraw", paidIntoExists: boolean): bigint {
+  if (paidIntoExists) return BigInt(EARN_NETWORK_FEE_LAMPORTS);
+  const opening = action === "deposit" ? EARN_FIRST_DEPOSIT_LAMPORTS : TOKEN_ACCOUNT_RENT_LAMPORTS;
+  return BigInt(EARN_NETWORK_FEE_LAMPORTS + opening);
+}
+
+/**
  * Builds the transaction and the limits it must satisfy before it is signed.
  * Split from signing so the exact same check can be run against live
  * Jupiter-built transactions without moving anything.
+ *
+ * The only token account it may open is the owner's own one it pays into:
+ * the owner funds every account the transaction opens.
  */
 export async function prepareEarn(
   action: "deposit" | "withdraw",
@@ -311,6 +326,7 @@ export async function prepareEarn(
 ): Promise<{ transaction: VersionedTransaction; limits: BalanceLimits }> {
   const cash = ataFor(usdcMintKey(), owner);
   const receipt = ataFor(RECEIPT_MINT, owner);
+  const paidInto = action === "deposit" ? receipt : cash;
   const asked = toRaw(amount);
   const withdrawal =
     action === "withdraw"
@@ -318,6 +334,7 @@ export async function prepareEarn(
       : null;
   const amountRaw = withdrawal?.amountRaw ?? asked;
   const shares = withdrawal?.shares ?? sharesFor(amountRaw, await sharePrice());
+  const paidIntoExists = (await connection.getAccountInfo(paidInto)) !== null;
   const built = await buildTransaction(action, owner, amountRaw);
   const transaction =
     action === "deposit"
@@ -328,7 +345,11 @@ export async function prepareEarn(
           cash,
           usdcMintKey(),
         );
-  const base = { maxLamportsSpent: BigInt(EARN_FIRST_DEPOSIT_LAMPORTS), programs: PROGRAMS };
+  const base = {
+    maxLamportsSpent: earnLamports(action, paidIntoExists),
+    creates: [paidInto],
+    programs: PROGRAMS,
+  };
 
   const limits: BalanceLimits =
     action === "deposit"

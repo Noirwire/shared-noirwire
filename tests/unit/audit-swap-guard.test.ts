@@ -135,8 +135,8 @@ describe("audit: when a swap handed to the venue can no longer land", () => {
 
   it("does not call a swap failed on the venue's word about when its blockhash expires", async () => {
     // The venue's order states an expiry height already behind the chain.
-    // The blockhash it really used is valid until 200, as the chain itself
-    // would say; private transfers bound this by a height read from the
+    // The blockhash it really used is valid until 200, the height read from
+    // the chain before signing and handed over with it; private transfers bound this by a height read from the
     // chain for exactly this reason (private-payments.ts, submitTransfer).
     const quote = { raw: { requestId: "r", lastValidBlockHeight: 10 } } as SwapQuote;
     vi.stubGlobal(
@@ -146,10 +146,6 @@ describe("audit: when a swap handed to the venue can no longer land", () => {
       }),
     );
     vi.spyOn(connection, "getBlockHeight").mockResolvedValue(50);
-    vi.spyOn(connection, "getLatestBlockhash").mockResolvedValue({
-      blockhash: Keypair.generate().publicKey.toBase58(),
-      lastValidBlockHeight: 200,
-    });
     vi.spyOn(connection, "getSignatureStatus").mockResolvedValue({
       context: { slot: 1 },
       value: null,
@@ -157,6 +153,8 @@ describe("audit: when a swap handed to the venue can no longer land", () => {
 
     // Reported as failed, the reservation is released and the trade can be
     // placed again while the first signed copy can still land.
-    await expect(executeJupiterSwap(quote, signed())).rejects.toBeInstanceOf(UnknownOutcomeError);
+    await expect(executeJupiterSwap(quote, signed(), 200)).rejects.toBeInstanceOf(
+      UnknownOutcomeError,
+    );
   });
 });

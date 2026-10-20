@@ -5,14 +5,35 @@
  * it sounds, because the decrypted phrase never survives a reload, so *any*
  * full page load on a protected route comes through here first.
  *
- * Only same-origin paths are honoured. `//evil.com` is a valid relative URL
- * to a browser and would navigate off-site, and browsers read a backslash as
- * a slash, so `/\evil.com` is the same thing. A path is accepted only when
- * it starts with exactly one slash and holds no backslash anywhere.
+ * Only same-origin paths are honoured, judged the way a browser's URL parser
+ * (the WHATWG URL standard) will read the string:
+ * - `//evil.com` is a valid relative URL to another site, so the path must
+ *   start with exactly one slash.
+ * - A backslash is read as a slash, so `/\evil.com` is the same thing. None
+ *   is allowed anywhere.
+ * - Tab, CR and LF are removed wherever they stand, and other control
+ *   characters and spaces are trimmed from the ends, so `/<tab>/evil.com`
+ *   becomes `//evil.com`. No control character and no whitespace is allowed.
+ * - `.` and `..` segments, written plainly or as `%2e`, are resolved, so
+ *   `/.//evil.com` becomes `//evil.com`. No path the app links to has one,
+ *   so none is allowed.
  */
 export function safeDestination(next: string | null): string {
-  if (!next || !/^\/[^/\\]/.test(next) || next.includes("\\")) return "/portfolio";
+  if (!next || !/^\/[^/]/.test(next) || hasUnsafeCharacter(next)) return "/portfolio";
+  const [path] = next.split(/[?#]/, 1);
+  if (path.split("/").some((segment) => DOT_SEGMENT.test(segment))) return "/portfolio";
   return next;
+}
+
+const DOT_SEGMENT = /^(?:\.|%2e){1,2}$/i;
+
+/** A control character (C0 or DEL), any whitespace, or a backslash. */
+function hasUnsafeCharacter(text: string): boolean {
+  for (const character of text) {
+    const code = character.charCodeAt(0);
+    if (code < 0x20 || code === 0x7f || character === "\\" || /\s/.test(character)) return true;
+  }
+  return false;
 }
 
 /**

@@ -156,10 +156,37 @@ function referralOf(env: Env): Referral {
   if (!Number.isInteger(bps) || bps < 50 || bps > 255) {
     throw new Error("The NoirWire fee must be a whole number of basis points from 50 to 255.");
   }
-  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(account)) {
+  if (!isAddress(account)) {
     throw new Error("The Jupiter referral account is not a Solana address.");
   }
   return { account, bps };
+}
+
+function isAddress(text: string): boolean {
+  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(text);
+}
+
+/**
+ * The relayer's keys from settings: fee payers separated by commas, and the
+ * payment wallet. Both or neither, each a Solana address.
+ */
+function relayerFrom(
+  feePayersText: string | undefined,
+  paymentWalletText: string | undefined,
+): Env["relayer"] {
+  const feePayers = (feePayersText ?? "")
+    .split(",")
+    .map((key) => key.trim())
+    .filter(Boolean);
+  const paymentWallet = paymentWalletText?.trim() ?? "";
+  if (feePayers.length === 0 && !paymentWallet) return undefined;
+  if (feePayers.length === 0 || !paymentWallet) {
+    throw new Error("Set both the relayer's fee payers and its payment wallet, or neither.");
+  }
+  if (![...feePayers, paymentWallet].every(isAddress)) {
+    throw new Error("The relayer's fee payers and payment wallet must be Solana addresses.");
+  }
+  return { feePayers, paymentWallet };
 }
 
 /** The account trade fees are paid to, or undefined when none is set. */
@@ -181,6 +208,10 @@ export type EnvSettings = {
   network?: string;
   referralAccount?: string;
   feeBps?: string;
+  /** The relayer's fee payer addresses for this network, separated by commas. */
+  relayerFeePayers?: string;
+  /** The wallet the relayer is paid into on this network. */
+  relayerPaymentWallet?: string;
   /**
    * Where NoirWire's server is: its origin (`https://api.noirwire.com`), or
    * on the web a path of the page's own origin that the host forwards to it
@@ -248,12 +279,14 @@ export function envFrom(settings: EnvSettings): Env {
   }
   const feeText = settings.feeBps?.trim();
   const development = settings.development === true;
+  const relayer = relayerFrom(settings.relayerFeePayers, settings.relayerPaymentWallet);
   const env: Env = {
     network: name === "mainnet" ? "mainnet-beta" : "devnet",
     referralAccount: settings.referralAccount?.trim() || null,
     feeBps: feeText ? Number(feeText) : 0,
     apiBaseUrl: apiBaseFrom(settings.apiBaseUrl, settings.platform === "web", development),
     ...(settings.rpcUrl?.trim() ? { rpcUrl: settings.rpcUrl.trim() } : {}),
+    ...(relayer ? { relayer } : {}),
   };
 
   if (feeText && env.feeBps === 0) {

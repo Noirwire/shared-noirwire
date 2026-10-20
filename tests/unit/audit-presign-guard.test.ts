@@ -50,8 +50,11 @@ describe("audit: an Earn transaction built by the lending API", () => {
    * accounts opened for a stranger, funded by the depositor. The stranger
    * owns those accounts and can close them to collect the rent.
    */
-  function hostileLendApi() {
-    const strangerMints = [Keypair.generate().publicKey, Keypair.generate().publicKey];
+  const hostileLendApi = () => lendApi(2);
+
+  /** The API's deposit, preceded by `strangers` token accounts opened for a stranger at the depositor's expense. */
+  function lendApi(strangers: number) {
+    const strangerMints = Array.from({ length: strangers }, () => Keypair.generate().publicKey);
     const built = new VersionedTransaction(
       new TransactionMessage({
         payerKey: owner,
@@ -85,13 +88,18 @@ describe("audit: an Earn transaction built by the lending API", () => {
     );
   }
 
-  function chainAfterDeposit(lamportsSpent: number) {
+  /** The chain around a deposit that spends `lamportsSpent`. Of the owner's token accounts, only `existing` are there before it. */
+  function chainAfterDeposit(lamportsSpent: number, existing: PublicKey[] = []) {
     const lending = Buffer.alloc(196);
     new PublicKey(usdcMint()).toBuffer().copy(lending, 8);
     RECEIPT_MINT.toBuffer().copy(lending, 40);
     lending.writeBigUInt64LE(ONE_SHARE_PRICE, 115);
-    vi.spyOn(connection, "getAccountInfo").mockImplementation((async (key: PublicKey) =>
-      key.equals(LENDING_ACCOUNT) ? { owner: LEND_PROGRAM, data: lending } : null) as never);
+    vi.spyOn(connection, "getAccountInfo").mockImplementation((async (key: PublicKey) => {
+      if (key.equals(LENDING_ACCOUNT)) return { owner: LEND_PROGRAM, data: lending };
+      return existing.some((account) => account.equals(key))
+        ? { data: tokenData(owner, 0n) }
+        : null;
+    }) as never);
     vi.spyOn(connection, "getTokenAccountsByOwner").mockImplementation((async (
       _owner: PublicKey,
       filter: { programId: PublicKey },
@@ -137,6 +145,39 @@ describe("audit: an Earn transaction built by the lending API", () => {
 
     expect(verdict.ok).toBe(false);
   });
+
+  it("passes a first deposit that opens only the depositor's own receipt account", async () => {
+    lendApi(0);
+    chainAfterDeposit(ATA_RENT + 5_000);
+    const { transaction, limits } = await prepareEarn("deposit", owner, 10);
+    expect(await verifyBalancesBeforeSigning(transaction, owner, limits)).toEqual({ ok: true });
+  });
+
+  it("holds a deposit into a receipt account that already exists to the network fee", async () => {
+    lendApi(0);
+    chainAfterDeposit(5_000, [receipt]);
+    const paid = await prepareEarn("deposit", owner, 10);
+    expect(await verifyBalancesBeforeSigning(paid.transaction, owner, paid.limits)).toEqual({
+      ok: true,
+    });
+
+    // The rent of one more account: nothing this deposit needs.
+    chainAfterDeposit(ATA_RENT + 5_000, [receipt]);
+    const overspent = await prepareEarn("deposit", owner, 10);
+    expect(
+      await verifyBalancesBeforeSigning(overspent.transaction, owner, overspent.limits),
+    ).toMatchObject({ ok: false, reason: expect.stringContaining("more SOL") });
+  });
+
+  it("allows a withdrawal the rent of a USDC account only when it has none", async () => {
+    lendApi(0);
+    chainAfterDeposit(0);
+    expect((await prepareEarn("withdraw", owner, 10)).limits.maxLamportsSpent).toBe(
+      50_000n + BigInt(ATA_RENT),
+    );
+    chainAfterDeposit(0, [cash]);
+    expect((await prepareEarn("withdraw", owner, 10)).limits.maxLamportsSpent).toBe(50_000n);
+  });
 });
 
 describe("audit: an account the transaction creates for what is owed back", () => {
@@ -146,10 +187,8 @@ describe("audit: an account the transaction creates for what is owed back", () =
   const receipt = Keypair.generate().publicKey;
   const trusted = Keypair.generate().publicKey;
 
-  it("refuses when the receipt arrives in an account the sender does not own", async () => {
-    // The swap guard holds every account still standing to the taker
-    // (guard.ts, "tokens delivered to an account someone else owns were not
-    // delivered"). The general guard compares amounts at the address only.
+  /** The receive account is created by the transaction and comes out owned by `ownerAfter`, holding enough. */
+  function receiptCreatedFor(ownerAfter: PublicKey, receiveOwner?: PublicKey) {
     const transaction = new VersionedTransaction(
       new TransactionMessage({
         payerKey: sender,
@@ -185,20 +224,37 @@ describe("audit: an account the transaction creates for what is owed back", () =
         accounts: [
           { lamports: 9_995_000, owner: SystemProgram.programId.toBase58(), data: ["", "base64"] },
           simulatedToken(tokenData(sender, 40_000_000n)),
-          simulatedToken(tokenData(stranger, 10_000_000n)),
+          simulatedToken(tokenData(ownerAfter, 10_000_000n)),
         ],
         unitsConsumed: 0,
       },
     } as never);
 
-    const verdict = await verifyBalancesBeforeSigning(transaction, sender, {
+    return verifyBalancesBeforeSigning(transaction, sender, {
       cashAccount: cash,
       maxCashSpent: 10_000_000n,
       maxLamportsSpent: 5_000n,
-      receive: { account: receipt, minAmount: 9_950_000n },
+      receive: {
+        account: receipt,
+        minAmount: 9_950_000n,
+        ...(receiveOwner ? { owner: receiveOwner } : {}),
+      },
       programs: [COMPUTE_BUDGET_RULE, { programId: trusted }],
     });
+  }
+
+  it("refuses when the receipt arrives in an account the sender does not own", async () => {
+    // The swap guard holds every account still standing to the taker
+    // (guard.ts, "tokens delivered to an account someone else owns were not
+    // delivered"). The general guard compares amounts at the address only.
+    const verdict = await receiptCreatedFor(stranger);
 
     expect(verdict.ok).toBe(false);
+  });
+
+  it("holds what is received to the owner the action names, when that is not the sender", async () => {
+    // A send's recipient: their account, and no one else's, must gain it.
+    expect(await receiptCreatedFor(stranger, stranger)).toEqual({ ok: true });
+    expect((await receiptCreatedFor(sender, stranger)).ok).toBe(false);
   });
 });

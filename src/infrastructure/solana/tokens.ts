@@ -347,8 +347,9 @@ export async function relayedSendDraft(
       cashAccount,
       maxCashSpent: isCash ? amountRaw + feeRaw : feeRaw,
       ...(isCash ? {} : { alsoSpends: { account: source, maxAmount: amountRaw } }),
-      // The recipient's account must gain exactly what the sender's loses.
-      receive: { account: destination, minAmount: amountRaw },
+      // The recipient's account must gain exactly what the sender's loses,
+      // and still be the recipient's.
+      receive: { account: destination, minAmount: amountRaw, owner: to },
       exact: true,
       maxLamportsSpent: 0n,
       programs: relayedPrograms(programId),

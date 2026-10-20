@@ -213,7 +213,7 @@ describe("a quote taken from the venue", () => {
 
 describe("a swap handed back to the venue to land", () => {
   const taker = Keypair.generate();
-  const quote = { raw: { requestId: "request", lastValidBlockHeight: 100 } } as SwapQuote;
+  const quote = { raw: { requestId: "request" } } as SwapQuote;
 
   function signed(): VersionedTransaction {
     const transaction = new VersionedTransaction(
@@ -227,6 +227,10 @@ describe("a swap handed back to the venue to land", () => {
     return transaction;
   }
 
+  /** The last height the signed transaction can land at, as read from the chain before signing. */
+  const LANDS_UNTIL = 100;
+
+  /** The chain: its finalized height, and `value` as the status. */
   const chainSays = (value: unknown, height = 50) => {
     vi.spyOn(connection, "getBlockHeight").mockResolvedValue(height);
     return vi
@@ -257,7 +261,9 @@ describe("a swap handed back to the venue to land", () => {
     noAnswer();
     const transaction = signed();
     const status = chainSays({ err: null, confirmationStatus: "confirmed" });
-    expect(await executeJupiterSwap(quote, transaction)).toBe(signatureOf(transaction));
+    expect(await executeJupiterSwap(quote, transaction, LANDS_UNTIL)).toBe(
+      signatureOf(transaction),
+    );
     expect(status).toHaveBeenCalledWith(signatureOf(transaction), {
       searchTransactionHistory: true,
     });
@@ -266,22 +272,30 @@ describe("a swap handed back to the venue to land", () => {
   it("says the outcome is unknown, not failed, when the chain has not seen it yet", async () => {
     noAnswer();
     chainSays(null);
-    await expect(executeJupiterSwap(quote, signed())).rejects.toBeInstanceOf(UnknownOutcomeError);
+    await expect(executeJupiterSwap(quote, signed(), LANDS_UNTIL)).rejects.toBeInstanceOf(
+      UnknownOutcomeError,
+    );
   });
 
   it("says unknown when the chain cannot be asked either", async () => {
     noAnswer();
     vi.spyOn(connection, "getBlockHeight").mockRejectedValue(new Error("rpc down"));
-    await expect(executeJupiterSwap(quote, signed())).rejects.toBeInstanceOf(UnknownOutcomeError);
+    await expect(executeJupiterSwap(quote, signed(), LANDS_UNTIL)).rejects.toBeInstanceOf(
+      UnknownOutcomeError,
+    );
   });
 
   it("reports a failure only when it is a fact: an error on chain, or an expired blockhash", async () => {
     noAnswer();
     chainSays({ err: { InstructionError: [0, "Custom"] }, confirmationStatus: "confirmed" });
-    await expect(executeJupiterSwap(quote, signed())).rejects.toThrow("did not go through");
+    await expect(executeJupiterSwap(quote, signed(), LANDS_UNTIL)).rejects.toThrow(
+      "did not go through",
+    );
 
     chainSays(null, 101);
-    await expect(executeJupiterSwap(quote, signed())).rejects.toThrow("did not go through");
+    await expect(executeJupiterSwap(quote, signed(), LANDS_UNTIL)).rejects.toThrow(
+      "did not go through",
+    );
   });
 
   describe("when the venue says it landed", () => {
@@ -299,7 +313,9 @@ describe("a swap handed back to the venue to land", () => {
       const transaction = signed();
       venueSays(signatureOf(transaction)!);
       chainSays({ err: null, confirmationStatus: "confirmed" });
-      expect(await executeJupiterSwap(quote, transaction)).toBe(signatureOf(transaction));
+      expect(await executeJupiterSwap(quote, transaction, LANDS_UNTIL)).toBe(
+        signatureOf(transaction),
+      );
     });
 
     it("does not take a fabricated signature for a landed trade", async () => {
@@ -310,9 +326,9 @@ describe("a swap handed back to the venue to land", () => {
         const transaction = signed();
         venueSays(fabricated);
         const status = chainSays(null);
-        const refused = expect(executeJupiterSwap(quote, transaction)).rejects.toBeInstanceOf(
-          UnknownOutcomeError,
-        );
+        const refused = expect(
+          executeJupiterSwap(quote, transaction, LANDS_UNTIL),
+        ).rejects.toBeInstanceOf(UnknownOutcomeError);
         await vi.advanceTimersByTimeAsync(30_000);
         await refused;
         expect(status).toHaveBeenCalledWith(signatureOf(transaction), expect.anything());
@@ -352,14 +368,14 @@ describe("a swap handed back to the venue to land", () => {
       const landed = vi
         .spyOn(connection, "getTransaction")
         .mockResolvedValue({ transaction: { signatures: [fabricated, "someone-else"] } } as never);
-      await expect(executeJupiterSwap(quote, transaction)).rejects.toBeInstanceOf(
+      await expect(executeJupiterSwap(quote, transaction, LANDS_UNTIL)).rejects.toBeInstanceOf(
         UnknownOutcomeError,
       );
 
       landed.mockResolvedValue({
         transaction: { signatures: [fabricated, takerSignature] },
       } as never);
-      expect(await executeJupiterSwap(quote, transaction)).toBe(fabricated);
+      expect(await executeJupiterSwap(quote, transaction, LANDS_UNTIL)).toBe(fabricated);
     });
   });
 
@@ -376,14 +392,20 @@ describe("a swap handed back to the venue to land", () => {
     ] as const) {
       refusing(body, status);
       chainSays(null);
-      await expect(executeJupiterSwap(quote, signed())).rejects.toBeInstanceOf(UnknownOutcomeError);
+      await expect(executeJupiterSwap(quote, signed(), LANDS_UNTIL)).rejects.toBeInstanceOf(
+        UnknownOutcomeError,
+      );
     }
     // The chain shows its time ran out with no trace: now it is a failure.
     refusing({ status: "Failed", error: "Quote expired" }, 200);
     chainSays(null, 101);
-    await expect(executeJupiterSwap(quote, signed())).rejects.toThrow("did not go through");
+    await expect(executeJupiterSwap(quote, signed(), LANDS_UNTIL)).rejects.toThrow(
+      "did not go through",
+    );
     // And had it landed after all, it landed.
     chainSays({ confirmationStatus: "confirmed", err: null });
-    expect(await executeJupiterSwap(quote, signed())).toMatch(/^[1-9A-HJ-NP-Za-km-z]{64,88}$/);
+    expect(await executeJupiterSwap(quote, signed(), LANDS_UNTIL)).toMatch(
+      /^[1-9A-HJ-NP-Za-km-z]{64,88}$/,
+    );
   });
 });

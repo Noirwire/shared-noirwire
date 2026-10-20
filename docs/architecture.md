@@ -56,6 +56,7 @@ interface Env {
   feeBps: number;
   apiBaseUrl: string;
   sessionMaxAgeMs?: number;
+  relayer?: { feePayers: string[]; paymentWallet: string };
   rpcUrl?: string;
 }
 interface SessionStore {
@@ -83,7 +84,7 @@ interface Platform {
 - **`vault`** is asynchronous and fallible: every call reports failure rather than throwing. `update` is an atomic read-modify-write that runs under the platform lock for its key, so nothing from this tab, another tab or another process comes between its read and its write. `subscribe` hears of every persisted change, including ones made elsewhere. Whether a value is sealed is the app's business.
 - **`track`** takes only events and values from the closed list in `src/domain/usageEvents.ts`. Every property is a string from a closed union or a number, so an address cannot be passed by accident: it does not type-check.
 - **`locks`** serialises across tabs on the web; `inProcessLocks()` is enough on mobile.
-- **`env`** is read when a value is asked for, never when a module loads, so the package can be imported before the platform is installed. `envFrom()` in `@noirwire/shared/infrastructure` builds one from settings kept as text (build-time variables) and refuses a fee with nowhere to go, and a server address it would not send to.
+- **`env`** is read when a value is asked for, never when a module loads, so the package can be imported before the platform is installed. `envFrom()` in `@noirwire/shared/infrastructure` builds one from settings kept as text (build-time variables) and refuses a fee with nowhere to go, a server address it would not send to, and relayer keys that are not both there or not addresses. `relayer` pins the relayer's fee payers and payment wallet for the build's network; without it no relayer is used.
 - **`sessionStore`** keeps one small JSON value in plain app storage: the anonymous session below. A call that throws is taken as nothing stored, and the session is then held in memory only.
 - **`activity`** reports input and a return to the app. The idle lock counts from it: either one inside the window restarts it, either one past it locks.
 
@@ -131,6 +132,14 @@ Every request this package makes goes to NoirWire's own server, at the one place
 | `health`          | `/health`                    | `GET`. Takes no session.                       |
 
 `apiBaseUrl` is an origin with no path on the phone (`https://api.noirwire.com`). On the web it may be a path on the page's own origin (`/api`): the web app's host forwards `/api/*` to the server, so the page's content security policy can stay at `connect-src 'self'`. `envFrom` holds either to its rules at boot: https, or http to `localhost`, `127.0.0.1` or `10.0.2.2` in a development build only; nothing after the host; and a path only when `platform` is `"web"`, starting with one slash and carrying no query. `rpcUrl` names an RPC provider directly, with no session, for a server or a test that has no visitor behind it.
+
+**What one server means for the checks before signing.** The same server hands over the transaction to sign (a swap order, an Earn deposit, a private transfer) and answers every chain read the checks make: the balances before, the simulation, lookup tables, mint profiles. It also serves the price index a quote is held against. A server that lied about all of these at once could make a hostile transaction look right to every check that reads them. What holds against it, because it reads only the transaction's own bytes or the build:
+
+- the program allowlists, the exact shapes each allowed token and account instruction must have, and the refusal of a durable nonce;
+- what a swap's route instruction commits to on chain (`src/infrastructure/solana/swap/routes.ts`): the taker's account it spends from and an input no larger than the quote's, the taker's account it pays into, and a minimum no lower than the quote's. Those two accounts must be named among the transaction's own keys: an account loaded from a lookup table is refused, because the table is read from the same server. A transaction carries one route, never two that could each meet the floor. What the route plan does between those two accounts is the venue program's to enforce and is not read here;
+- the relayer's fee payers and payment wallet, pinned by the build (`Env.relayer`) and never taken from the server.
+
+What does not, today: the simulation and the reads behind it, the mint profile, and the price index. Making them independent of the server means a second chain provider the server does not operate, and a price source outside it, for the reads as well as the simulation, since a faked "before" is as good as a faked "after". That sends a visitor's addresses to a third party and needs the page's content security policy widened, or a forwarder outside the server, so it is a product decision and is not built.
 
 ## The session with NoirWire's server
 
@@ -312,7 +321,8 @@ The files that decide whether money is safe.
 | Key derivation and the recovery phrase                                              | `src/infrastructure/solana/keys.ts`                                                                                  |
 | Handing out a key only for the address on screen, only while unlocked               | `src/wallet/session.ts`                                                                                              |
 | Pre-sign guard: balances simulated before any signature                             | `src/infrastructure/solana/presign-guard.ts`, `src/infrastructure/solana/signerAccounts.ts`                          |
-| Swap guard: a trade held to its own quote, and to an independent price              | `src/infrastructure/solana/swap/guard.ts`, `src/infrastructure/solana/swap/execute.ts`                               |
+| Swap guard: a trade held to its own quote, and to the site's price index            | `src/infrastructure/solana/swap/guard.ts`, `src/infrastructure/solana/swap/execute.ts`                               |
+| Swap routes: where a route pays, and the minimum it enforces on chain               | `src/infrastructure/solana/swap/routes.ts`                                                                           |
 | What a mint may look like before it is listed or bought                             | `src/infrastructure/solana/mintPolicy.mjs`                                                                           |
 | Relayer template checks and fee caps                                                | `src/infrastructure/solana/relayed.ts`                                                                               |
 | Relayer pricing, and the check before a relayer-paid transaction                    | `src/infrastructure/solana/relayer.ts`                                                                               |

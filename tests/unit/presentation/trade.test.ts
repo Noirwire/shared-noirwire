@@ -40,7 +40,6 @@ const order = (overrides: Partial<PricedOrder> = {}): PricedOrder => ({
   receiveAtLeast: 1.9,
   unitPrice: 25,
   venue: "Jupiter",
-  priceChecked: true,
   quote: { feeBps: 25, gasless: false },
   ...overrides,
 });
@@ -222,11 +221,7 @@ describe("tradeReviewView", () => {
     expect(review().expiry).toBeNull();
   });
 
-  it("says when the price was not checked and when there is no firm order yet", () => {
-    expect(review({ order: order({ priceChecked: false }) }).priceUnchecked).toContain(
-      "No live price was available to compare this quote against.",
-    );
-    expect(review().priceUnchecked).toBeNull();
+  it("says when there is no firm order yet", () => {
     expect(review({ built: false }).notFirm).toContain(
       "This is a live price, not yet a firm order.",
     );

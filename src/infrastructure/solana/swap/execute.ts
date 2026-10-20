@@ -8,7 +8,7 @@ import { signForSending, type StillUnlocked } from "../signerAccounts.js";
 import { lamportsToSol } from "../sol.js";
 import { ataFor, ataRentFor } from "../tokens.js";
 import { QUOTE_TOKEN, stockBySymbol, type TokenDefinition } from "../tokenRegistry.js";
-import { executeJupiterSwap, isBuilt, jupiterVenue } from "./jupiter.js";
+import { executeJupiterSwap, isBuilt, jupiterVenue, landsUntil } from "./jupiter.js";
 import { verifySigners, verifySwapBeforeSigning } from "./guard.js";
 import { DEFAULT_SLIPPAGE_BPS, type SwapQuote } from "./types.js";
 
@@ -39,13 +39,6 @@ export type TradePlan = {
   /** Dollars per raw stock token in this specific quote, not a catalog figure. */
   unitPrice: number;
   venue: string;
-  /**
-   * Whether the quote's price was held against this site's price index (see
-   * `checkQuotedPrice` for what that is and is not). False means there was
-   * none to hold it against, which the review has to say: the price shown is
-   * then the order builder's word alone.
-   */
-  priceChecked: boolean;
 };
 
 /** How much worse than the market price a quote may be before it is refused, in basis points. */
@@ -68,17 +61,20 @@ export const MAX_PRICE_DEVIATION_BPS = 1000;
  *
  * Both prices are dollars per raw token, the unit a transaction moves, so a
  * stock's display multiplier is already inside `marketPrice` and never mixed
- * with a raw amount here. Only a price worse for the user is refused: paying
- * more than the market on a buy, getting less on a sell. With no market price
- * to compare against nothing is refused, and the answer is false so the
- * review can say the price went unchecked.
+ * with a raw amount here. `unitPrice` is the worst the order can fill at,
+ * its guaranteed floor, not the price it is expected to fill at: the floor
+ * may sit a whole slippage below the expected output, and it is all the
+ * transaction promises. Only a price worse for the user is refused: paying
+ * more than the market on a buy, getting less on a sell. With no live market
+ * price to compare against, the quote is refused too: the order builder's
+ * word alone is not enough to sign on.
  */
 export function checkQuotedPrice(
   side: TradeSide,
   unitPrice: number,
   marketPrice: number | undefined,
-): boolean {
-  if (marketPrice === undefined || !(marketPrice > 0)) return false;
+): void {
+  requireMarketPrice(marketPrice);
   const tolerance = MAX_PRICE_DEVIATION_BPS / 10_000;
   const worse =
     side === "buy"
@@ -89,7 +85,12 @@ export function checkQuotedPrice(
       `This quote is more than ${MAX_PRICE_DEVIATION_BPS / 100}% worse than the current market price. Not offered.`,
     );
   }
-  return true;
+}
+
+function requireMarketPrice(marketPrice: number | undefined): asserts marketPrice is number {
+  if (marketPrice === undefined || !(marketPrice > 0)) {
+    throw new Error("No live price is available to check this quote against. Not offered.");
+  }
 }
 
 function toBaseUnits(amount: number, decimals: number): bigint {
@@ -142,6 +143,9 @@ export async function planTrade(input: {
     );
   }
   if (!(input.amount > 0)) throw new Error("Enter an amount greater than zero.");
+  // Before the order is asked for: a quote with nothing to hold it against
+  // is refused anyway, and the request would name the taker for nothing.
+  requireMarketPrice(input.marketPrice);
 
   const cash = QUOTE_TOKEN;
   const from = input.side === "buy" ? cash : stock;
@@ -162,6 +166,8 @@ export async function planTrade(input: {
   const cashLeg = input.side === "buy" ? spend : receive;
 
   const unitPrice = shares > 0 ? cashLeg / shares : 0;
+  const floorUnitPrice = input.side === "buy" ? spend / receiveAtLeast : receiveAtLeast / spend;
+  checkQuotedPrice(input.side, floorUnitPrice, input.marketPrice);
 
   return {
     side: input.side,
@@ -172,7 +178,6 @@ export async function planTrade(input: {
     receiveAtLeast,
     unitPrice,
     venue: quote.venue,
-    priceChecked: checkQuotedPrice(input.side, unitPrice, input.marketPrice),
   };
 }
 
@@ -214,8 +219,14 @@ export async function executeTrade(
   );
   if (!verdict.ok) throw new Error(verdict.reason);
 
-  await signForSending(built.transaction, owner, stillUnlocked, built.lastValidBlockHeight);
-  return executeJupiterSwap(plan.quote, built.transaction);
+  // Read once, from the chain, not from the order, for the reason
+  // `executeJupiterSwap` gives: the record and the outcome both use it.
+  const lastValidBlockHeight = await landsUntil();
+  if (lastValidBlockHeight === undefined) {
+    throw new Error("The network could not be asked how long this swap would stay valid.");
+  }
+  await signForSending(built.transaction, owner, stillUnlocked, lastValidBlockHeight);
+  return executeJupiterSwap(plan.quote, built.transaction, lastValidBlockHeight);
 }
 
 /** Headroom for rent extensions and fee changes between review and submission. */
