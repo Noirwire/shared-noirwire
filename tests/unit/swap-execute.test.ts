@@ -10,7 +10,9 @@ import { connection } from "../../src/infrastructure/solana/client.js";
 import { executeTrade, type TradePlan } from "../../src/infrastructure/solana/swap/execute.js";
 import { QUOTE_TOKEN, TRADABLE_STOCKS } from "../../src/infrastructure/solana/tokenRegistry.js";
 import { UnknownOutcomeError } from "../../src/infrastructure/solana/swap/types.js";
+import { ataFor } from "../../src/infrastructure/solana/tokens.js";
 import { mintAccount } from "./support/mintAccount.js";
+import { rfqFill } from "./support/routes.js";
 import { recordSigning } from "./support/signing.js";
 
 const records = recordSigning();
@@ -34,7 +36,14 @@ function plan(): TradePlan {
     new TransactionMessage({
       payerKey: owner.publicKey,
       recentBlockhash: Keypair.generate().publicKey.toBase58(),
-      instructions: [ComputeBudgetProgram.setComputeUnitLimit({ units: 1 })],
+      instructions: [
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 1 }),
+        rfqFill({
+          output: 495_000n,
+          source: ataFor(QUOTE_TOKEN.mint, owner.publicKey, QUOTE_TOKEN.programId),
+          destination: ataFor(stock.mint, owner.publicKey, stock.programId),
+        }),
+      ],
     }).compileToV0Message(),
   );
   vi.spyOn(connection, "getTokenAccountsByOwner").mockResolvedValue({

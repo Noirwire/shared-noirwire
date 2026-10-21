@@ -134,7 +134,21 @@ type ProgramVerification = ReturnType<typeof checkPrograms>;
  */
 export type FeeLeg = Omit<RouteLeg, "inputAta">;
 
-type FeeTransfer = { destination: PublicKey; mint: PublicKey };
+/**
+ * The only account NoirWire's fee in `mint` may be paid into: the token
+ * account Jupiter's referral program keeps for the referral account in that
+ * mint. Its current form (`initializeReferralTokenAccountV2` in the program's
+ * SDK, which Jupiter's Ultra fee guide has integrators use) is the referral
+ * account's associated token account, so the address follows from the
+ * referral account the build pins and the transfer's own mint. Nothing the
+ * server answers about the account decides whether it is NoirWire's.
+ */
+function referralFeeAccount(mint: PublicKey): PublicKey | null {
+  const referral = jupiterReferralAccount();
+  return referral
+    ? getAssociatedTokenAddressSync(mint, new PublicKey(referral), true, TOKEN_PROGRAM_ID)
+    : null;
+}
 
 /**
  * A market-maker order does not take NoirWire's fee inside the fill, as a
@@ -147,9 +161,8 @@ type FeeTransfer = { destination: PublicKey; mint: PublicKey };
  * directions, fee included. This holds the instruction itself to the fee the
  * review showed, so it cannot be used to move anything else: at most one,
  * only when a fee is configured, only from the order's own cash account in
- * that account's mint, and for no more than the fee rate applied to the
- * order. Where it pays is returned for the caller to read from the chain,
- * because a referral token account's address cannot be derived here.
+ * that account's mint, for no more than the fee rate applied to the order,
+ * and only into the referral token account derived for that mint.
  */
 function checkFeeTransfer(
   transaction: VersionedTransaction,
@@ -157,7 +170,7 @@ function checkFeeTransfer(
   taker: PublicKey,
   inputAta: PublicKey,
   fee: FeeLeg | undefined,
-): { ok: true; feeTransfer?: FeeTransfer } | { ok: false; reason: string } {
+): ProgramVerification {
   const transfers = transaction.message.compiledInstructions.filter(
     (instruction) =>
       accountKeys.get(instruction.programIdIndex)?.equals(TOKEN_PROGRAM_ID) &&
@@ -197,19 +210,8 @@ function checkFeeTransfer(
     return refused;
   }
   if (readU64LE(transfer.data, 1) > cap) return refused;
-  return { ok: true, feeTransfer: { destination, mint } };
-}
-
-/** Whether `data` is a token account of `mint` owned by the configured referral account. */
-function isReferralAccount(data: Uint8Array | undefined, mint: PublicKey): boolean {
-  const referral = jupiterReferralAccount();
-  return (
-    !!referral &&
-    !!data &&
-    !tokenAccountClosed(data) &&
-    bytesEqual(data.subarray(0, 32), mint.toBytes()) &&
-    ownedBy(data, new PublicKey(referral))
-  );
+  if (!referralFeeAccount(mint)?.equals(destination)) return WRONG_FEE_ACCOUNT;
+  return { ok: true };
 }
 
 const WRONG_FEE_ACCOUNT = {
@@ -223,7 +225,7 @@ function checkInstructions(
   taker: PublicKey,
   inputAta: PublicKey,
   fee?: FeeLeg,
-): ReturnType<typeof checkFeeTransfer> {
+): ProgramVerification {
   const programs = checkPrograms(transaction, accountKeys, SWAP_PROGRAMS);
   if (!programs.ok) return programs;
   const routes = checkRoutes(transaction, accountKeys, fee && { ...fee, inputAta });
@@ -246,12 +248,7 @@ export async function checkSwapPrograms(
   fee?: FeeLeg,
 ): Promise<ProgramVerification> {
   const accountKeys = await resolveAccountKeys(transaction);
-  const instructions = checkInstructions(transaction, accountKeys, taker, inputAta, fee);
-  if (!instructions.ok) return instructions;
-  if (!instructions.feeTransfer) return { ok: true };
-  const { destination, mint } = instructions.feeTransfer;
-  const account = await connection.getAccountInfo(destination);
-  return isReferralAccount(account?.data, mint) ? { ok: true } : WRONG_FEE_ACCOUNT;
+  return checkInstructions(transaction, accountKeys, taker, inputAta, fee);
 }
 
 /** `amount` is a u64 at byte 64 of an SPL token account, in both Token and Token-2022. */
@@ -365,7 +362,6 @@ export async function verifySwapBeforeSigning(
     outputAta,
   });
   if (!instructions.ok) return instructions;
-  const { feeTransfer } = instructions;
 
   const touched = await ownedTokenAccountsIn(accountKeys, taker).catch(() => null);
   if (!touched) return UNCHECKED;
@@ -374,26 +370,15 @@ export async function verifySwapBeforeSigning(
   );
   const watched = [inputAta, outputAta, taker, ...others];
 
-  // Read in the same request as the balances: the stock's mint, and where a
-  // fee transfer pays.
-  const extras = [stock.mint, feeTransfer?.destination].filter((key) => key !== undefined);
+  // The stock's mint is read in the same request as the balances.
   const before = await connection
-    .getMultipleAccountsInfo([...watched, ...extras])
+    .getMultipleAccountsInfo([...watched, stock.mint])
     .catch(() => null);
   if (!before) return UNCHECKED;
   const [preInput, preOutput, preTaker] = before;
-  const extraInfo = (key: PublicKey | undefined) =>
-    key ? before[watched.length + extras.indexOf(key)] : null;
   if (!preInput || others.some((_, index) => !before[index + 3])) return UNCHECKED;
 
-  if (
-    feeTransfer &&
-    !isReferralAccount(extraInfo(feeTransfer.destination)?.data, feeTransfer.mint)
-  ) {
-    return WRONG_FEE_ACCOUNT;
-  }
-
-  const mintAccount = extraInfo(stock.mint);
+  const mintAccount = before[watched.length];
   const address = stock.mint.toBase58();
   if (stock.acquiring) {
     const mint = inspectMint(address, mintAccount);

@@ -2,6 +2,7 @@ import { createHash, createPublicKey, verify } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  Ed25519Program,
   Keypair,
   PACKET_DATA_SIZE,
   PublicKey,
@@ -9,7 +10,7 @@ import {
   VersionedTransaction,
   type TransactionInstruction,
 } from "@solana/web3.js";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { API_ERRORS } from "../../src/domain/apiError.js";
 import { signMessage } from "../../src/infrastructure/solana/profile.js";
 import {
@@ -254,6 +255,21 @@ function signedBy(signer: PublicKey, message: Uint8Array, signature: Uint8Array)
   });
   return verify(null, message, key, signature);
 }
+
+describe("signing a message", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("zeroes its own copy of the secret key once signed, and the key still signs again", () => {
+    const key = Keypair.generate();
+    const message = new TextEncoder().encode("challenge");
+    const build = vi.spyOn(Ed25519Program, "createInstructionWithPrivateKey");
+    const first = signMessage(key, message);
+    const handed = build.mock.calls[0][0].privateKey as Uint8Array;
+    expect(handed.every((byte) => byte === 0)).toBe(true);
+    expect(signedBy(key.publicKey, message, first)).toBe(true);
+    expect(signMessage(key, message)).toEqual(first);
+  });
+});
 
 const IDL = join(import.meta.dirname, "../../../profile-noirwire/target/idl/noirwire_profile.json");
 

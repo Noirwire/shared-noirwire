@@ -2,7 +2,11 @@ import { getPlatform } from "../platform.js";
 import { FUNDING } from "../application/pendingActions.js";
 import { walletCopy } from "../copy/wallet.js";
 import { dropSession } from "../infrastructure/apiSession.js";
-import { deriveKeypair, FUNDING_DERIVATION_INDEX } from "../infrastructure/solana/keys.js";
+import {
+  FUNDING_DERIVATION_INDEX,
+  keypairFromRoot,
+  keyRootOf,
+} from "../infrastructure/solana/keys.js";
 import {
   decryptVault,
   isEncryptedVault,
@@ -43,14 +47,16 @@ const apply = (wallet: Wallet, change: Change) => change(wallet);
 
 /**
  * What an unlocked tab holds in memory and nowhere else: the key the stored
- * record is encrypted under, the decrypted recovery phrase, and the routine
- * changes made here that have not reached storage yet. A reload drops all of
- * it, which is the point: the only copy that survives a refresh is the
+ * record is encrypted under, the 64 bytes every key is derived from (see
+ * `keyRootOf`), and the routine changes made here that have not reached
+ * storage yet. Not the phrase: it is read from the record when the record is
+ * written, and the root is zeroed when the wallet locks. A reload drops all
+ * of it, which is the point: the only copy that survives a refresh is the
  * encrypted one.
  */
 type Session = {
   vaultKey: VaultKey;
-  phrase: string[];
+  root: Uint8Array;
   pending: Change[];
 };
 
@@ -85,7 +91,7 @@ let saveFailing = false;
 
 /**
  * An unlocked tab left open is a signer anyone at the keyboard can use, so the
- * phrase is forgotten after this long without input - the same default the
+ * keys are forgotten after this long without input - the same default the
  * major browser wallets ship. Locking only drops the in-memory copy; the
  * encrypted wallet stays exactly where it was.
  *
@@ -396,16 +402,22 @@ async function openRecord(vaultKey: VaultKey, envelope: Envelope): Promise<OpenR
 }
 
 /**
- * Whether every stored address is the one the phrase derives at its index.
- * The stored copy is only a cache of that derivation, and it is what the
- * screens show and what balances are read from: an address swapped in
- * storage would have the user fund, and read as their own, a portfolio whose
- * key they do not hold.
+ * The root of a record's phrase when every stored address is the one it
+ * derives at its index, else null. The stored copy is only a cache of that
+ * derivation, and it is what the screens show and what balances are read
+ * from: an address swapped in storage would have the user fund, and read as
+ * their own, a portfolio whose key they do not hold.
  */
-function addressesMatch({ phrase, wallet }: OpenRecord): boolean {
-  const mnemonic = phrase.join(" ");
+function rootIfAddressesMatch({ phrase, wallet }: OpenRecord): Uint8Array | null {
+  const root = keyRootOf(phrase.join(" "));
+  if (addressesMatch(root, wallet)) return root;
+  root.fill(0);
+  return null;
+}
+
+function addressesMatch(root: Uint8Array, wallet: Wallet): boolean {
   const addressAt = (index: number) =>
-    deriveKeypair(mnemonic, index, wallet.derivationScheme).publicKey.toBase58();
+    keypairFromRoot(root, index, wallet.derivationScheme).publicKey.toBase58();
   try {
     return (
       wallet.funding.address === addressAt(FUNDING_DERIVATION_INDEX) &&
@@ -467,7 +479,7 @@ async function sync(live: Session): Promise<boolean> {
   const envelope = parseEnvelope(raw);
   if (!envelope || envelope.salt !== live.vaultKey.salt) {
     // Another tab reset the wallet, replaced it or changed its password. A
-    // change made here must not bring the old one back, and the phrase in
+    // change made here must not bring the old one back, and the keys in
     // memory may no longer belong to what is stored.
     if (session === live) lockHere();
     exists = await hasStoredWallet();
@@ -480,24 +492,19 @@ async function sync(live: Session): Promise<boolean> {
   if (live.pending.length === 0 && (unchanged || session !== live)) return true;
   const changes = live.pending.splice(0);
 
-  let wallet: Wallet;
-  let rev: number;
-  if (unchanged) {
-    wallet = mine;
-    rev = revision;
-  } else {
-    const stored = await openRecord(live.vaultKey, envelope);
-    if (!stored) {
-      live.pending.unshift(...changes);
-      return noteSaveFailed();
-    }
-    wallet = changes.reduce(apply, stored.wallet);
-    rev = stored.rev;
+  // Opened even when unchanged: the phrase a write seals is the record's own,
+  // since the session does not hold it.
+  const stored = await openRecord(live.vaultKey, envelope);
+  if (!stored) {
+    live.pending.unshift(...changes);
+    return noteSaveFailed();
   }
+  const wallet = unchanged ? mine : changes.reduce(apply, stored.wallet);
+  let rev = unchanged ? revision : stored.rev;
 
   let written = raw;
   if (changes.length > 0) {
-    const sealed = await sealRecord(live.vaultKey, { rev: rev + 1, phrase: live.phrase, wallet });
+    const sealed = await sealRecord(live.vaultKey, { rev: rev + 1, phrase: stored.phrase, wallet });
     const outcome = await replace(raw, sealed);
     if (outcome === "changed") {
       live.pending.unshift(...changes);
@@ -526,8 +533,8 @@ async function sync(live: Session): Promise<boolean> {
 
 /**
  * A change to the stored wallet, from this tab or any other. Another tab may
- * have replaced or reset the wallet, or changed its password: the phrase in
- * memory then belongs to the old one, and signing with it against the new
+ * have replaced or reset the wallet, or changed its password: the keys in
+ * memory then belong to the old one, and signing with it against the new
  * wallet's portfolios would spend from addresses the screen no longer shows,
  * so `sync` locks. A routine write from another tab is simply taken in. It
  * runs in turn with this tab's own writes, so a write of this tab's is never
@@ -671,8 +678,9 @@ export function syncFromStorage(): Promise<boolean> {
   return exclusive(() => sync(live)).catch(noteSaveFailed);
 }
 
-function install(vaultKey: VaultKey, stored: OpenRecord, raw: string | null) {
-  session = { vaultKey, phrase: stored.phrase, pending: [] };
+function install(vaultKey: VaultKey, root: Uint8Array, stored: OpenRecord, raw: string | null) {
+  session?.root.fill(0);
+  session = { vaultKey, root, pending: [] };
   current = stored.wallet;
   lastRaw = raw;
   revision = stored.rev;
@@ -720,7 +728,7 @@ export async function storeNewWallet(
     if (outcome === "changed") throw new Error(WALLET_EXISTS);
     if (outcome === "failed") throw new Error(NOT_SAVED);
     generation += 1;
-    install(vaultKey, stored, raw);
+    install(vaultKey, keyRootOf(phrase.join(" ")), stored, raw);
   });
   // There is a working wallet on this device now, so older plain text copies can go.
   await purgePlaintext();
@@ -762,13 +770,15 @@ export async function resetWallet(): Promise<ResetResult> {
 }
 
 /**
- * The decrypted phrase, or null when the wallet is locked. Every signature
- * starts by asking for it, so this is also where an idle window that passed
- * while timers were not running (a sleeping laptop) is caught.
+ * The bytes every key of the unlocked wallet is derived from (see
+ * `keyRootOf`), or null when the wallet is locked. Every signature starts by
+ * asking for them, so this is also where an idle window that passed while
+ * timers were not running (a sleeping laptop) is caught. They are zeroed when
+ * the wallet locks: take them again for each key, never keep them.
  */
-export function getPhrase(): string[] | null {
+export function getKeyRoot(): Uint8Array | null {
   lockIfIdle();
-  return session?.phrase ?? null;
+  return session?.root ?? null;
 }
 
 export function isUnlocked(): boolean {
@@ -789,10 +799,39 @@ async function upgradeLegacy(password: string, started: number): Promise<string 
   const phrase = await decryptVault(legacyVault, password);
   if (!phrase) return WRONG_PASSWORD;
   const stored: OpenRecord = { rev: 1, phrase, wallet: fromStored(legacyWallet) };
-  if (!addressesMatch(stored)) return ADDRESS_MISMATCH;
+  const root = rootIfAddressesMatch(stored);
+  if (!root) return ADDRESS_MISMATCH;
 
-  const vaultKey = await newVaultKey(password);
-  const raw = await sealRecord(vaultKey, stored);
+  return zeroedUnlessInstalled(root, async () => {
+    const vaultKey = await newVaultKey(password);
+    const raw = await sealRecord(vaultKey, stored);
+    return upgradeWith(vaultKey, raw, root, stored, started, legacyRaw);
+  });
+}
+
+/** Runs an unlock that ends in `install(…, root, …)`, and zeroes `root` unless it did. */
+async function zeroedUnlessInstalled(
+  root: Uint8Array,
+  attempt: () => Promise<UnlockResult>,
+): Promise<UnlockResult> {
+  let installed = false;
+  try {
+    const problem = await attempt();
+    installed = problem === null;
+    return problem;
+  } finally {
+    if (!installed) root.fill(0);
+  }
+}
+
+function upgradeWith(
+  vaultKey: VaultKey,
+  raw: string,
+  root: Uint8Array,
+  stored: OpenRecord,
+  started: number,
+  legacyRaw: string | null,
+): Promise<UnlockResult> {
   return exclusive(async () => {
     // Reset here or in another tab, or upgraded by another tab first, while
     // the key was being derived. Writing now would bring a deleted wallet back.
@@ -808,7 +847,7 @@ async function upgradeLegacy(password: string, started: number): Promise<string 
     }
     await remove(LEGACY_STORAGE_KEY);
     if (generation !== started) return INTERRUPTED;
-    install(vaultKey, stored, raw);
+    install(vaultKey, root, stored, raw);
     return null;
   });
 }
@@ -833,15 +872,18 @@ async function unlockEnvelope(
   if (plaintext === null) return wrongKey;
   const stored = parseRecord(plaintext);
   if (!stored) return DAMAGED;
-  if (!addressesMatch(stored)) return ADDRESS_MISMATCH;
-  if (generation !== started || parseEnvelope(await readRaw())?.salt !== envelope.salt) {
-    return INTERRUPTED;
-  }
-  install(vaultKey, stored, raw);
-  // Another tab may have written while the key was being derived.
-  const live = session;
-  if (live) void exclusive(() => sync(live)).catch(noteSaveFailed);
-  return null;
+  const root = rootIfAddressesMatch(stored);
+  if (!root) return ADDRESS_MISMATCH;
+  return zeroedUnlessInstalled(root, async () => {
+    if (generation !== started || parseEnvelope(await readRaw())?.salt !== envelope.salt) {
+      return INTERRUPTED;
+    }
+    install(vaultKey, root, stored, raw);
+    // Another tab may have written while the key was being derived.
+    const live = session;
+    if (live) void exclusive(() => sync(live)).catch(noteSaveFailed);
+    return null;
+  });
 }
 
 /**
@@ -851,7 +893,7 @@ async function unlockEnvelope(
  * Deriving the key takes a moment, and the tab does not stand still for it:
  * it can be locked, reset, or see the wallet replaced from another tab. An
  * unlock that finishes after any of those is discarded rather than
- * installing a phrase for a wallet that is no longer the one stored.
+ * installing keys for a wallet that is no longer the one stored.
  */
 export async function unlock(password: string): Promise<UnlockResult> {
   const started = generation;
@@ -1164,9 +1206,13 @@ async function rekey(
   return changed();
 }
 
-/** Forgets the key, the decrypted phrase and the decrypted wallet without touching the stored record. */
+/**
+ * Forgets the key, zeroes the key root and forgets the decrypted wallet
+ * without touching the stored record.
+ */
 function lockHere() {
   generation += 1;
+  session?.root.fill(0);
   session = null;
   current = null;
   disarmIdleLock();

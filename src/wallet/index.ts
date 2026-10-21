@@ -50,7 +50,6 @@ export {
   type ResetResult,
   type UnlockResult,
   changePassword,
-  getPhrase,
   getServerSnapshot,
   getSnapshot,
   isPasswordWeak,

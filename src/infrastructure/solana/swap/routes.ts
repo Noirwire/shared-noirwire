@@ -14,8 +14,10 @@ import type { SwapQuote } from "./types.js";
  * the route instruction is read, and held to the quote: it must spend from
  * the taker's own input account and no more than the quote's input, it must
  * pay only into the taker's own output account, and its on-chain minimum
- * must be no lower than the quote's. A transaction carries one route; a
- * second one is refused, since each could meet the floor on its own.
+ * must be no lower than the quote's. A transaction carries exactly one
+ * route. A second one is refused, since each could meet the floor on its
+ * own, and so is none: with no route nothing on chain holds the swap to its
+ * floor, and all that is left to check is a simulation the same server runs.
  *
  * The accounts it spends from and pays into must be named in the
  * transaction itself, not loaded from a lookup table. A table is read from
@@ -168,9 +170,14 @@ const UNREADABLE: RouteVerification = {
     "This swap uses a route whose guaranteed minimum cannot be read, so it cannot be checked. Get a new quote. Not signed.",
 };
 
+const NO_ROUTE: RouteVerification = {
+  ok: false,
+  reason: "This swap carries no route that holds it to its quote. Not signed.",
+};
+
 /**
- * Every instruction of a venue program, read and held to `leg`: there may
- * be only one, and the accounts it names are taken from the transaction's
+ * Every instruction of a venue program, read and held to `leg`: there must
+ * be exactly one, and the accounts it names are taken from the transaction's
  * own keys, never a lookup table. Without a leg, only that each one can be
  * read. Instructions of other programs are not this function's to judge: the
  * program allowlist does that.
@@ -220,5 +227,5 @@ export function checkRoutes(
       };
     }
   }
-  return { ok: true };
+  return leg && routes === 0 ? NO_ROUTE : { ok: true };
 }

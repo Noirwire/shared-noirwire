@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { generateMnemonic, mnemonicToSeedSync } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english";
-import { derivePath } from "ed25519-hd-key";
+import { derivePath, getMasterKeyFromSeed } from "ed25519-hd-key";
 import {
   APP_DERIVATION_PATH,
   FUNDING_DERIVATION_INDEX,
@@ -11,8 +11,12 @@ import {
   deriveProfileKeys,
   deriveRewardsKey,
   generateWalletMnemonic,
+  keypairFromRoot,
+  keyRootOf,
   parseRecoveryPhrase,
   phraseWords,
+  profileKeysFromRoot,
+  rewardsKeyFromRoot,
 } from "../../src/infrastructure/solana/keys.js";
 
 /**
@@ -89,6 +93,35 @@ describe("deriveKeypair", () => {
     const { key } = derivePath(WALLET_DEFAULT_DERIVATION_PATH(2), seedHex);
     const derived = deriveKeypair(mnemonic, 2, "walletDefault");
     expect(derived.secretKey.slice(0, 32)).toEqual(new Uint8Array(key.subarray(0, 32)));
+  });
+});
+
+describe("the key root an unlocked wallet holds", () => {
+  const mnemonic = generateWalletMnemonic();
+
+  it("is SLIP-0010's master node for the phrase's seed: its key, then its chain code", () => {
+    const seedHex = Buffer.from(mnemonicToSeedSync(mnemonic)).toString("hex");
+    const { key, chainCode } = getMasterKeyFromSeed(seedHex);
+    expect(keyRootOf(mnemonic)).toEqual(new Uint8Array([...key, ...chainCode]));
+  });
+
+  it("derives every key the phrase does, and is left as it was", () => {
+    const root = keyRootOf(mnemonic);
+    const untouched = Uint8Array.from(root);
+    for (const scheme of ["app", "walletDefault"] as const) {
+      expect(keypairFromRoot(root, 4, scheme).secretKey).toEqual(
+        deriveKeypair(mnemonic, 4, scheme).secretKey,
+      );
+    }
+    const profile = profileKeysFromRoot(root);
+    expect(profile.owner.secretKey).toEqual(deriveProfileKeys(mnemonic).owner.secretKey);
+    expect(profile.secret).toEqual(deriveProfileKeys(mnemonic).secret);
+    expect(rewardsKeyFromRoot(root).secretKey).toEqual(deriveRewardsKey(mnemonic).secretKey);
+    expect(root).toEqual(untouched);
+  });
+
+  it("derives nothing from a root that is not 64 bytes", () => {
+    expect(() => keypairFromRoot(keyRootOf(mnemonic).subarray(0, 32), 0)).toThrow();
   });
 });
 

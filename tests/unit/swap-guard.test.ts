@@ -74,10 +74,19 @@ function compile(payer: PublicKey, instructions: TransactionInstruction[]): Vers
   return new VersionedTransaction(message);
 }
 
+/** The one route a swap carries, held on chain to exactly the quote's floor. */
+const honestRoute = () =>
+  routeV2({
+    quotedOut: QUOTE.outAmount,
+    slippageBps: QUOTE.slippageBps,
+    source: INPUT_ATA,
+    destination: OUTPUT_ATA,
+  });
+
 /**
- * A transaction that only calls a program a swap is allowed to call, naming
- * the extra signers and the touched accounts on it so they are part of the
- * message without bringing another program in.
+ * A swap that calls only programs a swap is allowed to call: its route, and
+ * an instruction naming the extra signers and the touched accounts so they
+ * are part of the message without bringing another program in.
  */
 function transactionSignedBy(
   signers: PublicKey[],
@@ -92,6 +101,7 @@ function transactionSignedBy(
       ],
       data: Buffer.from([2, 0, 0, 0, 0]),
     }),
+    honestRoute(),
   ]);
 }
 
@@ -406,15 +416,22 @@ describe("what a swap transaction may be made of", () => {
     expect((await checkSwapPrograms(transaction, TAKER.publicKey, INPUT_ATA)).ok).toBe(false);
   });
 
-  it("passes a pooled route held to its quote on chain, with every balance check still applied", async () => {
-    const route = compile(TAKER.publicKey, [
-      routeV2({
-        quotedOut: QUOTE.outAmount,
-        slippageBps: QUOTE.slippageBps,
-        source: INPUT_ATA,
-        destination: OUTPUT_ATA,
-      }),
+  it("refuses a swap with no route, even when every balance comes out right", async () => {
+    // Nothing on chain would hold it to its floor: only the simulation, which
+    // the same server that built the order runs.
+    const simulate = mockChain(settled);
+    const unrouted = compile(TAKER.publicKey, [
+      ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 }),
     ]);
+    expect(await verify(true, unrouted)).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("no route"),
+    });
+    expect(simulate).not.toHaveBeenCalled();
+  });
+
+  it("passes a pooled route held to its quote on chain, with every balance check still applied", async () => {
+    const route = compile(TAKER.publicKey, [honestRoute()]);
     mockChain(settled);
     expect((await verify(true, route)).ok).toBe(true);
     mockChain({ before: [1_000_000n, 0n], after: [0n, 494_999n] });
@@ -452,6 +469,7 @@ describe("what a swap transaction may be made of", () => {
   it("refuses a top-level token transfer when no fee is configured, whatever it claims to pay", async () => {
     const simulate = mockChain(settled);
     const transaction = compile(TAKER.publicKey, [
+      honestRoute(),
       createTransferCheckedInstruction(
         INPUT_ATA,
         QUOTE.inputMint,
@@ -493,6 +511,7 @@ describe("what a swap transaction may be made of", () => {
     const close = (account: PublicKey, destination: PublicKey, authority = TAKER.publicKey) =>
       compile(TAKER.publicKey, [
         ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 }),
+        honestRoute(),
         createCloseAccountInstruction(account, destination, authority),
       ]);
 

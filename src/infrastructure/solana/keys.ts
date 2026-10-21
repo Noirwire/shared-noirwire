@@ -3,7 +3,7 @@ import "./buffer-polyfill.js";
 import { Buffer } from "buffer";
 import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english";
-import { derivePath } from "ed25519-hd-key";
+import { CKDPriv, getMasterKeyFromSeed, isValidPath } from "ed25519-hd-key";
 import { Keypair } from "@solana/web3.js";
 import type { DerivationScheme } from "../../domain/wallet.js";
 
@@ -36,26 +36,101 @@ export function generateWalletMnemonic(): string {
 }
 
 /**
- * Derives the Solana keypair for one account of a wallet's mnemonic, under
- * the given derivation scheme (this app's own path by default). Every
- * keypair is re-derived on demand; none is ever persisted on its own. A
- * wallet's scheme is fixed at creation/import time (`Wallet.derivationScheme`)
- * and every call for that wallet must pass it, so every account keeps
- * landing on the same addresses.
+ * The 64 bytes every key of a wallet is derived from: SLIP-0010's ed25519
+ * master node for the phrase's BIP-39 seed, its 32-byte key followed by its
+ * 32-byte chain code. An unlocked wallet holds this and not the phrase, so
+ * each key is derived over bytes that can be zeroed when the wallet locks.
+ *
+ * The derivation library takes the BIP-39 seed only as a hex string, so one
+ * is made here, once, for the master node. The seed's bytes are zeroed as
+ * soon as it is made; the string cannot be, and is left to the collector.
  */
+export function keyRootOf(mnemonic: string): Uint8Array {
+  const derived = mnemonicToSeedSync(mnemonic);
+  const seed = Buffer.from(derived);
+  derived.fill(0);
+  try {
+    const { key, chainCode } = getMasterKeyFromSeed(seed.toString("hex"));
+    const root = new Uint8Array(ROOT_LENGTH);
+    root.set(key);
+    root.set(chainCode, KEY_LENGTH);
+    key.fill(0);
+    chainCode.fill(0);
+    return root;
+  } finally {
+    seed.fill(0);
+  }
+}
+
+const KEY_LENGTH = 32;
+const ROOT_LENGTH = 64;
+const HARDENED_OFFSET = 0x80000000;
+
+/**
+ * The 32 key bytes SLIP-0010 derives from `root` at `path`, every level
+ * hardened. Each node passed on the way is zeroed once the next is made.
+ */
+function keyAt(root: Uint8Array, path: string): Uint8Array {
+  if (root.length !== ROOT_LENGTH || !isValidPath(path)) {
+    throw new Error("Invalid derivation path");
+  }
+  let node: { key: Uint8Array; chainCode: Uint8Array } = {
+    key: root.slice(0, KEY_LENGTH),
+    chainCode: root.slice(KEY_LENGTH),
+  };
+  for (const segment of path.split("/").slice(1)) {
+    const next = CKDPriv(node, Number.parseInt(segment.replace("'", ""), 10) + HARDENED_OFFSET);
+    node.key.fill(0);
+    node.chainCode.fill(0);
+    node = next;
+  }
+  node.chainCode.fill(0);
+  return node.key;
+}
+
+/** The keypair for the key at `path`. Its bytes are copied into the keypair and zeroed here. */
+function keypairAt(root: Uint8Array, path: string): Keypair {
+  const key = keyAt(root, path);
+  try {
+    return Keypair.fromSeed(key);
+  } finally {
+    key.fill(0);
+  }
+}
+
+/** Runs `use` over the root of `mnemonic`, and zeroes the root after it. */
+function withRoot<T>(mnemonic: string, use: (root: Uint8Array) => T): T {
+  const root = keyRootOf(mnemonic);
+  try {
+    return use(root);
+  } finally {
+    root.fill(0);
+  }
+}
+
+/**
+ * Derives the Solana keypair for one account of a wallet, from its root (see
+ * `keyRootOf`), under the given derivation scheme (this app's own path by
+ * default). Every keypair is re-derived on demand; none is ever persisted on
+ * its own. A wallet's scheme is fixed at creation/import time
+ * (`Wallet.derivationScheme`) and every call for that wallet must pass it,
+ * so every account keeps landing on the same addresses.
+ */
+export function keypairFromRoot(
+  root: Uint8Array,
+  index: number,
+  scheme: DerivationScheme = "app",
+): Keypair {
+  return keypairAt(root, pathFor(scheme, index));
+}
+
+/** `keypairFromRoot` for a mnemonic in hand, as creating or importing a wallet has. */
 export function deriveKeypair(
   mnemonic: string,
   index: number,
   scheme: DerivationScheme = "app",
 ): Keypair {
-  return Keypair.fromSeed(keyAt(mnemonic, pathFor(scheme, index)));
-}
-
-/** The 32 key bytes SLIP-0010 derives for `mnemonic` at `path`. */
-function keyAt(mnemonic: string, path: string): Uint8Array {
-  const seed = mnemonicToSeedSync(mnemonic);
-  const { key } = derivePath(path, Buffer.from(seed).toString("hex"));
-  return key.subarray(0, 32);
+  return withRoot(mnemonic, (root) => keypairFromRoot(root, index, scheme));
 }
 
 /**
@@ -72,11 +147,16 @@ export const PROFILE_SECRET_PATH = "m/20055'/1'/0'";
  * sealed with. The same for a phrase whichever scheme its accounts use, and
  * re-derived on demand like every other key.
  */
-export function deriveProfileKeys(mnemonic: string): { owner: Keypair; secret: Uint8Array } {
+export function profileKeysFromRoot(root: Uint8Array): { owner: Keypair; secret: Uint8Array } {
   return {
-    owner: Keypair.fromSeed(keyAt(mnemonic, PROFILE_OWNER_PATH)),
-    secret: keyAt(mnemonic, PROFILE_SECRET_PATH),
+    owner: keypairAt(root, PROFILE_OWNER_PATH),
+    secret: keyAt(root, PROFILE_SECRET_PATH),
   };
+}
+
+/** `profileKeysFromRoot` for a mnemonic in hand. */
+export function deriveProfileKeys(mnemonic: string): { owner: Keypair; secret: Uint8Array } {
+  return withRoot(mnemonic, profileKeysFromRoot);
 }
 
 /**
@@ -91,8 +171,13 @@ export const REWARDS_KEY_PATH = "m/20056'/0'/0'";
  * member asks of the server. The same for a phrase whichever scheme its
  * accounts use, and re-derived on demand like every other key.
  */
+export function rewardsKeyFromRoot(root: Uint8Array): Keypair {
+  return keypairAt(root, REWARDS_KEY_PATH);
+}
+
+/** `rewardsKeyFromRoot` for a mnemonic in hand. */
 export function deriveRewardsKey(mnemonic: string): Keypair {
-  return Keypair.fromSeed(keyAt(mnemonic, REWARDS_KEY_PATH));
+  return withRoot(mnemonic, rewardsKeyFromRoot);
 }
 
 /** Both candidate keypairs for one index, one per known derivation scheme. Used only to resolve an import. */
@@ -100,10 +185,10 @@ export function deriveCandidateKeypairs(
   mnemonic: string,
   index: number,
 ): Record<DerivationScheme, Keypair> {
-  return {
-    app: deriveKeypair(mnemonic, index, "app"),
-    walletDefault: deriveKeypair(mnemonic, index, "walletDefault"),
-  };
+  return withRoot(mnemonic, (root) => ({
+    app: keypairFromRoot(root, index, "app"),
+    walletDefault: keypairFromRoot(root, index, "walletDefault"),
+  }));
 }
 
 /** What is wrong with a pasted recovery phrase, precisely enough to fix it. */
