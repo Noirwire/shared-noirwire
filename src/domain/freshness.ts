@@ -57,3 +57,48 @@ export function freshnessOf(read: ReadFreshness, now: number): Freshness {
   if (read.succeededAt === null) return "waiting";
   return now - read.succeededAt > STALE_AFTER_MS ? "stale" : "fresh";
 }
+
+/**
+ * How old a reading taken at `at` is, in milliseconds, or null when there
+ * is none. Never below zero: a reading stamped by a clock ahead of this one
+ * is as new as now.
+ */
+export function ageOf(at: number | null | undefined, now: number): number | null {
+  if (at === null || at === undefined || !Number.isFinite(at)) return null;
+  return Math.max(now - at, 0);
+}
+
+/** Whether a reading taken at `at` is older than `limitMs`. Having none counts as older. */
+export function olderThan(at: number | null | undefined, now: number, limitMs: number): boolean {
+  const age = ageOf(at, now);
+  return age === null || age > limitMs;
+}
+
+/** A market's mark, as an order may use it: how old it is, and whether the program would still take it. */
+export type MarkFreshness = {
+  /** Null when there is no mark. */
+  ageMs: number | null;
+  usable: boolean;
+};
+
+/**
+ * Whether an order may be placed against a mark taken at `markTime`: while
+ * it is no older than the market's own limit (`maxPriceAgeSeconds`, the
+ * age the program accepts), not a limit of this package's choosing. A limit
+ * that is not a number of seconds makes no mark usable. The age is given
+ * either way, so a screen can show it. Unlike the program, which refuses a
+ * mark stamped after its own clock, a mark stamped ahead of this device's
+ * clock counts here as new and usable: the two clocks are not the same one,
+ * and a device running behind the chain would otherwise refuse every fresh
+ * mark.
+ */
+export function markFreshness(
+  markTime: number | null | undefined,
+  now: number,
+  maxPriceAgeSeconds: number,
+): MarkFreshness {
+  return {
+    ageMs: ageOf(markTime, now),
+    usable: maxPriceAgeSeconds >= 0 && !olderThan(markTime, now, maxPriceAgeSeconds * 1000),
+  };
+}

@@ -6,7 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## [0.14.0] - 2026-10-20
 
-Security fixes from a review of what is checked before signing. A swap is held to the minimum its own route enforces on chain, a swap is never called failed while it can still land, Earn opens and pays for nothing but the portfolio's own account, the relayer's keys come from the build, and the page to return to after unlocking can no longer be another site.
+Security fixes from a review of what is checked before signing. A swap is held to the minimum its own route enforces on chain, a swap is never called failed while it can still land, Earn opens and pays for nothing but the portfolio's own account, the relayer's keys come from the build, and the page to return to after unlocking can no longer be another site. The order book's pure rules move in from the trading terminal.
 
 ### Breaking
 
@@ -25,6 +25,19 @@ For both apps:
 - **A quote is held to its guaranteed floor.** The ten percent check against the price index measures the price the order can fill at worst, not the one it is expected to fill at, and a quote with no live price is refused.
 - **The relayer's fee payers and payment wallet are pinned by the build**, not read from the server. A fee payer only the server names is not used, and a different payment wallet means no relayer.
 - **`safeDestination` refuses any control character, any whitespace, any backslash and any `.` or `..` segment**, plain or as `%2e`, as well as `//`. A browser's URL parser drops tab, CR and LF and resolves dot segments, which turned `/<tab>/evil.example` and `/.//evil.example` into another site.
+
+### Added
+
+The order book's pure rules, from `@noirwire/shared/domain`, for an app that carries the trading terminal. Nothing here signs, reads the chain or imports the order book's SDK: a market's settings are plain data (`OrderbookMarket`) the app reads and hands in.
+
+- **Amounts**: `toFixedPoint`, `readFixedPoint`, `fromFixedPoint`, `mulFixedPoint`, `divFixedPoint` and `FIXED_POINT_SCALE`. A decimal with a nonzero digit past the ninth place is refused, not cut.
+- **Checking an order**: `validateOrderbookOrder(input, market)` answers reason codes per field, and checks the minimum notional (size times price against `minNotional` in quote atoms) as well as the lot, the minimum number of lots and the tick. A notional under the minimum is `notionalBelowMinimum`, on the quantity.
+- **What an order costs**: `orderbookOrderCost` works notional, fee, margin, what it takes, what remains, the shortfall and the liquidation estimate from one margin at the leverage chosen, held between 1 and the market's maximum (`orderbookMaxLeverage`), as the program checks it. A perp order's margin is never less than the market's initial margin on its size at the `mark`, so a bid below the mark is not under-reserved. Fees round up to a whole quote atom, and a spot buy that can take (not `postOnly`) leaves one atom per fill of the exchange's `maxSteps` unlocked (`headroom`). `orderbookMaxSize` is the largest size `orderbookOrderCost` covers with the same inputs. `orderbookLiquidationPrice` is the one liquidation estimate, and `orderbookPositionEstimate` puts an open position through it, at the market's initial margin on its notional when its own is not known. `impliedOrderbookMargins(maxLeverage)` is for a source that publishes only a maximum leverage, and gives back that same leverage through `orderbookMaxLeverage`.
+- **Units**: `orderbookUnitsFromLotSize`, `orderbookUnitsFromChain`, `sizeToLots`, `lotsToSize`, `priceToChainAtoms`, `chainAtomsToPrice`, `quoteAtomsToAmount`, `amountToQuoteAtoms`, and `ORDERBOOK_QUOTE_DECIMALS`.
+- **Own fills**: `orderbookOwnFills(fills, secrets, receipt)` and `receiptTag`, with the program's receipt function passed in.
+- **Spot funding**: `needsSpotTransfer`.
+- **Formatting**: `orderbookDecimal` and `quoteAmount` write a decimal string from its digits, at fixed places, with the quote token named as data; `durationText`, `clockTime`, `eventTime` and `ageText`. Each answers null for a value it cannot read.
+- **A mark's age**: `markFreshness(markTime, now, maxPriceAgeSeconds)` says how old a mark is and whether an order may use it, against the market's own price age limit; `ageOf` and `olderThan` are the same reading for anything else.
 
 ### Changed
 
