@@ -4,6 +4,14 @@ All notable changes to this package are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The apps pin an exact tag; see [README.md](README.md#releasing) for how a tag becomes a release.
 
+## [0.13.1] - 2026-10-22
+
+A security fix: the page to return to after unlocking can no longer be another site.
+
+### Fixed
+
+- `safeDestination` reads the `next` path the way a browser's URL parser will. A tab, carriage return or line feed between the two slashes, other control characters, whitespace, and `.` or `..` segments (plain or `%2e`) no longer turn a same-site path into a link to another site; any of them sends the user to `/portfolio` instead.
+
 ## [0.13.0] - 2026-10-11
 
 Rewards are in the Insider Preview. No points are handed out; a member's trade fees are recorded and count when Season 1 opens. Joining, the number, the invite and the boost are as before, and a member is called an insider.
