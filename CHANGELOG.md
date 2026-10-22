@@ -4,6 +4,55 @@ All notable changes to this package are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The apps pin an exact tag; see [README.md](README.md#releasing) for how a tag becomes a release.
 
+## [0.14.0] - 2026-10-20
+
+Security fixes from a review of what is checked before signing. A swap is held to the minimum its own route enforces on chain, a swap is never called failed while it can still land, Earn opens and pays for nothing but the portfolio's own account, the relayer's keys and the fee account come from the build, an unlocked wallet no longer holds its phrase, and the page to return to after unlocking can no longer be another site. The order book's pure rules move in from the trading terminal.
+
+### Breaking
+
+For both apps:
+
+- [ ] **The relayer's keys**: pass `relayerFeePayers` (comma-separated) and `relayerPaymentWallet` to `envFrom`, from build-time settings, per network: the same addresses the server's `KORA_FEE_PAYERS` and `KORA_PAYMENT_WALLET` hold. Without them no relayer is used, and a network cost is met another way. `Env.relayer` holds them for a platform built by hand.
+- [ ] **No unchecked price**: `priceUnchecked` is gone from the trade review and `someUnchecked` from the pie review. Stop drawing them. A quote with no live price to hold it against is not offered at all: `quoteTrade` answers it as `noPrice`, as for any quote that cannot be had.
+- [ ] **Fewer routes**: an order Jupiter routes through DFlow, OKX or one of its own first-generation or exact-out route instructions is refused before signing, with a reason to get a new quote. In a sample of sixteen live buys with NoirWire's fee, fifteen went through Jupiter's own `route_v2` and one through OKX. To keep that rare, every order now asks Jupiter to leave out the DFlow and OKX routes (`excludeRouters` is `dflow,okx`). This needs the API release that accepts `excludeRouters` on the order route, which refuses any other value: deploy the API first, then the apps. Watch for refused routes after the update; see the first note under Security.
+- [ ] **No phrase in memory**: `getPhrase` is gone from `@noirwire/shared/wallet`, because an unlocked wallet no longer holds its phrase. Ask `isUnlocked()` whether it is unlocked. Where the phrase itself is needed, to show it or to check a stored record round trip, read it with `verifyPassword(password)`, which returns it from the stored record.
+
+### Security
+
+- **The swap's own on-chain minimum is read and held to the quote.** Every instruction of a swap venue's program is decoded from the program's published IDL. A swap order must carry exactly one: two are refused, since each could meet the floor on its own, and so is a transaction with none, such as one that only pays a fee, since nothing on chain would then hold it to its floor. The route must spend from the taker's own input account and no more than the quote's input, it must pay only into the taker's own output account, and the minimum the program enforces on chain must be no lower than the quote's floor. Both of the taker's accounts must be among the transaction's own keys, not loaded from a lookup table, which is read from the same server that built the order. Readable are Jupiter's `route_v2` and `shared_accounts_route_v2` and its RFQ engine's `fill`; every other instruction of those programs, and every DFlow and OKX instruction, is refused. In Jupiter's other routes and DFlow's the minimum follows a route plan of variable length that the program reads from the front, so its last bytes can say anything; OKX's published IDL is not known to match its deployed program. The simulation stays as the second line.
+- **A swap is never reported failed while its signed transaction can still land.** Its expiry is the newest blockhash's last valid height, read from the chain before it is handed over and written into the reservation before it is sent, never the height the venue's order states. A trade the chain cannot give that height for is not signed.
+- **Earn opens nothing for anyone else.** A self-paid deposit or withdrawal may open only the portfolio's own receipt or USDC account (`BalanceLimits.creates`), and may spend only the network fee, plus what opening that account costs when it is missing.
+- **What arrives must arrive in the right hands.** The check before signing holds the cash, spent and received accounts to their owners after the transaction, including one the transaction creates: the sender, or for a send the recipient (`BalanceLimits.receive.owner`).
+- **A quote is held to its guaranteed floor.** The ten percent check against the price index measures the price the order can fill at worst, not the one it is expected to fill at, and a quote with no live price is refused.
+- **The relayer's fee payers and payment wallet are pinned by the build**, not read from the server. A fee payer only the server names is not used, and a different payment wallet means no relayer.
+- **NoirWire's fee is paid only into the referral token account derived for its mint.** The fee transfer on a market-maker order must pay the referral account's associated token account for the transfer's own mint, which is how Jupiter's referral program opens it (`initializeReferralTokenAccountV2`). The address follows from the referral account the build pins and the mint, so the server's answer about the account is no longer read: before, a server faking that read could have a stranger's account pass as NoirWire's. The live USDC and wrapped SOL fee accounts are both of this form.
+- **An unlocked wallet holds a 64-byte key root, not its phrase.** The phrase is turned at unlock into SLIP-0010's master node for its seed, every key is derived from that over bytes, and the root is zeroed when the wallet locks, resets, idles out or is unlocked again. Intermediate derivation nodes, derived key bytes and the secret key copy `signMessage` signs with are zeroed after use. A routine write seals the phrase read from the stored record. JavaScript cannot guarantee that a secret is erased; `docs/architecture.md` says what this does and does not cover.
+- **`safeDestination` refuses any control character, any whitespace, any backslash and any `.` or `..` segment**, plain or as `%2e`, as well as `//`. A browser's URL parser drops tab, CR and LF and resolves dot segments, which turned `/<tab>/evil.example` and `/.//evil.example` into another site.
+
+### Added
+
+The order book's pure rules, from `@noirwire/shared/domain`, for an app that carries the trading terminal. Nothing here signs, reads the chain or imports the order book's SDK: a market's settings are plain data (`OrderbookMarket`) the app reads and hands in.
+
+- **Amounts**: `toFixedPoint`, `readFixedPoint`, `fromFixedPoint`, `mulFixedPoint`, `divFixedPoint` and `FIXED_POINT_SCALE`. A decimal with a nonzero digit past the ninth place is refused, not cut.
+- **Checking an order**: `validateOrderbookOrder(input, market)` answers reason codes per field, and checks the minimum notional (size times price against `minNotional` in quote atoms) as well as the lot, the minimum number of lots and the tick. A notional under the minimum is `notionalBelowMinimum`, on the quantity.
+- **What an order costs**: `orderbookOrderCost` works notional, fee, margin, what it takes, what remains, the shortfall and the liquidation estimate from one margin at the leverage chosen, held between 1 and the market's maximum (`orderbookMaxLeverage`), as the program checks it. A perp order's margin is never less than the market's initial margin on its size at the `mark`, so a bid below the mark is not under-reserved. Fees round up to a whole quote atom, and a spot buy that can take (not `postOnly`) leaves one atom per fill of the exchange's `maxSteps` unlocked (`headroom`). `orderbookMaxSize` is the largest size `orderbookOrderCost` covers with the same inputs. `orderbookLiquidationPrice` is the one liquidation estimate, and `orderbookPositionEstimate` puts an open position through it, at the market's initial margin on its notional when its own is not known. `impliedOrderbookMargins(maxLeverage)` is for a source that publishes only a maximum leverage, and gives back that same leverage through `orderbookMaxLeverage`.
+- **Units**: `orderbookUnitsFromLotSize`, `orderbookUnitsFromChain`, `sizeToLots`, `lotsToSize`, `priceToChainAtoms`, `chainAtomsToPrice`, `quoteAtomsToAmount`, `amountToQuoteAtoms`, and `ORDERBOOK_QUOTE_DECIMALS`.
+- **Own fills**: `orderbookOwnFills(fills, secrets, receipt)` and `receiptTag`, with the program's receipt function passed in.
+- **Spot funding**: `needsSpotTransfer`.
+- **Formatting**: `orderbookDecimal` and `quoteAmount` write a decimal string from its digits, at fixed places, with the quote token named as data; `durationText`, `clockTime`, `eventTime` and `ageText`. Each answers null for a value it cannot read.
+- **A mark's age**: `markFreshness(markTime, now, maxPriceAgeSeconds)` says how old a mark is and whether an order may use it, against the market's own price age limit; `ageOf` and `olderThan` are the same reading for anything else.
+
+### Changed
+
+- `checkQuotedPrice` throws when there is no market price and returns nothing otherwise. `TradePlan.priceChecked` and `PricedOrder.priceChecked` are gone.
+- `BuiltSwap.lastValidBlockHeight` is gone: no swap expiry is taken from the venue.
+- `checkSwapPrograms` reads nothing from the chain beyond the transaction's lookup tables, and `verifySwapBeforeSigning` no longer reads the fee account with the balances.
+- `deriveKeypair`, `deriveProfileKeys`, `deriveRewardsKey` and `deriveCandidateKeypairs` still take a phrase and derive the same keys as before; they now go through the same key root the unlocked wallet holds.
+
+### Documentation
+
+- `docs/architecture.md` lists, as accepted risk, what still rests on the one server: the simulation and the reads behind it, the mint profile and the price index. The recommended next step is a second forwarding path at the web app's own edge, to an RPC provider the API server does not operate, for every read the checks make and the simulation together. It is not built.
+
 ## [0.13.0] - 2026-10-11
 
 Rewards are in the Insider Preview. No points are handed out; a member's trade fees are recorded and count when Season 1 opens. Joining, the number, the invite and the boost are as before, and a member is called an insider.

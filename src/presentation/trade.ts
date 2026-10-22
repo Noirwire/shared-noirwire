@@ -136,7 +136,6 @@ type TradeReviewView = {
   lead: string;
   terms: readonly { label: string; value: string }[];
   stopsBelowMinimum: string;
-  priceUnchecked: string | null;
   fees: { title: string; body: string; noFundingFee: string };
   networkCost: NetworkCostView;
   notFirm: string | null;
@@ -242,7 +241,6 @@ export function tradeReviewView(state: TradeReviewState): TradeReviewView {
       },
     ],
     stopsBelowMinimum: copy.stopsBelowMinimum,
-    priceUnchecked: order.priceChecked ? null : copy.priceUnchecked,
     fees: {
       title: copy.feesTitle,
       body: feeExplanation(order, state.lamports),

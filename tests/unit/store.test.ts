@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { deriveKeypair } from "../../src/infrastructure/solana/keys.js";
+import {
+  deriveKeypair,
+  deriveProfileKeys,
+  deriveRewardsKey,
+  keyRootOf,
+} from "../../src/infrastructure/solana/keys.js";
 import { isEnvelope, newVaultKey, open, seal, vaultKeyFor } from "../../src/wallet/keystore.js";
 import { type Wallet } from "../../src/domain/wallet.js";
 import {
@@ -24,6 +29,7 @@ import {
 
 const PASSWORD = "orbit-cactus-lamp-velvet-quarry";
 const MNEMONIC = FIXTURE_PHRASE.join(" ");
+const ROOT = keyRootOf(MNEMONIC);
 const addressAt = (index: number) => deriveKeypair(MNEMONIC, index, "app").publicKey.toBase58();
 
 function makeWallet(): Wallet {
@@ -146,9 +152,9 @@ describe("the wallet store", () => {
 
       const reloaded = await tab();
       expect(await reloaded.unlock("not-the-password")).toMatch(/does not match/);
-      expect(reloaded.getPhrase()).toBeNull();
+      expect(reloaded.getKeyRoot()).toBeNull();
       expect(await reloaded.unlock(PASSWORD)).toBeNull();
-      expect(reloaded.getPhrase()).toEqual(FIXTURE_PHRASE);
+      expect(reloaded.getKeyRoot()).toEqual(ROOT);
 
       const rounds = derived.mock.calls.map(
         ([algorithm]) => (algorithm as Pbkdf2Params).iterations,
@@ -281,7 +287,7 @@ describe("the wallet store", () => {
       expect(await presence(store)).toBe(true);
       expect(store.getSnapshot()).toBeNull();
       expect(store.isUnlocked()).toBe(false);
-      expect(store.getPhrase()).toBeNull();
+      expect(store.getKeyRoot()).toBeNull();
       expect(await store.updateWallet(rename("ignored"))).toBe(false);
     });
 
@@ -295,7 +301,7 @@ describe("the wallet store", () => {
 
       expect(await store.unlock(PASSWORD)).toBeNull();
       expect(store.getSnapshot()?.funding.address).toBe(addressAt(0));
-      expect(store.getPhrase()).toEqual(FIXTURE_PHRASE);
+      expect(store.getKeyRoot()).toEqual(ROOT);
     });
 
     it("unlocks with NoirWire out of reach, and asks nothing of the network to do it", async () => {
@@ -321,8 +327,24 @@ describe("the wallet store", () => {
       await store.storeNewWallet(makeWallet(), FIXTURE_PHRASE, PASSWORD);
       store.lock();
       expect(store.getSnapshot()).toBeNull();
-      expect(store.getPhrase()).toBeNull();
+      expect(store.getKeyRoot()).toBeNull();
       expect(await presence(store)).toBe(true);
+    });
+
+    it("holds the key root in memory and not the phrase, and zeroes the root when it locks or resets", async () => {
+      const store = await tab();
+      await store.storeNewWallet(makeWallet(), FIXTURE_PHRASE, PASSWORD);
+      const held = store.getKeyRoot()!;
+      expect(held).toEqual(ROOT);
+      expect(store).not.toHaveProperty("getPhrase");
+      store.lock();
+      expect(held.every((byte) => byte === 0)).toBe(true);
+
+      expect(await store.unlock(PASSWORD)).toBeNull();
+      const again = store.getKeyRoot()!;
+      expect(again).toEqual(ROOT);
+      expect(await store.resetWallet()).toEqual({ ok: true });
+      expect(again.every((byte) => byte === 0)).toBe(true);
     });
   });
 
@@ -503,7 +525,7 @@ describe("the wallet store", () => {
       const { vault, ...wallet } = before;
       expect(vault).toBeDefined();
       expect(store.getSnapshot()).toEqual(fromStored(wallet));
-      expect(store.getPhrase()).toEqual(FIXTURE_PHRASE);
+      expect(store.getKeyRoot()).toEqual(ROOT);
       expect(await decryptStored(window, FIXTURE_PASSWORD)).toEqual({
         rev: 1,
         phrase: FIXTURE_PHRASE,
@@ -558,7 +580,7 @@ describe("the wallet store", () => {
       expect(await store.unlock(PASSWORD)).toMatch(/do not match its recovery phrase/);
       expect(store.isUnlocked()).toBe(false);
       expect(store.getSnapshot()).toBeNull();
-      expect(store.getPhrase()).toBeNull();
+      expect(store.getKeyRoot()).toBeNull();
     });
 
     it("refuses a record whose stored funding address is not the derived one", async () => {
@@ -616,7 +638,7 @@ describe("the wallet store", () => {
       expect(await pending).toMatch(/locked or changed/);
       expect(store.isUnlocked()).toBe(false);
       expect(store.getSnapshot()).toBeNull();
-      expect(store.getPhrase()).toBeNull();
+      expect(store.getKeyRoot()).toBeNull();
     });
 
     it("is discarded when the wallet was reset while the key was derived", async () => {
@@ -674,7 +696,7 @@ describe("the wallet store", () => {
       first.lock();
       expect(first.isUnlocked()).toBe(false);
       await vi.waitFor(() => expect(second.isUnlocked()).toBe(false));
-      expect(second.getPhrase()).toBeNull();
+      expect(second.getKeyRoot()).toBeNull();
       expect(second.getSnapshot()).toBeNull();
       expect(window.localStorage.getItem(LOCK_SIGNAL_KEY)).toMatch(/^\d+$/);
       // The wallet is still there, and opens again in either tab.
@@ -912,6 +934,8 @@ describe("the wallet store", () => {
         addressAt(1),
       );
       expect(session.keyAt(4)?.publicKey.toBase58()).toBe(addressAt(4));
+      expect(session.rewardsKey()?.secretKey).toEqual(deriveRewardsKey(MNEMONIC).secretKey);
+      expect(session.profileKeys()?.secret).toEqual(deriveProfileKeys(MNEMONIC).secret);
       expect(session.live()).toBe(true);
     });
 
@@ -1116,7 +1140,7 @@ describe("the wallet store", () => {
       });
       await vi.waitFor(() => expect(second.isUnlocked()).toBe(false));
       expect(second.getSnapshot()).toBeNull();
-      expect(second.getPhrase()).toBeNull();
+      expect(second.getKeyRoot()).toBeNull();
       expect(first.isUnlocked()).toBe(true);
     });
 
@@ -1251,7 +1275,7 @@ describe("the wallet store", () => {
       vi.setSystemTime(unlockedAt + 10 * 60 * 1000);
       window.activity.fire();
       vi.setSystemTime(unlockedAt + 20 * 60 * 1000);
-      expect(store.getPhrase()).toEqual(FIXTURE_PHRASE);
+      expect(store.getKeyRoot()).toEqual(ROOT);
 
       vi.setSystemTime(unlockedAt + 36 * 60 * 1000);
       window.activity.fire();
@@ -1280,12 +1304,12 @@ describe("the wallet store", () => {
       // Only the clock moves, as it does across system sleep: no timer fires.
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(unlockedAt + 14 * 60 * 1000);
-      expect(store.getPhrase()).toEqual(FIXTURE_PHRASE);
+      expect(store.getKeyRoot()).toEqual(ROOT);
       expect(store.isUnlocked()).toBe(true);
 
       vi.setSystemTime(unlockedAt + 16 * 60 * 1000);
       expect(store.isUnlocked()).toBe(true);
-      expect(store.getPhrase()).toBeNull();
+      expect(store.getKeyRoot()).toBeNull();
       expect(store.isUnlocked()).toBe(false);
       expect(store.getSnapshot()).toBeNull();
     });

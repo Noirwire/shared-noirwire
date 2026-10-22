@@ -1,17 +1,17 @@
 import type { Keypair } from "@solana/web3.js";
 import type { Session } from "../application/ports.js";
 import {
-  deriveKeypair,
-  deriveProfileKeys,
-  deriveRewardsKey,
   FUNDING_DERIVATION_INDEX,
+  keypairFromRoot,
+  profileKeysFromRoot,
+  rewardsKeyFromRoot,
 } from "../infrastructure/solana/keys.js";
-import { getPhrase, getSnapshot, sessionGeneration, unlockedSince } from "./store.js";
+import { getKeyRoot, getSnapshot, sessionGeneration, unlockedSince } from "./store.js";
 
 /**
  * The current wallet plus its signers, or why nothing can be signed. Every
- * signing path starts here, because the wallet object never carries the
- * phrase: it only exists in memory while unlocked.
+ * signing path starts here, because the wallet object never carries key
+ * material: it only exists in memory while unlocked.
  *
  * A session does not outlive the unlock it was taken under. An action can
  * spend a long time on the network between taking a session and signing, and
@@ -20,15 +20,25 @@ import { getPhrase, getSnapshot, sessionGeneration, unlockedSince } from "./stor
  * the moment it is called and hands out nothing once that has happened. A key
  * already handed out is covered by `live`: every signing function takes it
  * and asks it again immediately before the key touches a transaction.
+ *
+ * The bytes keys are derived from are asked for again at each derivation,
+ * never kept here, since the store zeroes them when it locks.
  */
 export function unlockedSession(): Session<Keypair> | { refused: "walletLocked" } {
   // Asked for first: this is where a wallet left idle past its window locks.
-  const phrase = getPhrase();
+  if (!getKeyRoot()) return { refused: "walletLocked" };
   const wallet = getSnapshot();
-  if (!phrase || !wallet) return { refused: "walletLocked" };
+  if (!wallet) return { refused: "walletLocked" };
   const since = sessionGeneration();
-  const mnemonic = phrase.join(" ");
   const live = () => unlockedSince(since);
+
+  /** Runs `derive` over the key root while this session is still the live one. */
+  const fromRoot = <T>(derive: (root: Uint8Array) => T): T | null => {
+    const root = live() ? getKeyRoot() : null;
+    return root ? derive(root) : null;
+  };
+  const keyAt = (index: number) =>
+    fromRoot((root) => keypairFromRoot(root, index, wallet.derivationScheme));
 
   /**
    * Derives a signing key and proves it is the key for the address on
@@ -36,19 +46,18 @@ export function unlockedSession(): Session<Keypair> | { refused: "walletLocked" 
    * looking at.
    */
   const signerFor = (index: number, expectedAddress: string) => {
-    if (!live()) return null;
-    const keypair = deriveKeypair(mnemonic, index, wallet.derivationScheme);
-    return keypair.publicKey.toBase58() === expectedAddress ? keypair : null;
+    const keypair = keyAt(index);
+    return keypair?.publicKey.toBase58() === expectedAddress ? keypair : null;
   };
 
   return {
     wallet,
     live,
-    keyAt: (index) => (live() ? deriveKeypair(mnemonic, index, wallet.derivationScheme) : null),
+    keyAt,
     fundingSigner: () => signerFor(FUNDING_DERIVATION_INDEX, wallet.funding.address),
     portfolioSigner: (portfolio) => signerFor(portfolio.derivationIndex, portfolio.address),
-    profileKeys: () => (live() ? deriveProfileKeys(mnemonic) : null),
-    rewardsKey: () => (live() ? deriveRewardsKey(mnemonic) : null),
+    profileKeys: () => fromRoot(profileKeysFromRoot),
+    rewardsKey: () => fromRoot(rewardsKeyFromRoot),
     refusal: () => (live() ? "keyMismatch" : "walletLocked"),
   };
 }

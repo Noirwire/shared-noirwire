@@ -17,8 +17,6 @@ export type PricedOrder = OrderTerms & {
   /** Dollars per raw stock token in this quote. */
   unitPrice: number;
   venue: string;
-  /** Whether the quote's price was held against this site's price index. */
-  priceChecked: boolean;
 };
 
 /** The cash side of an order: what a buy spends, or what a sell returns. */

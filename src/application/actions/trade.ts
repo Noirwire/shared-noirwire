@@ -128,7 +128,7 @@ export async function quoteTrade<K extends Signer, P extends TradeOrder>(
   try {
     // Dollars per raw token from this site's own price feed, multiplier
     // included, for the quote to be held against. Zero means there is no
-    // live price right now.
+    // live price right now, and then no quote is offered.
     const marketPrice = deps.prices.price(symbol) || undefined;
     const order = { owner, side, symbol, amount, marketPrice };
     // Jupiter prices nothing for a portfolio that cannot pay an order's

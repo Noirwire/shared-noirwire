@@ -16,14 +16,75 @@ export {
 } from "./format.js";
 export {
   type Freshness,
+  type MarkFreshness,
   NEVER_READ,
   REFRESH_INTERVAL_MS,
   type ReadFreshness,
   STALE_AFTER_MS,
+  ageOf,
   freshnessOf,
   hasLoaded,
+  markFreshness,
+  olderThan,
   recordRead,
 } from "./freshness.js";
+export {
+  type OrderbookFunds,
+  type OrderbookOrderCost,
+  type OrderbookOrderType,
+  type OrderbookPositionEstimate,
+  type OrderbookShortfall,
+  orderbookLiquidationPrice,
+  orderbookMaxSize,
+  orderbookOrderCost,
+  orderbookPositionEstimate,
+} from "./orderbook/cost.js";
+export {
+  FIXED_POINT_SCALE,
+  divFixedPoint,
+  fromFixedPoint,
+  mulFixedPoint,
+  readFixedPoint,
+  toFixedPoint,
+} from "./orderbook/decimal.js";
+export {
+  ageText,
+  clockTime,
+  durationText,
+  eventTime,
+  orderbookDecimal,
+  quoteAmount,
+} from "./orderbook/format.js";
+export {
+  type OrderbookMarket,
+  impliedOrderbookMargins,
+  orderbookMaxLeverage,
+} from "./orderbook/market.js";
+export {
+  type OrderbookOwnFill,
+  type OrderbookReceipt,
+  type OrderbookTapeFill,
+  orderbookOwnFills,
+  receiptTag,
+} from "./orderbook/ownFills.js";
+export { needsSpotTransfer } from "./orderbook/spotTransfer.js";
+export {
+  ORDERBOOK_QUOTE_DECIMALS,
+  type OrderbookUnits,
+  amountToQuoteAtoms,
+  chainAtomsToPrice,
+  lotsToSize,
+  orderbookUnitsFromChain,
+  orderbookUnitsFromLotSize,
+  priceToChainAtoms,
+  quoteAtomsToAmount,
+  sizeToLots,
+} from "./orderbook/units.js";
+export {
+  type OrderbookOrderError,
+  type OrderbookOrderValidation,
+  validateOrderbookOrder,
+} from "./orderbook/validation.js";
 export {
   DISCOVERY_GAP,
   EXTENDED_DISCOVERY_GAP,

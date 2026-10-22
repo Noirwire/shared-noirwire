@@ -29,6 +29,7 @@ import {
   fakeApi,
   installTestPlatform,
   memoryPlatform,
+  testEnv,
   unsignedTransaction,
   type ApiCall,
   type FakeApi,
@@ -226,6 +227,10 @@ const PINS = {
   paymentWallet: PAYMENT_WALLET.toBase58(),
   accountCreation: true,
 };
+/** A platform whose build pins the relayer's keys: `PINS` unless others are given. */
+const pinnedTo = (relayer: { feePayers: string[]; paymentWallet: string } = PINS) => ({
+  env: testEnv({ relayer: { feePayers: relayer.feePayers, paymentWallet: relayer.paymentWallet } }),
+});
 const QUOTE = { raw: { requestId: "request-1", lastValidBlockHeight: 1_000 } } as SwapQuote;
 const ORDER = {
   inputMint: Keypair.generate().publicKey,
@@ -311,7 +316,7 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
   beforeEach(() => {
     now += 60 * 60_000;
     vi.useFakeTimers({ now });
-    installTestPlatform();
+    installTestPlatform(pinnedTo());
     resetRelayerPins();
   });
 
@@ -397,7 +402,7 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
       });
 
       // The real session, so its own two requests are among those checked.
-      installPlatform(memoryPlatform());
+      installPlatform(memoryPlatform(pinnedTo()));
       keepSessionWith(null);
       await dropSession();
       const { authorizedFetch } = await import("../../src/infrastructure/apiSession.js");
@@ -425,7 +430,7 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
           connection.simulateTransaction(signed(), { sigVerify: false }),
           jupiterLend.rate(),
           jupiterVenue(owner).quote(ORDER),
-          executeJupiterSwap(QUOTE, signed()),
+          executeJupiterSwap(QUOTE, signed(), 1_000),
           submitTransfer({ transactionBase64: "AQID", sendTo: "base", cluster: "devnet" }, null),
           nudgeSettlement(Keypair.generate().publicKey),
           (async () => {
@@ -657,6 +662,8 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
       const example = (template: string, method: string) =>
         documented(template, method).find((answer) => answer.status === 200)!.body;
       const session = example("/v1/session", "post") as { accessToken: string; expiresAt: number };
+      const keys = example("/v1/relayer", "get") as { feePayers: string[]; paymentWallet: string };
+      installTestPlatform(pinnedTo(keys));
       api = fakeApi({
         "POST /v1/session": () => session,
         "/v1/history/*": () => answering(200, example("/v1/history/{symbol}/{range}", "get")),
@@ -670,7 +677,6 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
       const points = (example("/v1/history/{symbol}/{range}", "get") as { points: number[] })
         .points;
       expect(await priceHistory("EXAMPLE", "1M")).toEqual(points);
-      const keys = example("/v1/relayer", "get") as { feePayers: string[]; paymentWallet: string };
       const pins = await relayerPins();
       expect(pins?.feePayers.map((key) => key.toBase58())).toEqual(keys.feePayers);
       expect(pins?.paymentWallet.toBase58()).toBe(keys.paymentWallet);
@@ -726,11 +732,14 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
     it.each(spec ? documented("/v1/relayer", "get") : [])(
       "the relayer's keys: $status is keys or no relayer, never an error",
       async ({ status, body }) => {
+        const available = status === 200 && (body as { available: boolean }).available;
+        if (available) {
+          installTestPlatform(pinnedTo(body as { feePayers: string[]; paymentWallet: string }));
+        }
         api = fakeApi({ "/v1/relayer": () => answering(status, body) });
         const outcome = await ended(relayerPins());
         expect(outcome).toHaveProperty("value");
         const pins = (outcome as { value: Awaited<ReturnType<typeof relayerPins>> }).value;
-        const available = status === 200 && (body as { available: boolean }).available;
         if (available) {
           expect(pins?.feePayers.map((key) => key.toBase58())).toEqual(
             (body as { feePayers: string[] }).feePayers,
@@ -805,7 +814,7 @@ describe.skipIf(!spec)("the server's OpenAPI file (NOIRWIRE_OPENAPI)", () => {
         errors: () => errorsOf("/v1/jupiter/{path}", "post"),
         route: "POST /v1/jupiter/swap/v2/execute",
         path: "/v1/jupiter/swap/v2/execute",
-        run: () => executeJupiterSwap(QUOTE, signed()),
+        run: () => executeJupiterSwap(QUOTE, signed(), 1_000),
       },
       {
         name: "a private transfer handed to the service",

@@ -169,7 +169,6 @@ export type PieReviewView = {
   totals: readonly { label: string; value: string }[];
   smallOrders: string | null;
   sequence: string;
-  someUnchecked: string | null;
   networkCostLine: string;
   networkCost: NetworkCostView;
   /** The trackers a buy has to say what they are, or null for sales. */
@@ -236,7 +235,6 @@ export function pieReviewView(state: PieReviewState): PieReviewView {
         ? copy.firmUntil(new Date(Math.min(...expiries)).toLocaleTimeString())
         : ""
     }`,
-    someUnchecked: orders.some((order) => !order.priceChecked) ? copy.someUnchecked : null,
     networkCostLine: networkCostCopy.line(networkCost.value),
     networkCost,
     trackers: buying ? orders.map((order) => order.symbol) : null,

@@ -29,7 +29,6 @@ function plan(over: Partial<Plan> = {}, quote: Partial<Plan["quote"]> = {}): Pla
     receiveAtLeast: 1.9,
     unitPrice: 10,
     venue: "Jupiter",
-    priceChecked: true,
     built: true,
     ...over,
     quote: { feeBps: 50, gasless: true, ...quote },

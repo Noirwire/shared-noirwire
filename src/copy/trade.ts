@@ -54,8 +54,6 @@ export const tradeCopy = {
   feeTotal: (percent: string, dollars: string) => `${percent}% total · about ${dollars}`,
   percent: (percent: string) => `${percent}%`,
   stopsBelowMinimum: "If this order would deliver less than the minimum, we will stop it.",
-  priceUnchecked:
-    "No live price was available to compare this quote against. Check the price per token above before you confirm.",
   feesTitle: "Fees and price difference",
   feeUnverified:
     "The fee for this quote could not be verified. Get another price before confirming.",

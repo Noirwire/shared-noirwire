@@ -14,6 +14,7 @@ import { connection } from "./client.js";
 import { apiUrl } from "../api.js";
 import { apiErrorOf, authorizedFetch } from "../apiSession.js";
 import { readFetch } from "../readFetch.js";
+import { getPlatform } from "../../platform.js";
 import { usdcMint, usdcMintKey } from "./config.js";
 import { type BalanceLimits, verifyBalancesBeforeSigning } from "./presign-guard.js";
 import {
@@ -39,8 +40,8 @@ import { ataFor } from "./tokens.js";
  * The app builds the whole transaction. The relayer never alters it:
  * NoirWire's server prices it, and then the relayer adds the fee payer's
  * signature to exactly the bytes the portfolio signed. Both go through the
- * server's relayer route, which holds the relayer's credentials and pins its
- * keys.
+ * server's relayer route, which holds the relayer's credentials. The keys
+ * themselves are pinned by the app's build, not taken from the server.
  *
  * The portfolio signs a transaction whose fee payer it does not control, so
  * before it does, the transaction is read back from its bytes
@@ -105,6 +106,8 @@ const PINS_TTL_MS = 60_000;
 let pinsCache: { at: number; pins: Promise<RelayerPins | null> } | null = null;
 
 async function fetchPins(): Promise<RelayerPins | null> {
+  const pinned = getPlatform().env.relayer;
+  if (!pinned) return null;
   const response = await readFetch(apiUrl("relayer"));
   const payload = (await response.json()) as {
     available?: boolean;
@@ -112,20 +115,30 @@ async function fetchPins(): Promise<RelayerPins | null> {
     paymentWallet?: string;
     accountCreation?: boolean;
   };
-  if (!response.ok || !payload.available || !payload.feePayers?.length || !payload.paymentWallet) {
+  const feePayers = (payload.feePayers ?? []).filter((key) => pinned.feePayers.includes(key));
+  if (
+    !response.ok ||
+    !payload.available ||
+    feePayers.length === 0 ||
+    payload.paymentWallet !== pinned.paymentWallet
+  ) {
     return null;
   }
   return {
-    feePayers: payload.feePayers.map((key) => new PublicKey(key)),
-    paymentWallet: new PublicKey(payload.paymentWallet),
+    feePayers: feePayers.map((key) => new PublicKey(key)),
+    paymentWallet: new PublicKey(pinned.paymentWallet),
     accountCreation: payload.accountCreation === true,
   };
 }
 
 /**
- * The relayer's pinned keys, or null when this site runs none. Asked of this
- * site's server, never of the relayer, and kept for a minute. A failed read
- * is not kept, and counts as no relayer.
+ * The relayer's keys, or null when this site runs none. The keys themselves
+ * are the build's (`Env.relayer`); this site's server, never the relayer, is
+ * asked only which of them are up and whether the relayer opens accounts,
+ * and its answer is kept for a minute. A server that names another fee payer
+ * or payment wallet is not followed: a fee payer only it names is left out,
+ * and a different payment wallet means no relayer. A failed read is not
+ * kept, and counts as no relayer, as does a build that pins none.
  */
 export function relayerPins(): Promise<RelayerPins | null> {
   if (pinsCache && Date.now() - pinsCache.at < PINS_TTL_MS) return pinsCache.pins;

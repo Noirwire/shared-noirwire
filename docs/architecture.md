@@ -56,6 +56,7 @@ interface Env {
   feeBps: number;
   apiBaseUrl: string;
   sessionMaxAgeMs?: number;
+  relayer?: { feePayers: string[]; paymentWallet: string };
   rpcUrl?: string;
 }
 interface SessionStore {
@@ -83,7 +84,7 @@ interface Platform {
 - **`vault`** is asynchronous and fallible: every call reports failure rather than throwing. `update` is an atomic read-modify-write that runs under the platform lock for its key, so nothing from this tab, another tab or another process comes between its read and its write. `subscribe` hears of every persisted change, including ones made elsewhere. Whether a value is sealed is the app's business.
 - **`track`** takes only events and values from the closed list in `src/domain/usageEvents.ts`. Every property is a string from a closed union or a number, so an address cannot be passed by accident: it does not type-check.
 - **`locks`** serialises across tabs on the web; `inProcessLocks()` is enough on mobile.
-- **`env`** is read when a value is asked for, never when a module loads, so the package can be imported before the platform is installed. `envFrom()` in `@noirwire/shared/infrastructure` builds one from settings kept as text (build-time variables) and refuses a fee with nowhere to go, and a server address it would not send to.
+- **`env`** is read when a value is asked for, never when a module loads, so the package can be imported before the platform is installed. `envFrom()` in `@noirwire/shared/infrastructure` builds one from settings kept as text (build-time variables) and refuses a fee with nowhere to go, a server address it would not send to, and relayer keys that are not both there or not addresses. `relayer` pins the relayer's fee payers and payment wallet for the build's network; without it no relayer is used.
 - **`sessionStore`** keeps one small JSON value in plain app storage: the anonymous session below. A call that throws is taken as nothing stored, and the session is then held in memory only.
 - **`activity`** reports input and a return to the app. The idle lock counts from it: either one inside the window restarts it, either one past it locks.
 
@@ -131,6 +132,26 @@ Every request this package makes goes to NoirWire's own server, at the one place
 | `health`          | `/health`                    | `GET`. Takes no session.                       |
 
 `apiBaseUrl` is an origin with no path on the phone (`https://api.noirwire.com`). On the web it may be a path on the page's own origin (`/api`): the web app's host forwards `/api/*` to the server, so the page's content security policy can stay at `connect-src 'self'`. `envFrom` holds either to its rules at boot: https, or http to `localhost`, `127.0.0.1` or `10.0.2.2` in a development build only; nothing after the host; and a path only when `platform` is `"web"`, starting with one slash and carrying no query. `rpcUrl` names an RPC provider directly, with no session, for a server or a test that has no visitor behind it.
+
+**What one server means for the checks before signing.** The same server hands over the transaction to sign (a swap order, an Earn deposit, a private transfer) and answers every chain read the checks make: the balances before, the simulation, lookup tables, mint profiles. It also serves the price index a quote is held against. A server that lied about all of these at once could make a hostile transaction look right to every check that reads them. What holds against it, because it reads only the transaction's own bytes or the build:
+
+- the program allowlists, the exact shapes each allowed token and account instruction must have, and the refusal of a durable nonce;
+- what a swap's route instruction commits to on chain (`src/infrastructure/solana/swap/routes.ts`): the taker's account it spends from and an input no larger than the quote's, the taker's account it pays into, and a minimum no lower than the quote's. Those two accounts must be named among the transaction's own keys: an account loaded from a lookup table is refused, because the table is read from the same server. A swap order carries exactly one route: never two that could each meet the floor, and never none, which would leave nothing on chain holding the swap to its floor. What the route plan does between those two accounts is the venue program's to enforce and is not read here;
+- where NoirWire's fee on a market-maker order may be paid. The one fee transfer allowed must pay the referral account's token account for the transfer's own mint, and that address is derived, not read: Jupiter's referral program opens it (`initializeReferralTokenAccountV2`) as the referral account's associated token account, so it follows from the referral account the build pins (`Env.referralAccount`) and the mint. No answer from the server about that account is asked for;
+- the relayer's fee payers and payment wallet, pinned by the build (`Env.relayer`) and never taken from the server.
+
+### Accepted risk: one origin for the checks' reads
+
+What does not hold against such a server, today: the simulation and the reads behind it (the balances before, the owned accounts a transaction can reach, lookup tables, the blockhash and the height a swap is held to), the mint profile, and the price index. A server that faked all of them could still move what a route plan does between the taker's two accounts, other holdings, Earn and private payments, within what the static checks above leave open. This is accepted for now and is not fixed.
+
+**Recommended next step: a second forwarding path at the web app's own edge.** The web app's host already forwards `/api/*`. It would also forward, under a separate path, to an RPC provider of its own with its own key, which the API server neither operates nor sits in front of, and the guard's reads would go there together: `resolveAccountKeys`, `ownedTokenAccountsIn`, `getMultipleAccountsInfo`, `simulateTransaction` and `getLatestBlockhash`, all through the same second path, since a faked "before" is as good as a faked "after". The transaction would still come from the API server. A compromise of the API server or its RPC upstream alone would then no longer be enough to pass a hostile transaction. What it costs and what it does not do:
+
+- the content security policy stays `connect-src 'self'`, and no visitor's address goes to a third party it does not already reach through NoirWire;
+- trust is split between two NoirWire-run paths, not removed: the edge sees the addresses it forwards, as it already sees request metadata;
+- the phone has no edge of its own, so it needs its own answer;
+- a price index from outside the API server is a separate step, needed alongside it.
+
+The other options weighed were a second provider called directly from the browser (the strongest split, at the cost of sending visitors' addresses to a third party and widening the content security policy), and a setting where a person names their own RPC for the checks (a privacy cost only for those who opt in, and little protection for everyone else). Either can come later on top of the edge path.
 
 ## The session with NoirWire's server
 
@@ -189,11 +210,21 @@ Every error the server writes itself has one body, `{ "code", "error" }`. The ap
 - **A reset says the wallet is gone only once it is.** `resetWallet()` locks at once, then resolves to `{ ok: true }` after the vault has removed the record (with the pending actions inside it), or `{ ok: false, reason: "notRemoved" }` with the wallet still reported as stored. A reset that removed the wallet drops the session with the server too.
 - **Old plain text phrases are deleted and checked.** Their removal is awaited after a wallet is stored or unlocked, `isPlaintextCleanupFailing()` says when it failed, and each later start tries again while a current wallet is stored.
 - **A lock is wallet-wide.** `lock()` locks here and announces it under `LOCK_SIGNAL_KEY`, a counter in the vault that says nothing about the wallet; every other tab or running copy that hears it locks too. A reset announces the same when the record would not go, and removes the signal with everything else when it did. A tab that only went idle locks alone.
-- **Other tabs are heard.** While anything subscribes, the store listens to the vault: a routine write elsewhere is taken in; a reset, a replacement or a password change elsewhere locks this tab, because its phrase no longer belongs to what is stored.
+- **Other tabs are heard.** While anything subscribes, the store listens to the vault: a routine write elsewhere is taken in; a reset, a replacement or a password change elsewhere locks this tab, because its keys no longer belong to what is stored.
 - **Nothing is readable while locked.** The vault holds one AES-256-GCM envelope (`src/wallet/keystore.ts`). Locked, the store knows only whether a wallet exists, and that only once the vault has answered: `walletExists()` is `undefined` until then.
 - **Addresses are re-derived at unlock.** Every stored address must be the one the phrase derives at its index, or the record is refused.
+- **An unlocked wallet holds a key root, not its phrase.** At unlock the phrase is turned once into the 64 bytes every key is derived from (`keyRootOf` in `src/infrastructure/solana/keys.ts`: SLIP-0010's ed25519 master node for the phrase's BIP-39 seed, its key and then its chain code). The session keeps only that `Uint8Array`. Each key is derived from it over bytes, and each intermediate node and each derived key's own bytes are zeroed once the next step has them. A routine write seals the phrase it reads from the stored record, not one held in memory. Locking, a reset, an idle lock and an unlock that replaces the session all zero the root. `signMessage` zeroes its copy of the secret key once it has signed.
 
 `tests/unit/store.test.ts` holds it to each of these with `memoryVault`, several tabs over one vault.
+
+**What JavaScript cannot promise.** Zeroing here is best effort, and it is not a guarantee that a secret is gone from memory. JavaScript gives no control over where its engine copies data or when the garbage collector frees it. In particular:
+
+- strings cannot be zeroed: the phrase as typed, imported or revealed, the decrypted record's JSON at unlock and at each write, and the one hex string the derivation library needs for the BIP-39 seed at unlock are all left to the collector;
+- the libraries copy key bytes on their own: the HMAC steps of the derivation, and `Keypair`, whose `secretKey` hands out a fresh copy on every read, including each time a transaction is signed. Those copies, and a `Keypair`'s own bytes, are not zeroed by this package; a signing key lives as long as the action that holds it;
+- the profile secret is handed to the caller, which passes it to WebCrypto, and is not zeroed here;
+- the engine may move or copy typed arrays during collection, and a zeroed array says nothing of earlier copies.
+
+What zeroing does is shorten how long the most valuable secret sits in memory in a readable form, and keep the phrase out of the unlocked session. The encrypted record, the idle lock and locking everywhere at once remain the protections that matter.
 
 ## Biometric unlock
 
@@ -312,7 +343,8 @@ The files that decide whether money is safe.
 | Key derivation and the recovery phrase                                              | `src/infrastructure/solana/keys.ts`                                                                                  |
 | Handing out a key only for the address on screen, only while unlocked               | `src/wallet/session.ts`                                                                                              |
 | Pre-sign guard: balances simulated before any signature                             | `src/infrastructure/solana/presign-guard.ts`, `src/infrastructure/solana/signerAccounts.ts`                          |
-| Swap guard: a trade held to its own quote, and to an independent price              | `src/infrastructure/solana/swap/guard.ts`, `src/infrastructure/solana/swap/execute.ts`                               |
+| Swap guard: a trade held to its own quote, and to the site's price index            | `src/infrastructure/solana/swap/guard.ts`, `src/infrastructure/solana/swap/execute.ts`                               |
+| Swap routes: where a route pays, and the minimum it enforces on chain               | `src/infrastructure/solana/swap/routes.ts`                                                                           |
 | What a mint may look like before it is listed or bought                             | `src/infrastructure/solana/mintPolicy.mjs`                                                                           |
 | Relayer template checks and fee caps                                                | `src/infrastructure/solana/relayed.ts`                                                                               |
 | Relayer pricing, and the check before a relayer-paid transaction                    | `src/infrastructure/solana/relayer.ts`                                                                               |

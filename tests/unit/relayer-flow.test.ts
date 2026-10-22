@@ -43,6 +43,7 @@ import {
   relayedSendDraft,
 } from "../../src/infrastructure/solana/tokens.js";
 import { ALL_STOCKS } from "../../src/infrastructure/solana/tokenRegistry.js";
+import { installTestPlatform, testEnv } from "../../src/testing/index.js";
 
 recordSigning();
 
@@ -119,6 +120,14 @@ beforeEach(() => {
   available = true;
   status = "confirmed";
   blockHeight = LAST_VALID - 10;
+  installTestPlatform({
+    env: testEnv({
+      relayer: {
+        feePayers: relayerKeys.map((key) => key.publicKey.toBase58()),
+        paymentWallet: paymentWallet.toBase58(),
+      },
+    }),
+  });
   resetRelayerPins();
   relay = {
     // The first replica that the wallet has not just seen fail.
@@ -286,6 +295,7 @@ describe("building a relayer-paid send", () => {
     expect(limits.receive).toEqual({
       account: ataFor(mint, recipient, programId),
       minAmount: 10_000_000n,
+      owner: recipient,
     });
   });
 

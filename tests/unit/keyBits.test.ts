@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { walletCopy } from "../../src/copy/wallet.js";
-import { deriveKeypair } from "../../src/infrastructure/solana/keys.js";
+import { deriveKeypair, keyRootOf } from "../../src/infrastructure/solana/keys.js";
 import {
   isEnvelope,
   newVaultKey,
@@ -165,7 +165,7 @@ describe("the store with key bits", () => {
       const second = await tab();
       expect(await second.unlockWithKeyBits(bits)).toBeNull();
       expect(second.isUnlocked()).toBe(true);
-      expect(second.getPhrase()).toEqual(FIXTURE_PHRASE);
+      expect(second.getKeyRoot()).toEqual(keyRootOf(MNEMONIC));
       expect(second.getSnapshot()?.portfolios[0].address).toBe(addressAt(1));
     });
 
@@ -176,7 +176,7 @@ describe("the store with key bits", () => {
       expect(await second.unlockWithKeyBits(wrong)).toBe(says.keyRefused);
       expect(await second.unlockWithKeyBits(new Uint8Array(16))).toBe(says.keyRefused);
       expect(second.isUnlocked()).toBe(false);
-      expect(second.getPhrase()).toBeNull();
+      expect(second.getKeyRoot()).toBeNull();
     });
 
     it("refuses a record whose addresses the phrase does not derive", async () => {
@@ -208,7 +208,7 @@ describe("the store with key bits", () => {
       second.lock();
       expect(await pending).toBe(says.interrupted);
       expect(second.isUnlocked()).toBe(false);
-      expect(second.getPhrase()).toBeNull();
+      expect(second.getKeyRoot()).toBeNull();
     });
 
     it("discards a result that finishes after another tab replaced the wallet", async () => {
@@ -244,7 +244,7 @@ describe("the store with key bits", () => {
       const bits = await vaultKeyBits(webEnvelope(), WEB_ENVELOPE_PASSWORD);
       const opened = await tab();
       expect(await opened.unlockWithKeyBits(bits)).toBeNull();
-      expect(opened.getPhrase()).toEqual(FIXTURE_PHRASE);
+      expect(opened.getKeyRoot()).toEqual(keyRootOf(MNEMONIC));
       expect(opened.getSnapshot()?.funding.address).toBe(addressAt(0));
     });
   });

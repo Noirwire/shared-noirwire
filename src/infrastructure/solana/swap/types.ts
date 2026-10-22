@@ -52,7 +52,6 @@ export type SwapQuote = {
 
 export type BuiltSwap = {
   transaction: VersionedTransaction;
-  lastValidBlockHeight: number;
 };
 
 export { UnknownOutcomeError } from "../../../domain/chainError.js";

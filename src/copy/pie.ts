@@ -126,8 +126,6 @@ export const pieCopy = {
       "Orders are placed one at a time. Each stops if it would deliver less than its minimum.",
     firmUntil: (time: string) =>
       ` Prices are firm until ${time}. One that expires before its turn is priced again, and you are asked first if the new price is worse.`,
-    someUnchecked:
-      "No live price was available to compare some of these quotes against. Check each order above before you confirm.",
 
     status: {
       waiting: "Waiting",

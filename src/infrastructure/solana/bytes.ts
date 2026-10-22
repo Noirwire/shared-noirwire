@@ -20,6 +20,11 @@ export function readU32LE(data: Uint8Array, offset: number): number {
   return view(data).getUint32(offset, true);
 }
 
+/** A little-endian u16 at `offset`. Throws a RangeError when `data` is too short. */
+export function readU16LE(data: Uint8Array, offset: number): number {
+  return view(data).getUint16(offset, true);
+}
+
 const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
 /** `bytes` in base58, as the chain writes a signature or an address. */

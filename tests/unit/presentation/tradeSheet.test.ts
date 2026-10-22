@@ -26,7 +26,6 @@ const order = (overrides: Partial<PricedOrder> = {}): PricedOrder => ({
   receiveAtLeast: 1.9,
   unitPrice: 25,
   venue: "Jupiter",
-  priceChecked: true,
   quote: { feeBps: 25, gasless: false, expiresAt: 30_000 },
   ...overrides,
 });

@@ -22,7 +22,6 @@ const order = (overrides: Partial<PieOrder> = {}): PieOrder => ({
   receiveAtLeast: 1.9,
   unitPrice: 20,
   venue: "Jupiter",
-  priceChecked: true,
   quote: { feeBps: 50 },
   ...overrides,
 });
@@ -193,9 +192,6 @@ describe("pieReviewView", () => {
     expect(unknownQuantity.confirm.disabled).toBe(true);
     expect(review({ pending: { blocked: true } }).confirm.disabled).toBe(true);
     expect(review({ cost: { kind: "unavailable" } }).confirm.disabled).toBe(true);
-    expect(review({ orders: [order({ priceChecked: false })] }).someUnchecked).toContain(
-      "No live price was available to compare some of these quotes against.",
-    );
   });
 });
 

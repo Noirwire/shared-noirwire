@@ -20,6 +20,14 @@ import { jupiterReferralAccount, noirwireFeeBps } from "../config.js";
 import { checkPrograms, simulationRefusal, type ProgramRule } from "../presign-guard.js";
 import { ownedTokenAccountsIn, resolveAccountKeys } from "../signerAccounts.js";
 import { inspectMint, multiplierSchedule, multiplierSwitching } from "../mintPolicy.mjs";
+import {
+  checkRoutes,
+  DFLOW_AGGREGATOR,
+  JUPITER_AGGREGATOR,
+  JUPITER_RFQ,
+  OKX_ROUTER,
+  type RouteLeg,
+} from "./routes.js";
 import type { SwapQuote } from "./types.js";
 
 /**
@@ -29,9 +37,9 @@ import type { SwapQuote } from "./types.js";
  * quote said is the whole risk: a hosted router is a third party, a pool can
  * move between quote and signature, and neither failure announces itself -
  * both just produce a transaction that takes the input and returns less than
- * promised. Reading the instructions cannot settle it either, because what
- * a swap actually pays out depends on pool state at execution, not on what
- * the instruction data says.
+ * promised. Reading the instructions cannot settle it alone, because what a
+ * swap actually pays out depends on pool state at execution, not on what the
+ * instruction data says.
  *
  * So the transaction is run. Simulation gives the account states it would
  * actually produce, and the balances are compared against what the quote
@@ -39,8 +47,12 @@ import type { SwapQuote } from "./types.js";
  * signed.
  *
  * Simulation only shows the accounts that are watched, though, and only as
- * they stand today. So the instructions are held to one static rule first:
- * nothing but the venue's own programs may be called directly.
+ * they stand today. So the instructions are held to static rules first:
+ * nothing but the venue's own programs may be called directly, and the one
+ * route instruction must spend no more than the quote from the taker's own
+ * account and pay into the taker's own account with an on-chain minimum no
+ * lower than the quote's (`checkRoutes`), which is what holds the swap to its
+ * floor when it lands, whatever the pool does by then.
  */
 
 /**
@@ -54,9 +66,10 @@ import type { SwapQuote } from "./types.js";
  * the one TransferChecked that pays it. Each is held to a single exact shape
  * below, so any other top-level transfer, approval or authority change is
  * always refused. A router that has not been observed is not listed, and its
- * orders are refused until it is, with the one exception marked below. The
- * two shared rules are spelled out here instead of imported because that
- * module imports this one.
+ * orders are refused until it is, with the one exception noted at
+ * `OKX_ROUTER`. A listed router's instructions are further held to what
+ * `checkRoutes` can read. The two shared rules are spelled out here instead
+ * of imported because that module imports this one.
  */
 const CLOSE_ACCOUNT = 9;
 const TRANSFER_CHECKED = 12;
@@ -66,19 +79,10 @@ export const SWAP_PROGRAMS: ProgramRule[] = [
   { programId: ComputeBudgetProgram.programId },
   // Create and create-idempotent only; the program's other instructions can move tokens.
   { programId: ASSOCIATED_TOKEN_PROGRAM_ID, instructions: [0, 1] },
-  // Jupiter's aggregator, the pooled route.
-  { programId: new PublicKey("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4") },
-  // Jupiter's RFQ order engine, the market-maker route.
-  { programId: new PublicKey("61DFfeTKM7trxYcPQCM78bJ794ddZprZpAwAnLiwTpYH") },
-  // DFlow's aggregator, which the router picks for some pooled orders.
-  { programId: new PublicKey("DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH") },
-  // OKX's DEX router, the fourth router Jupiter's order endpoint lets
-  // compete. This id was taken from documentation, not from a captured
-  // order: it is the Solana "DEX router address" in OKX's developer
-  // documentation, and the program's own on-chain IDL names it "OKX: DEX
-  // Router". The contract suite has since built a genuine order through it.
-  // Every simulation check applies to such an order unchanged.
-  { programId: new PublicKey("proVF4pMXVaYqmy4NjniPh4pqKNfMmsihgd4wdkCX3u") },
+  { programId: JUPITER_AGGREGATOR },
+  { programId: JUPITER_RFQ },
+  { programId: DFLOW_AGGREGATOR },
+  { programId: OKX_ROUTER },
   // CloseAccount only in the shape `checkCloses` accepts: a pooled order
   // that routes through SOL ends by closing the taker's wrapped-SOL account.
   // TransferChecked only in the shape `checkFeeTransfer` accepts.
@@ -123,10 +127,28 @@ function checkCloses(
 
 type ProgramVerification = ReturnType<typeof checkPrograms>;
 
-/** The cash side of an order, which is where NoirWire's fee is taken. */
-export type FeeLeg = { quote: SwapQuote; outputAta: PublicKey };
+/**
+ * The order a transaction is held to: its quote, and the taker's account it
+ * pays into. The fee transfer is checked against it, and so is the route,
+ * together with the account the swap spends from.
+ */
+export type FeeLeg = Omit<RouteLeg, "inputAta">;
 
-type FeeTransfer = { destination: PublicKey; mint: PublicKey };
+/**
+ * The only account NoirWire's fee in `mint` may be paid into: the token
+ * account Jupiter's referral program keeps for the referral account in that
+ * mint. Its current form (`initializeReferralTokenAccountV2` in the program's
+ * SDK, which Jupiter's Ultra fee guide has integrators use) is the referral
+ * account's associated token account, so the address follows from the
+ * referral account the build pins and the transfer's own mint. Nothing the
+ * server answers about the account decides whether it is NoirWire's.
+ */
+function referralFeeAccount(mint: PublicKey): PublicKey | null {
+  const referral = jupiterReferralAccount();
+  return referral
+    ? getAssociatedTokenAddressSync(mint, new PublicKey(referral), true, TOKEN_PROGRAM_ID)
+    : null;
+}
 
 /**
  * A market-maker order does not take NoirWire's fee inside the fill, as a
@@ -139,9 +161,8 @@ type FeeTransfer = { destination: PublicKey; mint: PublicKey };
  * directions, fee included. This holds the instruction itself to the fee the
  * review showed, so it cannot be used to move anything else: at most one,
  * only when a fee is configured, only from the order's own cash account in
- * that account's mint, and for no more than the fee rate applied to the
- * order. Where it pays is returned for the caller to read from the chain,
- * because a referral token account's address cannot be derived here.
+ * that account's mint, for no more than the fee rate applied to the order,
+ * and only into the referral token account derived for that mint.
  */
 function checkFeeTransfer(
   transaction: VersionedTransaction,
@@ -149,7 +170,7 @@ function checkFeeTransfer(
   taker: PublicKey,
   inputAta: PublicKey,
   fee: FeeLeg | undefined,
-): { ok: true; feeTransfer?: FeeTransfer } | { ok: false; reason: string } {
+): ProgramVerification {
   const transfers = transaction.message.compiledInstructions.filter(
     (instruction) =>
       accountKeys.get(instruction.programIdIndex)?.equals(TOKEN_PROGRAM_ID) &&
@@ -189,19 +210,8 @@ function checkFeeTransfer(
     return refused;
   }
   if (readU64LE(transfer.data, 1) > cap) return refused;
-  return { ok: true, feeTransfer: { destination, mint } };
-}
-
-/** Whether `data` is a token account of `mint` owned by the configured referral account. */
-function isReferralAccount(data: Uint8Array | undefined, mint: PublicKey): boolean {
-  const referral = jupiterReferralAccount();
-  return (
-    !!referral &&
-    !!data &&
-    !tokenAccountClosed(data) &&
-    bytesEqual(data.subarray(0, 32), mint.toBytes()) &&
-    ownedBy(data, new PublicKey(referral))
-  );
+  if (!referralFeeAccount(mint)?.equals(destination)) return WRONG_FEE_ACCOUNT;
+  return { ok: true };
 }
 
 const WRONG_FEE_ACCOUNT = {
@@ -215,9 +225,11 @@ function checkInstructions(
   taker: PublicKey,
   inputAta: PublicKey,
   fee?: FeeLeg,
-): ReturnType<typeof checkFeeTransfer> {
+): ProgramVerification {
   const programs = checkPrograms(transaction, accountKeys, SWAP_PROGRAMS);
   if (!programs.ok) return programs;
+  const routes = checkRoutes(transaction, accountKeys, fee && { ...fee, inputAta });
+  if (!routes.ok) return routes;
   const closes = checkCloses(transaction, accountKeys, taker, inputAta);
   if (!closes.ok) return closes;
   return checkFeeTransfer(transaction, accountKeys, taker, inputAta, fee);
@@ -225,8 +237,9 @@ function checkInstructions(
 
 /**
  * The static half of the swap check on its own, lookup tables resolved. Pass
- * the order's cash leg to have a fee transfer checked against it; without it
- * any top-level transfer is refused.
+ * the order to have its routes and a fee transfer checked against it;
+ * without it any top-level transfer is refused, and routes are only held to
+ * being readable.
  */
 export async function checkSwapPrograms(
   transaction: VersionedTransaction,
@@ -235,12 +248,7 @@ export async function checkSwapPrograms(
   fee?: FeeLeg,
 ): Promise<ProgramVerification> {
   const accountKeys = await resolveAccountKeys(transaction);
-  const instructions = checkInstructions(transaction, accountKeys, taker, inputAta, fee);
-  if (!instructions.ok) return instructions;
-  if (!instructions.feeTransfer) return { ok: true };
-  const { destination, mint } = instructions.feeTransfer;
-  const account = await connection.getAccountInfo(destination);
-  return isReferralAccount(account?.data, mint) ? { ok: true } : WRONG_FEE_ACCOUNT;
+  return checkInstructions(transaction, accountKeys, taker, inputAta, fee);
 }
 
 /** `amount` is a u64 at byte 64 of an SPL token account, in both Token and Token-2022. */
@@ -290,7 +298,8 @@ export function tokenAccountClosed(data: Uint8Array | undefined) {
   return !data || data.length < TOKEN_ACCOUNT_LEN;
 }
 
-function ownedBy(data: Uint8Array, owner: PublicKey) {
+/** Whether the token account in `data` is owned by `owner`. */
+export function ownedBy(data: Uint8Array, owner: PublicKey) {
   return bytesEqual(data.subarray(OWNER[0], OWNER[1]), owner.toBytes());
 }
 
@@ -353,7 +362,6 @@ export async function verifySwapBeforeSigning(
     outputAta,
   });
   if (!instructions.ok) return instructions;
-  const { feeTransfer } = instructions;
 
   const touched = await ownedTokenAccountsIn(accountKeys, taker).catch(() => null);
   if (!touched) return UNCHECKED;
@@ -362,26 +370,15 @@ export async function verifySwapBeforeSigning(
   );
   const watched = [inputAta, outputAta, taker, ...others];
 
-  // Read in the same request as the balances: the stock's mint, and where a
-  // fee transfer pays.
-  const extras = [stock.mint, feeTransfer?.destination].filter((key) => key !== undefined);
+  // The stock's mint is read in the same request as the balances.
   const before = await connection
-    .getMultipleAccountsInfo([...watched, ...extras])
+    .getMultipleAccountsInfo([...watched, stock.mint])
     .catch(() => null);
   if (!before) return UNCHECKED;
   const [preInput, preOutput, preTaker] = before;
-  const extraInfo = (key: PublicKey | undefined) =>
-    key ? before[watched.length + extras.indexOf(key)] : null;
   if (!preInput || others.some((_, index) => !before[index + 3])) return UNCHECKED;
 
-  if (
-    feeTransfer &&
-    !isReferralAccount(extraInfo(feeTransfer.destination)?.data, feeTransfer.mint)
-  ) {
-    return WRONG_FEE_ACCOUNT;
-  }
-
-  const mintAccount = extraInfo(stock.mint);
+  const mintAccount = before[watched.length];
   const address = stock.mint.toBase58();
   if (stock.acquiring) {
     const mint = inspectMint(address, mintAccount);

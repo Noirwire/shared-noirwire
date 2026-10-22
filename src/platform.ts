@@ -52,6 +52,13 @@ export interface Env {
   /** How old a session may get before it is replaced by a new one. `SESSION_MAX_AGE_MS` when left out. */
   sessionMaxAgeMs?: number;
   /**
+   * The relayer's fee payers and the wallet it is paid into, fixed by the
+   * build for its network so NoirWire's server cannot change them. The server
+   * still says which of them are up; one it names that is not here is not
+   * used. Left out, no relayer is used.
+   */
+  relayer?: { feePayers: string[]; paymentWallet: string };
+  /**
    * Where chain reads and sends go, when not to NoirWire's server. Only for
    * code with no visitor behind it and no server in front of it: a server
    * itself, or a test against a local validator.

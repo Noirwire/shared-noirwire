@@ -13,6 +13,7 @@ import { connection } from "./client.js";
 import { ownedTokenAccounts, resolveAccountKeys } from "./signerAccounts.js";
 import {
   decodeAccount,
+  ownedBy,
   readTokenAmount,
   tokenAccountClosed,
   tokenControlChanged,
@@ -33,6 +34,8 @@ import {
  * - no other token balance drops at all,
  * - when something is owed back (a deposit receipt), at least that much arrives,
  * - no token account gains a new owner, delegate or close authority,
+ * - every account the action names is owned, afterwards, by whom it should
+ *   be, including one the transaction creates,
  * - no token account that existed before is closed.
  */
 
@@ -109,6 +112,38 @@ export function checkPrograms(
   return { ok: true };
 }
 
+/** Create and create-idempotent take these accounts: funder, account, owner, mint, System program, token program. */
+const CREATE_ATA_ACCOUNTS = 6;
+
+/**
+ * Every top-level associated-token-account instruction opens one of
+ * `creates` for `sender`. The program derives the account from the owner
+ * and the mint, so an account that is one of `creates` and named for the
+ * sender is the sender's own.
+ */
+function checkCreates(
+  transaction: VersionedTransaction,
+  accountKeys: MessageAccountKeys,
+  sender: PublicKey,
+  creates: PublicKey[],
+): BalanceVerification {
+  for (const instruction of transaction.message.compiledInstructions) {
+    if (!accountKeys.get(instruction.programIdIndex)?.equals(ASSOCIATED_TOKEN_PROGRAM_ID)) continue;
+    const [, account, owner] = instruction.accountKeyIndexes.map((index) => accountKeys.get(index));
+    const expected =
+      instruction.accountKeyIndexes.length === CREATE_ATA_ACCOUNTS &&
+      owner?.equals(sender) &&
+      creates.some((allowed) => account?.equals(allowed));
+    if (!expected) {
+      return {
+        ok: false,
+        reason: "This transaction would open a token account it has no reason to. Not signed.",
+      };
+    }
+  }
+  return { ok: true };
+}
+
 export type BalanceLimits = {
   cashAccount: PublicKey;
   maxCashSpent: bigint;
@@ -121,8 +156,19 @@ export type BalanceLimits = {
    * exactly `receive.minAmount`, not merely within them.
    */
   exact?: boolean;
-  /** A token account that must grow by at least `minAmount`, e.g. a lending receipt. */
-  receive?: { account: PublicKey; minAmount: bigint };
+  /**
+   * A token account that must grow by at least `minAmount`, e.g. a lending
+   * receipt, and be owned by `owner` once the transaction has run: the
+   * sender when left out.
+   */
+  receive?: { account: PublicKey; minAmount: bigint; owner?: PublicKey };
+  /**
+   * The only token accounts a top-level create may open, each for the
+   * sender. Left out, creates are held only by `programs`. Whoever pays for
+   * the transaction funds what it opens, and an account opened for someone
+   * else is theirs to close and keep the rent of.
+   */
+  creates?: PublicKey[];
   /** The only programs the transaction may call directly. */
   programs: ProgramRule[];
 };
@@ -229,6 +275,10 @@ export async function verifyBalancesBeforeSigning(
   ]);
   const programs = checkPrograms(transaction, accountKeys, limits.programs);
   if (!programs.ok) return programs;
+  if (limits.creates) {
+    const creates = checkCreates(transaction, accountKeys, sender, limits.creates);
+    if (!creates.ok) return creates;
+  }
 
   const referenced = new Set<string>();
   for (let i = 0; i < accountKeys.length; i += 1) referenced.add(accountKeys.get(i)!.toBase58());
@@ -285,6 +335,28 @@ export async function verifyBalancesBeforeSigning(
       return {
         ok: false,
         reason: "This transaction would give someone else control of your funds. Not signed.",
+      };
+    }
+  }
+
+  // An account the transaction creates has no earlier owner to compare with,
+  // so each account the action names is held to its owner directly: tokens
+  // delivered into an account someone else owns were not delivered.
+  const named: [PublicKey | undefined, PublicKey][] = [
+    [limits.cashAccount, sender],
+    [limits.alsoSpends?.account, sender],
+    [limits.receive?.account, limits.receive?.owner ?? sender],
+  ];
+  for (const [account, owner] of named) {
+    if (!account) continue;
+    const dataAfter = decodeAccount(
+      simulated[tokenAccounts.findIndex((watched) => watched.equals(account)) + 1] as never,
+    );
+    if (dataAfter && !tokenAccountClosed(dataAfter) && !ownedBy(dataAfter, owner)) {
+      return {
+        ok: false,
+        reason:
+          "This transaction would deliver tokens into an account owned by someone else. Not signed.",
       };
     }
   }

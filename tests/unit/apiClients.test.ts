@@ -194,7 +194,9 @@ describe("the swap venue", () => {
           ? rpcResult(call, 900)
           : rpcResult(call, { context: { slot: 1 }, value: [null] }),
     });
-    const failure = await executeJupiterSwap(QUOTE, signed()).catch((error: unknown) => error);
+    const failure = await executeJupiterSwap(QUOTE, signed(), 1_000).catch(
+      (error: unknown) => error,
+    );
     expect(failure).toBeInstanceOf(UnknownOutcomeError);
     expect(api.callsTo("/v1/jupiter/swap/v2/execute")).toHaveLength(1);
     expect(api.calls[0].headers.authorization).toBe("Bearer test-token-1");
@@ -204,7 +206,7 @@ describe("the swap venue", () => {
     noSession();
     api = fakeApi({});
     expect(
-      await executeJupiterSwap(QUOTE, signed()).catch((error: unknown) => error),
+      await executeJupiterSwap(QUOTE, signed(), 1_000).catch((error: unknown) => error),
     ).toMatchObject({ code: "notAvailableNow" });
     expect(api.calls).toHaveLength(0);
   });
@@ -258,12 +260,60 @@ describe("a private transfer", () => {
 });
 
 describe("the relayer's keys and the charts", () => {
+  const [pinnedPayer, otherPayer, pinnedWallet, otherWallet] = Array.from({ length: 4 }, () =>
+    Keypair.generate().publicKey.toBase58(),
+  );
+  const pinnedBuild = () =>
+    installTestPlatform({
+      env: testEnv({ relayer: { feePayers: [pinnedPayer], paymentWallet: pinnedWallet } }),
+    });
+  const serverSays = (feePayers: string[], paymentWallet: string) =>
+    fakeApi({
+      "GET /v1/relayer": () => ({
+        available: true,
+        feePayers,
+        paymentWallet,
+        accountCreation: true,
+      }),
+    });
+
+  afterEach(() => resetRelayerPins());
+
   it("reads the relayer's keys from the server's relayer route", async () => {
+    pinnedBuild();
     resetRelayerPins();
     api = fakeApi({ "GET /v1/relayer": turnedDownOnce(() => ({ available: false })) });
     expect(await relayerPins()).toBeNull();
     expect(api.callsTo("/v1/relayer")).toHaveLength(2);
+  });
+
+  it("uses only the fee payers the build pinned, whatever else the server names", async () => {
+    pinnedBuild();
     resetRelayerPins();
+    api = serverSays([otherPayer, pinnedPayer], pinnedWallet);
+    const pins = await relayerPins();
+    expect(pins?.feePayers.map((key) => key.toBase58())).toEqual([pinnedPayer]);
+    expect(pins?.paymentWallet.toBase58()).toBe(pinnedWallet);
+  });
+
+  it("uses no relayer when the server names only fee payers or a payment wallet the build did not pin", async () => {
+    pinnedBuild();
+    for (const [feePayers, wallet] of [
+      [[otherPayer], pinnedWallet],
+      [[pinnedPayer], otherWallet],
+    ] as const) {
+      resetRelayerPins();
+      api = serverSays([...feePayers], wallet);
+      expect(await relayerPins()).toBeNull();
+      api.restore();
+    }
+  });
+
+  it("asks the server nothing about a relayer when the build pins none", async () => {
+    resetRelayerPins();
+    api = serverSays([pinnedPayer], pinnedWallet);
+    expect(await relayerPins()).toBeNull();
+    expect(api.callsTo("/v1/relayer")).toHaveLength(0);
   });
 
   it("reads a chart from the server's history route, by symbol and range", async () => {

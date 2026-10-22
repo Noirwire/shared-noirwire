@@ -251,7 +251,6 @@ const priced: Plan = {
   receiveAtLeast: 1.9,
   unitPrice: 10,
   venue: "Jupiter",
-  priceChecked: true,
   built: true,
   quote: { feeBps: 50, gasless: true },
 };
@@ -442,8 +441,11 @@ describe("the clients' reads", () => {
   });
 
   it("reads the relayer's keys on the second try", async () => {
-    resetRelayerPins();
     const key = Keypair.generate().publicKey.toBase58();
+    installPlatform(
+      memoryPlatform({ env: testEnv({ relayer: { feePayers: [key], paymentWallet: key } }) }),
+    );
+    resetRelayerPins();
     const fetched = vi
       .fn()
       .mockRejectedValueOnce(dropped())

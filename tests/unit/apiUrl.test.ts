@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { Keypair } from "@solana/web3.js";
 import { apiUrl, type ApiRoute } from "../../src/infrastructure/api.js";
 import { envFrom } from "../../src/infrastructure/solana/config.js";
 import { installTestPlatform, testEnv } from "../../src/testing/index.js";
@@ -111,5 +112,31 @@ describe("where the server is, from an app's settings", () => {
       rpcUrl: "https://rpc.example",
     });
     expect(envFrom({ apiBaseUrl: "https://api.noirwire.com" })).not.toHaveProperty("rpcUrl");
+  });
+});
+
+describe("the relayer's keys, from an app's settings", () => {
+  const apiBaseUrl = "https://api.noirwire.com";
+  const [first, second, wallet] = Array.from({ length: 3 }, () =>
+    Keypair.generate().publicKey.toBase58(),
+  );
+
+  it("pins the fee payers and the payment wallet the build names", () => {
+    expect(
+      envFrom({
+        apiBaseUrl,
+        relayerFeePayers: ` ${first}, ${second} `,
+        relayerPaymentWallet: ` ${wallet} `,
+      }).relayer,
+    ).toEqual({ feePayers: [first, second], paymentWallet: wallet });
+    expect(envFrom({ apiBaseUrl })).not.toHaveProperty("relayer");
+  });
+
+  it("refuses one without the other, or anything that is not an address", () => {
+    expect(() => envFrom({ apiBaseUrl, relayerFeePayers: first })).toThrow(/or neither/);
+    expect(() => envFrom({ apiBaseUrl, relayerPaymentWallet: wallet })).toThrow(/or neither/);
+    expect(() =>
+      envFrom({ apiBaseUrl, relayerFeePayers: `${first},nope`, relayerPaymentWallet: wallet }),
+    ).toThrow(/Solana addresses/);
   });
 });

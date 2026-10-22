@@ -18,6 +18,7 @@ import {
   type SwapRequest,
 } from "./types.js";
 import { outcomeWithin, signatureOf, signaturesOf } from "../settlement.js";
+import { UNREADABLE_ROUTERS } from "./routes.js";
 
 /**
  * Jupiter, the swap venue. Mainnet-only by nature, not by choice: the router
@@ -51,7 +52,6 @@ type JupiterOrder = {
   requestId: string;
   /** Why a priced order came back without a transaction, e.g. the taker cannot cover it. */
   errorMessage?: string;
-  lastValidBlockHeight?: number;
   swapType?: string;
   gasless?: boolean;
   /** Who pays for a token account the order has to open. */
@@ -117,6 +117,9 @@ async function getOrder(request: SwapRequest, taker: PublicKey): Promise<Jupiter
     amount: request.amount.toString(),
     ...(request.priceOnly ? {} : { taker: taker.toBase58() }),
     slippageBps: String(slippageBps),
+    // Routes through these routers are refused before signing, so Jupiter is
+    // asked never to offer them rather than to quote what cannot be bought.
+    excludeRouters: UNREADABLE_ROUTERS,
     ...(referralAccount && request.noirwireFee !== false
       ? { referralAccount, referralFee: String(noirwireFeeBps()) }
       : {}),
@@ -172,9 +175,10 @@ function quoteFromOrder(order: JupiterOrder, request: SwapRequest, taker: Public
     throw new Error("Jupiter quoted a wider slippage than this app accepts. Get a new quote.");
   }
 
-  // Jupiter's own threshold is what the transaction enforces on chain, so it
-  // is the floor when present. Our computed one is only the fallback for a
-  // response that omits it.
+  // Jupiter's own threshold is the floor when present, and our computed one
+  // the fallback for a response that omits it. Neither is taken as what the
+  // transaction enforces: the guard reads that from the route instruction
+  // itself and refuses one whose on-chain minimum is below this.
   const minOutAmount =
     order.otherAmountThreshold == null
       ? minimumOut(outAmount, slippageBps)
@@ -223,7 +227,6 @@ export function jupiterVenue(taker: PublicKey) {
         transaction: VersionedTransaction.deserialize(
           Buffer.from(orderTransaction(order), "base64"),
         ),
-        lastValidBlockHeight: order.lastValidBlockHeight ?? 0,
       };
     },
   };
@@ -266,10 +269,18 @@ async function carriesOurSignature(
  * chain counts as a failure: an error recorded there, or the transaction's
  * time run out with no trace of it. Everything else, Jupiter's own refusal
  * included, is thrown as `UnknownOutcomeError` and settled later.
+ *
+ * "Time run out" is judged against `lastValidBlockHeight`, the height
+ * `landsUntil` read from the chain before signing, never the one the order
+ * states: the venue chose the blockhash, and a height it understated would
+ * have the swap called failed, and placed again, while the copy it holds can
+ * still land. No blockhash outlives the newest one, so the newest one's last
+ * valid height is a bound it cannot shorten.
  */
 export async function executeJupiterSwap(
   quote: SwapQuote,
   signedTransaction: VersionedTransaction,
+  lastValidBlockHeight: number,
 ): Promise<string> {
   const order = quote.raw as JupiterOrder;
 
@@ -299,11 +310,11 @@ export async function executeJupiterSwap(
   const refused = result?.status === "Failed" || (status >= 400 && status < 500);
   const own = signatureOf(signedTransaction);
   const signature = own ?? result?.signature;
-  if (!signature) throw new UnknownOutcomeError(undefined, order.lastValidBlockHeight);
+  if (!signature) throw new UnknownOutcomeError(undefined, lastValidBlockHeight);
   const submitted = !refused && status >= 200 && status < 300 && Boolean(result?.signature);
   const outcome = await outcomeWithin(
     signature,
-    order.lastValidBlockHeight,
+    lastValidBlockHeight,
     submitted ? CONFIRM_WAIT_MS : 0,
   );
   if (outcome === "failed") throw new Error("The swap did not go through.");
@@ -313,5 +324,11 @@ export async function executeJupiterSwap(
   ) {
     return signature;
   }
-  throw new UnknownOutcomeError(signature, order.lastValidBlockHeight);
+  throw new UnknownOutcomeError(signature, lastValidBlockHeight);
+}
+
+/** The last block height any transaction signed now can land at, as the chain says, or undefined when it cannot be read. */
+export async function landsUntil(): Promise<number | undefined> {
+  const latest = await connection.getLatestBlockhash("confirmed").catch(() => null);
+  return latest?.lastValidBlockHeight;
 }
