@@ -29,7 +29,8 @@ Framework-free TypeScript: no React, no React Native, no Next, no DOM, no Node A
 
 ```
 src/
-  domain/          pure rules and types: the wallet, orders, pies, fees, formatting, the usage events
+  domain/          pure rules and types: the wallet, orders, the order book (orderbook/), pies, fees,
+                   formatting, the usage events
   application/     one use case per money action (actions/), their results and ports, pending actions,
                    the catalog, valuation, pies, markets, each action's draft
   infrastructure/  where requests go (api.ts), the session they carry (apiSession.ts), and the
@@ -81,7 +82,7 @@ Import by subpath. There is no root entry.
 | Subpath                           | Contents                                                                         |
 | --------------------------------- | -------------------------------------------------------------------------------- |
 | `@noirwire/shared/platform`       | The ports, `installPlatform`, `assertRuntime`                                    |
-| `@noirwire/shared/domain`         | Rules and types: the wallet, orders, pies, fees, formatting, usage events        |
+| `@noirwire/shared/domain`         | Rules, types: wallet, orders, order book, pies, fees, formatting, usage events   |
 | `@noirwire/shared/application`    | The use cases, `ActionResult`, pending actions, drafts, the catalog's reads      |
 | `@noirwire/shared/infrastructure` | `envFrom`, `apiUrl`, `authorizedFetch`, the chain client, the venues, the guards |
 | `@noirwire/shared/presentation`   | View models                                                                      |

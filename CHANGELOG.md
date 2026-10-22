@@ -6,7 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## [0.14.0] - 2026-10-20
 
-Security fixes from a review of what is checked before signing. A swap is held to the minimum its own route enforces on chain, a swap is never called failed while it can still land, Earn opens and pays for nothing but the portfolio's own account, the relayer's keys and the fee account come from the build, an unlocked wallet no longer holds its phrase, and the page to return to after unlocking can no longer be another site.
+Security fixes from a review of what is checked before signing. A swap is held to the minimum its own route enforces on chain, a swap is never called failed while it can still land, Earn opens and pays for nothing but the portfolio's own account, the relayer's keys and the fee account come from the build, an unlocked wallet no longer holds its phrase, and the page to return to after unlocking can no longer be another site. The order book's pure rules move in from the trading terminal.
 
 ### Breaking
 
@@ -28,6 +28,19 @@ For both apps:
 - **NoirWire's fee is paid only into the referral token account derived for its mint.** The fee transfer on a market-maker order must pay the referral account's associated token account for the transfer's own mint, which is how Jupiter's referral program opens it (`initializeReferralTokenAccountV2`). The address follows from the referral account the build pins and the mint, so the server's answer about the account is no longer read: before, a server faking that read could have a stranger's account pass as NoirWire's. The live USDC and wrapped SOL fee accounts are both of this form.
 - **An unlocked wallet holds a 64-byte key root, not its phrase.** The phrase is turned at unlock into SLIP-0010's master node for its seed, every key is derived from that over bytes, and the root is zeroed when the wallet locks, resets, idles out or is unlocked again. Intermediate derivation nodes, derived key bytes and the secret key copy `signMessage` signs with are zeroed after use. A routine write seals the phrase read from the stored record. JavaScript cannot guarantee that a secret is erased; `docs/architecture.md` says what this does and does not cover.
 - **`safeDestination` refuses any control character, any whitespace, any backslash and any `.` or `..` segment**, plain or as `%2e`, as well as `//`. A browser's URL parser drops tab, CR and LF and resolves dot segments, which turned `/<tab>/evil.example` and `/.//evil.example` into another site.
+
+### Added
+
+The order book's pure rules, from `@noirwire/shared/domain`, for an app that carries the trading terminal. Nothing here signs, reads the chain or imports the order book's SDK: a market's settings are plain data (`OrderbookMarket`) the app reads and hands in.
+
+- **Amounts**: `toFixedPoint`, `readFixedPoint`, `fromFixedPoint`, `mulFixedPoint`, `divFixedPoint` and `FIXED_POINT_SCALE`. A decimal with a nonzero digit past the ninth place is refused, not cut.
+- **Checking an order**: `validateOrderbookOrder(input, market)` answers reason codes per field, and checks the minimum notional (size times price against `minNotional` in quote atoms) as well as the lot, the minimum number of lots and the tick. A notional under the minimum is `notionalBelowMinimum`, on the quantity.
+- **What an order costs**: `orderbookOrderCost` works notional, fee, margin, what it takes, what remains, the shortfall and the liquidation estimate from one margin at the leverage chosen, held between 1 and the market's maximum (`orderbookMaxLeverage`), as the program checks it. A perp order's margin is never less than the market's initial margin on its size at the `mark`, so a bid below the mark is not under-reserved. Fees round up to a whole quote atom, and a spot buy that can take (not `postOnly`) leaves one atom per fill of the exchange's `maxSteps` unlocked (`headroom`). `orderbookMaxSize` is the largest size `orderbookOrderCost` covers with the same inputs. `orderbookLiquidationPrice` is the one liquidation estimate, and `orderbookPositionEstimate` puts an open position through it, at the market's initial margin on its notional when its own is not known. `impliedOrderbookMargins(maxLeverage)` is for a source that publishes only a maximum leverage, and gives back that same leverage through `orderbookMaxLeverage`.
+- **Units**: `orderbookUnitsFromLotSize`, `orderbookUnitsFromChain`, `sizeToLots`, `lotsToSize`, `priceToChainAtoms`, `chainAtomsToPrice`, `quoteAtomsToAmount`, `amountToQuoteAtoms`, and `ORDERBOOK_QUOTE_DECIMALS`.
+- **Own fills**: `orderbookOwnFills(fills, secrets, receipt)` and `receiptTag`, with the program's receipt function passed in.
+- **Spot funding**: `needsSpotTransfer`.
+- **Formatting**: `orderbookDecimal` and `quoteAmount` write a decimal string from its digits, at fixed places, with the quote token named as data; `durationText`, `clockTime`, `eventTime` and `ageText`. Each answers null for a value it cannot read.
+- **A mark's age**: `markFreshness(markTime, now, maxPriceAgeSeconds)` says how old a mark is and whether an order may use it, against the market's own price age limit; `ageOf` and `olderThan` are the same reading for anything else.
 
 ### Changed
 
