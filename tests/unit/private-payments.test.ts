@@ -16,6 +16,7 @@ import {
   VersionedTransaction,
 } from "@solana/web3.js";
 import { connection } from "../../src/infrastructure/solana/client.js";
+import { EXPIRY_GRACE_BLOCKS } from "../../src/infrastructure/solana/settlement.js";
 import { checkPrograms } from "../../src/infrastructure/solana/presign-guard.js";
 import {
   checkCreatedAccounts,
@@ -401,7 +402,9 @@ describe("sending a signed transfer whose answer may be lost", () => {
       blockhash: "hash",
       lastValidBlockHeight: 1_000,
     });
-    vi.spyOn(connection, "getBlockHeight").mockResolvedValue(expired ? 1_001 : 900);
+    vi.spyOn(connection, "getBlockHeight").mockResolvedValue(
+      expired ? 1_001 + EXPIRY_GRACE_BLOCKS : 900,
+    );
     return vi
       .spyOn(connection, "getSignatureStatus")
       .mockResolvedValue({ context: { slot: 1 }, value: status } as never);

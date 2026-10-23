@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Keypair, TransactionMessage, VersionedTransaction, SystemProgram } from "@solana/web3.js";
 import { deriveKeypair } from "../../src/infrastructure/solana/keys.js";
+import { EXPIRY_GRACE_BLOCKS } from "../../src/infrastructure/solana/settlement.js";
 import type { Wallet } from "../../src/domain/wallet.js";
 import { newVaultKey, open, seal, vaultKeyFor, type Envelope } from "../../src/wallet/keystore.js";
 import { STORAGE_KEY, toStored } from "../../src/wallet/types.js";
@@ -428,7 +429,7 @@ describe("reserving an action", () => {
       const again = await reopened();
       expect(again.pending.pendingFor("acc_1")).toMatchObject({ signature: id });
       expect(await again.pending.settlePending("acc_1")).toBe("pending");
-      blockHeight = LAST_VALID + 1;
+      blockHeight = LAST_VALID + 1 + EXPIRY_GRACE_BLOCKS;
       status = "confirmed";
       expect(await again.pending.settlePending("acc_1")).toBe("landed");
       expect(again.pending.pendingFor("acc_1")).toBeUndefined();
@@ -442,7 +443,7 @@ describe("reserving an action", () => {
       // Killed with the signed transaction in hand, before it was recorded or sent.
       const again = await reopened();
       expect(await again.pending.settlePending("acc_1")).toBe("pending");
-      blockHeight = LAST_VALID + 1;
+      blockHeight = LAST_VALID + 1 + EXPIRY_GRACE_BLOCKS;
       // Its time has run out, and the portfolio's own transactions do not include it.
       expect(await again.pending.settlePending("acc_1")).toBe("expired");
       expect(again.pending.pendingFor("acc_1")).toBeUndefined();
@@ -460,7 +461,7 @@ describe("reserving an action", () => {
         },
       ];
       const again = await reopened();
-      blockHeight = LAST_VALID + 1;
+      blockHeight = LAST_VALID + 1 + EXPIRY_GRACE_BLOCKS;
       expect(await again.pending.settlePending("acc_1")).toBe("landed");
       expect(again.store.getSnapshot()?.activity).toMatchObject([
         { portfolioId: "acc_1", ...activity },
@@ -470,7 +471,7 @@ describe("reserving an action", () => {
     it("is kept while the chain cannot be searched, and is the person's to clear when it never can be", async () => {
       await coSigned();
       const again = await reopened();
-      blockHeight = LAST_VALID + 1;
+      blockHeight = LAST_VALID + 1 + EXPIRY_GRACE_BLOCKS;
       search = "is down";
       expect(await again.pending.settlePending("acc_1")).toBe("pending");
       search = "is not allowed";
@@ -582,7 +583,7 @@ describe("reserving an action", () => {
     const funding = await pending.reserve(pending.FUNDING, addressAt(0), "moving 5.00 USDC");
     await funding!.finish(new UnknownOutcomeError("deposit-signature", LAST_VALID));
     expect(await pending.settlePending(pending.FUNDING)).toBe("pending");
-    blockHeight = LAST_VALID + 1;
+    blockHeight = LAST_VALID + 1 + EXPIRY_GRACE_BLOCKS;
     expect(await pending.settlePending(pending.FUNDING)).toBe("expired");
     expect(await pending.reserve(pending.FUNDING, addressAt(0), "again")).not.toBeNull();
   });

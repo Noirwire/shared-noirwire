@@ -15,7 +15,10 @@ import {
 } from "@solana/web3.js";
 import { connection } from "../../src/infrastructure/solana/client.js";
 import { sendSolTo, toRawUnits } from "../../src/infrastructure/solana/sol.js";
-import { OWN_SEND_WAIT_MS } from "../../src/infrastructure/solana/settlement.js";
+import {
+  EXPIRY_GRACE_BLOCKS,
+  OWN_SEND_WAIT_MS,
+} from "../../src/infrastructure/solana/settlement.js";
 import { UnknownOutcomeError } from "../../src/infrastructure/solana/swap/types.js";
 import { ataFor, withdrawToken } from "../../src/infrastructure/solana/tokens.js";
 
@@ -25,6 +28,7 @@ const DECIMALS = 6;
 const TOKEN_ACCOUNT_RENT = 2_039_280;
 const RENT_EXEMPT_MINIMUM = 890_880;
 const LAST_VALID_BLOCK_HEIGHT = 1_000;
+const PAST_GRACE = LAST_VALID_BLOCK_HEIGHT + 1 + EXPIRY_GRACE_BLOCKS;
 
 const mint = Keypair.generate().publicKey;
 const funder = Keypair.generate();
@@ -396,14 +400,14 @@ describe("a send, confirmed by asking the chain", () => {
   it("is a failure once its blockhash has expired with no trace of it", async () => {
     chain();
     vi.mocked(connection.getSignatureStatus).mockResolvedValue(noTrace);
-    vi.mocked(connection.getBlockHeight).mockResolvedValue(LAST_VALID_BLOCK_HEIGHT + 1);
+    vi.mocked(connection.getBlockHeight).mockResolvedValue(PAST_GRACE);
 
     await expect(send()).rejects.toThrow("The transfer failed.");
   });
 
   it("is not a failure when a lagging node first reports no trace of a transaction that landed", async () => {
     chain();
-    vi.mocked(connection.getBlockHeight).mockResolvedValue(LAST_VALID_BLOCK_HEIGHT + 1);
+    vi.mocked(connection.getBlockHeight).mockResolvedValue(PAST_GRACE);
     vi.mocked(connection.getSignatureStatus)
       .mockResolvedValueOnce(noTrace)
       .mockResolvedValue({
@@ -418,7 +422,7 @@ describe("a send, confirmed by asking the chain", () => {
     chain();
     vi.useFakeTimers();
     vi.mocked(connection.getBlockHeight)
-      .mockResolvedValueOnce(LAST_VALID_BLOCK_HEIGHT + 1)
+      .mockResolvedValueOnce(PAST_GRACE)
       .mockRejectedValue(new Error("down"));
     vi.mocked(connection.getSignatureStatus).mockResolvedValue(noTrace);
 

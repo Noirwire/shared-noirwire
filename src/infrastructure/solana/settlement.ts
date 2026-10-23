@@ -46,12 +46,24 @@ export function signaturesOf(transaction: VersionedTransaction): string[] {
  * round, a transaction landing between the two calls would be seen as absent
  * and then as expired.
  *
- * One read answers through one node of a pool, and a node that is behind the
- * one that gave the height sees a landed transaction as absent. So "failed"
- * stands only when a second read, `EXPIRY_RECHECK_MS` later, says it too;
- * otherwise the second answer is the answer.
+ * Every read goes through the one connection, to one pool of nodes, and a
+ * node that is behind the one that gave the height sees a landed transaction
+ * as absent, however often it is asked. So absence is no proof until the
+ * height is past the last valid one by `EXPIRY_GRACE_MS` of chain time, a lag
+ * no pool node sits behind, and a second read, `EXPIRY_RECHECK_MS` later,
+ * agrees. Short of that the outcome stays "unknown" and the transaction may
+ * still be paid for twice only by someone who ignores that it may have landed.
+ * An error recorded on chain is a fact and needs neither.
  */
 export const EXPIRY_RECHECK_MS = 1_000;
+export const EXPIRY_GRACE_MS = 120_000;
+const SLOT_MS = 400;
+export const EXPIRY_GRACE_BLOCKS = EXPIRY_GRACE_MS / SLOT_MS;
+
+/** Whether `height` is far enough past `lastValidBlockHeight` for absence to count as proof. */
+export function expiredForGood(height: number, lastValidBlockHeight: number): boolean {
+  return height > lastValidBlockHeight + EXPIRY_GRACE_BLOCKS;
+}
 
 async function broadcastOutcome(
   signature: string,
@@ -76,7 +88,9 @@ async function readOutcome(
     if (value?.confirmationStatus === "confirmed" || value?.confirmationStatus === "finalized") {
       return "confirmed";
     }
-    if (!value && lastValidBlockHeight && height > lastValidBlockHeight) return "failed";
+    if (!value && lastValidBlockHeight && expiredForGood(height, lastValidBlockHeight)) {
+      return "failed";
+    }
     return "unknown";
   } catch {
     return "unknown";

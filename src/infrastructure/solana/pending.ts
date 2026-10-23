@@ -1,7 +1,7 @@
 import { PublicKey } from "@solana/web3.js";
 import { isTransient } from "../../application/retries.js";
 import { connection } from "./client.js";
-import { EXPIRY_RECHECK_MS } from "./settlement.js";
+import { EXPIRY_RECHECK_MS, expiredForGood } from "./settlement.js";
 
 /**
  * A transaction that was signed and not seen to land or fail. It may still
@@ -111,7 +111,10 @@ async function settleOnce(
   let expired: boolean | null = null;
   try {
     if (sent.lastValidBlockHeight) {
-      expired = (await connection.getBlockHeight("finalized")) > sent.lastValidBlockHeight;
+      expired = expiredForGood(
+        await connection.getBlockHeight("finalized"),
+        sent.lastValidBlockHeight,
+      );
     } else if (sent.blockhash) {
       // "processed" is the newest view: a blockhash this wallet signed with is
       // known there, so a "no" means it expired, not that it is too new.

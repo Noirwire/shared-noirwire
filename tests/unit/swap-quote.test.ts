@@ -13,7 +13,7 @@ import {
   jupiterVenue,
   NoQuoteError,
 } from "../../src/infrastructure/solana/swap/jupiter.js";
-import { signatureOf } from "../../src/infrastructure/solana/settlement.js";
+import { EXPIRY_GRACE_BLOCKS, signatureOf } from "../../src/infrastructure/solana/settlement.js";
 import {
   clampSlippageBps,
   DEFAULT_SLIPPAGE_BPS,
@@ -305,7 +305,7 @@ describe("a swap handed back to the venue to land", () => {
       "did not go through",
     );
 
-    chainSays(null, 101);
+    chainSays(null, 101 + EXPIRY_GRACE_BLOCKS);
     await expect(executeJupiterSwap(quote, signed(), LANDS_UNTIL)).rejects.toThrow(
       "did not go through",
     );
@@ -411,7 +411,7 @@ describe("a swap handed back to the venue to land", () => {
     }
     // The chain shows its time ran out with no trace: now it is a failure.
     refusing({ status: "Failed", error: "Quote expired" }, 200);
-    chainSays(null, 101);
+    chainSays(null, 101 + EXPIRY_GRACE_BLOCKS);
     await expect(executeJupiterSwap(quote, signed(), LANDS_UNTIL)).rejects.toThrow(
       "did not go through",
     );

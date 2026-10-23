@@ -64,10 +64,18 @@ describe("fixed-point decimals", () => {
     expect(parseNumberUnits(1.5e-7, 9)).toBe(150n);
     expect(parseNumberUnits(0, 6)).toBe(0n);
     expect(() => parseNumberUnits(1e-7, 6)).toThrow();
-    expect(() => parseNumberUnits(1e21, 6)).toThrow();
+    expect(parseNumberUnits(1e21, 6)).toBe(10n ** 27n);
     for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, -0.5]) {
       expect(() => parseNumberUnits(bad, 6)).toThrow();
     }
+  });
+
+  it("keeps a high-magnitude number exact down to the last base unit", () => {
+    expect(parseNumberUnits(1000000.000000001, 9)).toBe(1_000_000_000_000_001n);
+  });
+
+  it("refuses a 17-digit number whose extra decimals are not float noise", () => {
+    expect(() => parseNumberUnits(1.2345678901234567, 6)).toThrow("More than 6 decimals");
   });
 
   it("round-trips decimal strings at 6 and 9 places", () => {

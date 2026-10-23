@@ -50,21 +50,36 @@ export function parseUnits(text: string, decimals: number): bigint {
   return BigInt(whole + fraction.slice(0, decimals).padEnd(decimals, "0"));
 }
 
+const EXPONENT_FORM = /^(\d)(?:\.(\d+))?e([+-]\d+)$/;
+
+/** The shortest round-trip decimal string of a finite non-negative number, never in exponent form. */
+function plainDecimal(amount: number): string {
+  const text = String(amount);
+  const match = EXPONENT_FORM.exec(text);
+  if (!match) return text;
+  const [, lead, fraction = "", exponent] = match;
+  const digits = lead + fraction;
+  const point = 1 + Number(exponent);
+  if (point <= 0) return `0.${"0".repeat(-point)}${digits}`;
+  if (digits.length <= point) return digits + "0".repeat(point - digits.length);
+  return `${digits.slice(0, point)}.${digits.slice(point)}`;
+}
+
 /**
- * `parseUnits` for an amount held as a number. A number is written out in
- * full first, so a tiny or huge one never reaches the parser in exponent
- * form; NaN, infinity and negatives are refused. A number holds about 15
- * significant digits, so float noise beyond that (0.1 + 0.2) is dropped.
+ * `parseUnits` for an amount held as a number, read as the shortest decimal
+ * that names that number, exactly. NaN, infinity and negatives are refused.
+ * More decimals than `decimals` are accepted only when they are float noise
+ * (0.1 + 0.2): rounding the number to 15 significant digits then fits.
  */
 export function parseNumberUnits(amount: number, decimals: number): bigint {
   if (!Number.isFinite(amount) || amount < 0) throw new Error(`Not an amount: ${amount}`);
-  const plain = String(Number(amount.toPrecision(15)));
-  const text = plain.includes("e")
-    ? Number(plain)
-        .toFixed(Math.min(100, decimals + 12))
-        .replace(/\.?0+$/, "")
-    : plain;
-  return parseUnits(text, decimals);
+  try {
+    return parseUnits(plainDecimal(amount), decimals);
+  } catch (error) {
+    const rounded = Number(amount.toPrecision(15));
+    if (rounded === amount) throw error;
+    return parseUnits(plainDecimal(rounded), decimals);
+  }
 }
 
 /** The decimal string at the fixed-point scale, or null when `toFixedPoint` would throw. */

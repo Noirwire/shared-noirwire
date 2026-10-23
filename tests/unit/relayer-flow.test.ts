@@ -36,7 +36,7 @@ import {
   runRelayed,
 } from "../../src/infrastructure/solana/relayer.js";
 import { ChainError } from "../../src/domain/chainError.js";
-import { signatureOf } from "../../src/infrastructure/solana/settlement.js";
+import { EXPIRY_GRACE_BLOCKS, signatureOf } from "../../src/infrastructure/solana/settlement.js";
 import { UnknownOutcomeError } from "../../src/infrastructure/solana/swap/types.js";
 import {
   ataFor,
@@ -66,6 +66,8 @@ const recipient = Keypair.generate().publicKey;
 const tracker = ALL_STOCKS[0];
 const FEE = 20_000n;
 const LAST_VALID = 1_000;
+/** A finalized height far enough past the last valid one for an absent transaction to be proven gone. */
+const PAST_GRACE = LAST_VALID + 1 + EXPIRY_GRACE_BLOCKS;
 
 function tokenAccount(mint: PublicKey, of: PublicKey, amount: bigint): AccountInfo<Buffer> {
   const data = Buffer.alloc(AccountLayout.span);
@@ -909,12 +911,27 @@ describe("a transaction that was sent and not confirmed", () => {
     expect(await settle(sent)).toBe("expired");
     status = "absent";
     expect(await settle(sent)).toBe("pending");
-    blockHeight = LAST_VALID + 1;
+    blockHeight = PAST_GRACE;
     expect(await settle(sent)).toBe("expired");
   });
 
-  it("is not called expired on the word of a node that is behind", async () => {
+  it("stays pending when the chain twice says absent but the height is only just past expiry", async () => {
     blockHeight = LAST_VALID + 1;
+    status = "absent";
+    expect(await settle({ signature: "sig", lastValidBlockHeight: LAST_VALID })).toBe("pending");
+    expect(await settle({ signature: "sig", lastValidBlockHeight: LAST_VALID })).toBe("pending");
+    blockHeight = LAST_VALID + EXPIRY_GRACE_BLOCKS;
+    expect(await settle({ signature: "sig", lastValidBlockHeight: LAST_VALID })).toBe("pending");
+  });
+
+  it("is expired once the grace period has passed and the chain still has no trace", async () => {
+    status = "absent";
+    blockHeight = PAST_GRACE;
+    expect(await settle({ signature: "sig", lastValidBlockHeight: LAST_VALID })).toBe("expired");
+  });
+
+  it("is not called expired on the word of a node that is behind", async () => {
+    blockHeight = PAST_GRACE;
     const landed = { context: { slot: 1 }, value: { confirmationStatus: "confirmed" } };
     const statusOf = vi.spyOn(connection, "getSignatureStatus");
     statusOf
@@ -930,7 +947,7 @@ describe("a transaction that was sent and not confirmed", () => {
   });
 
   it("is still landed if it shows up just as its blockhash expires", async () => {
-    blockHeight = LAST_VALID + 1;
+    blockHeight = PAST_GRACE;
     expect(await settle({ signature: "sig", lastValidBlockHeight: LAST_VALID })).toBe("landed");
   });
 
@@ -940,7 +957,7 @@ describe("a transaction that was sent and not confirmed", () => {
     const recent = vi.spyOn(connection, "getSignaturesForAddress").mockResolvedValue([]);
     expect(await settle(sent)).toBe("pending");
     expect(recent).not.toHaveBeenCalled();
-    blockHeight = LAST_VALID + 1;
+    blockHeight = PAST_GRACE;
     // Everything the signer did was read, and it is not there.
     expect(await settle(sent)).toBe("expired");
     // Read twice, a moment apart, before it is released.
