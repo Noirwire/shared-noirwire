@@ -1,7 +1,6 @@
 import { PublicKey } from "@solana/web3.js";
 import { isTransient } from "../../application/retries.js";
 import { connection } from "./client.js";
-import { EXPIRY_RECHECK_MS, expiredForGood } from "./settlement.js";
 
 /**
  * A transaction that was signed and not seen to land or fail. It may still
@@ -77,44 +76,25 @@ async function sought(
 /**
  * What became of `sent`:
  * - "landed": the chain shows it confirmed;
- * - "expired": it failed on chain, or can no longer land and the chain has
- *   no trace of it;
- * - "pending": it may still land;
- * - "unknown": there is nothing to settle it by, neither when it expires nor
- *   (with no id) whether it landed. Only the person who can check the
- *   balance can release it.
+ * - "expired": the chain itself recorded an error for it;
+ * - "pending": it may still land, or may have landed unseen: the absence of
+ *   a status is never a verdict, however late, because every read goes
+ *   through one pool of nodes and a node that is behind or lacks history
+ *   reports a landed transaction as absent. Only the person, after checking
+ *   the balance and history, can release it (`userCleared`);
+ * - "unknown": there is nothing to settle it by.
  *
- * A transaction with no recorded id is never called expired on its blockhash
- * alone. Someone else signed it as fee payer after this wallet did, so it
- * may have been sent and have landed under an id this device never saw.
- * Once its blockhash has expired, the signer's recent transactions are
- * searched for it, and it is released only when that search is conclusive.
- *
- * Expiry is read before the status, so that one landing between the two
- * reads is seen as landed and not as expired.
+ * A transaction with no recorded id is looked for among the signer's recent
+ * transactions once its blockhash has expired, and is "expired" only when
+ * one of them carries it with a recorded error.
  */
 export async function settle(
-  sent: SentUnconfirmed,
-): Promise<"landed" | "expired" | "pending" | "unknown"> {
-  const first = await settleOnce(sent);
-  if (first !== "expired") return first;
-  // One read answers through one node of a pool, and a node that is behind
-  // sees a landed transaction as absent. "Expired" releases the reservation
-  // and invites a second payment, so a second read has to say it too.
-  await new Promise((resolve) => setTimeout(resolve, EXPIRY_RECHECK_MS));
-  return settleOnce(sent);
-}
-
-async function settleOnce(
   sent: SentUnconfirmed,
 ): Promise<"landed" | "expired" | "pending" | "unknown"> {
   let expired: boolean | null = null;
   try {
     if (sent.lastValidBlockHeight) {
-      expired = expiredForGood(
-        await connection.getBlockHeight("finalized"),
-        sent.lastValidBlockHeight,
-      );
+      expired = (await connection.getBlockHeight("finalized")) > sent.lastValidBlockHeight;
     } else if (sent.blockhash) {
       // "processed" is the newest view: a blockhash this wallet signed with is
       // known there, so a "no" means it expired, not that it is too new.
@@ -130,17 +110,17 @@ async function settleOnce(
       .getSignatureStatus(sent.signature, { searchTransactionHistory: true })
       .catch(() => undefined);
     if (status === undefined) return "pending";
+    // Only an error the chain recorded releases it. No status at all never does.
     if (status.value?.err) return "expired";
     const level = status.value?.confirmationStatus;
     if (level === "confirmed" || level === "finalized") return "landed";
     if (status.value) return "pending";
   }
   if (expired === null) return "unknown";
-  if (!expired) return "pending";
-  if (sent.signature) return "expired";
+  if (!expired || sent.signature) return "pending";
 
   const found = await sought(sent);
   if (found === "landed") return "landed";
-  if (found === "failed" || found === "absent") return "expired";
-  return found === "unread" ? "pending" : "unknown";
+  if (found === "failed") return "expired";
+  return found === "unsearchable" ? "unknown" : "pending";
 }

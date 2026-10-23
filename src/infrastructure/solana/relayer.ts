@@ -517,18 +517,17 @@ export async function quoteRelayed(
  *
  * Until the relayer has signed, nothing can land, so a failure up to there
  * is `RelayerUnavailableError`: nothing was sent, and the caller may offer
- * another way to pay. A relay that answers that the payment is too small
- * (the price moved) is asked for the fee once more. If that is no more than
- * was reviewed, the same payment is signed again with a fresh blockhash; if
- * it is more, nothing further is signed and `RelayerFeeRoseError` carries
- * the new fee back for a fresh review. Nobody pays more than they were shown.
+ * another way to pay. The fee is priced with the relayer before anything is
+ * signed: if it is more than was reviewed, nothing is signed and
+ * `RelayerFeeRoseError` carries the new fee back for a fresh review. Nobody
+ * pays more than they were shown.
  *
  * A transaction names its fee payer, so it can only be signed by the one
- * replica whose key that is. At most `MAX_RELAY_ATTEMPTS` passes are made,
- * after which `RelayerUnavailableError` is thrown.
+ * replica whose key that is, and it is signed once.
  *
- * No error code from the server is certainty that a signed transaction was
- * not received, so none is a reason to sign again. A replica
+ * Once the sign request has left the device, no answer from the server, a
+ * refusal such as `insufficient_payment` included, is certainty that the
+ * transaction was not received, so none is a reason to sign again. A replica
  * that was sent a signed transaction and did not answer may hold a complete
  * one, and a second transaction signed for another replica could land beside
  * it: the same action twice. So silence at that point is
@@ -548,10 +547,8 @@ export async function runRelayed(run: {
   const { owner, reviewedFeeRaw, stillUnlocked } = run;
   const portfolio = owner.publicKey;
 
-  const failed: PublicKey[] = [];
-  let repriced = false;
-  for (let attempt = 0; attempt < MAX_RELAY_ATTEMPTS; attempt++) {
-    const { pins, feePayer } = await relayerFor(failed).catch(() => {
+  {
+    const { pins, feePayer } = await relayerFor().catch(() => {
       throw new RelayerUnavailableError();
     });
     const draft = await run.build({ feePayer, feeRaw: reviewedFeeRaw, pricing: false });
@@ -588,6 +585,15 @@ export async function runRelayed(run: {
     if (!balances.ok && balances.feePayerShort) throw new RelayerUnavailableError();
     if (!balances.ok) throw new Error(balances.reason);
 
+    // The price is checked while nothing is signed, so a moved price is a
+    // fresh review and never a second signature after the first was sent.
+    const priced = await estimate(transaction, feePayer).catch((error: unknown) => {
+      if (isChainError(error, "notAvailableNow")) throw error;
+      return null;
+    });
+    if (priced === null) throw new RelayerUnavailableError();
+    if (priced > reviewedFeeRaw) throw new RelayerFeeRoseError(priced);
+
     await signForSending(transaction, owner, stillUnlocked, latest.lastValidBlockHeight);
 
     let answer: { transaction?: string; signed_transaction?: string; signature?: string };
@@ -600,21 +606,10 @@ export async function runRelayed(run: {
       // The request was never made, for want of a session. Nothing left
       // the device, and nothing is asked of the relayer again here.
       if (isChainError(error, "notAvailableNow")) throw error;
-      // It may have it, signed by both: an error code from the server is not
-      // proof it did not, and silence is not either. Nothing more is signed
-      // until the chain has settled this one.
-      if (error instanceof RelayerSilence || neverReceived(error)) {
-        throw new UnknownOutcomeError(undefined, latest.lastValidBlockHeight);
-      }
-      const tooSmall = error instanceof RelayerRefusal && error.reason === "insufficient_payment";
-      if (!tooSmall || repriced) throw new RelayerUnavailableError();
-      // The price moved. What was just signed lacks the fee payer's signature
-      // and can never land; it is dropped, and the fee is asked for once more.
-      repriced = true;
-      const fee = await estimate(transaction, feePayer).catch(() => null);
-      if (fee === null) throw new RelayerUnavailableError();
-      if (fee > reviewedFeeRaw) throw new RelayerFeeRoseError(fee);
-      continue;
+      // The request left the device and the replica may hold it signed by
+      // both: no answer after that, a refusal included, is proof it does not.
+      // Nothing more is signed until the chain has settled this one.
+      throw new UnknownOutcomeError(undefined, latest.lastValidBlockHeight);
     }
 
     // The relayer only signs. Nothing has been broadcast, by it or by anyone.
@@ -641,5 +636,4 @@ export async function runRelayed(run: {
       () => new RelayedNotLandedError(),
     );
   }
-  throw new RelayerUnavailableError();
 }

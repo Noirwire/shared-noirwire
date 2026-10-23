@@ -16,7 +16,6 @@ import {
   VersionedTransaction,
 } from "@solana/web3.js";
 import { connection } from "../../src/infrastructure/solana/client.js";
-import { EXPIRY_GRACE_BLOCKS } from "../../src/infrastructure/solana/settlement.js";
 import { checkPrograms } from "../../src/infrastructure/solana/presign-guard.js";
 import {
   checkCreatedAccounts,
@@ -402,9 +401,7 @@ describe("sending a signed transfer whose answer may be lost", () => {
       blockhash: "hash",
       lastValidBlockHeight: 1_000,
     });
-    vi.spyOn(connection, "getBlockHeight").mockResolvedValue(
-      expired ? 1_001 + EXPIRY_GRACE_BLOCKS : 900,
-    );
+    vi.spyOn(connection, "getBlockHeight").mockResolvedValue(expired ? 1_001 : 900);
     return vi
       .spyOn(connection, "getSignatureStatus")
       .mockResolvedValue({ context: { slot: 1 }, value: status } as never);
@@ -440,17 +437,16 @@ describe("sending a signed transfer whose answer may be lost", () => {
     }
   });
 
-  it("calls it failed only once the chain shows an error or it can no longer land", async () => {
+  it("calls it failed only once the chain shows an error, never for the absence of a status", async () => {
     chain({ confirmationStatus: "confirmed", err: { InstructionError: [0, "Custom"] } });
     answer(new Error("timeout"));
     await expect(submitTransfer(BODY, SIGNATURE, 0)).rejects.toThrow("did not go through");
 
-    // Expired with no trace: a failure, in the words the service refused it with.
     chain(null, true);
-    answer(json(400, { error: { code: "BAD", message: "Signature verification failed." } }));
-    await expect(submitTransfer(BODY, SIGNATURE, 0)).rejects.toThrow(
-      "Signature verification failed.",
-    );
+    answer(new Error("timeout"));
+    await expect(submitTransfer(BODY, SIGNATURE, 0)).rejects.toMatchObject({
+      name: "UnknownOutcomeError",
+    });
   });
 
   it("does not take a refusal as final: the service had the transaction, so only the chain settles it", async () => {
@@ -460,12 +456,12 @@ describe("sending a signed transfer whose answer may be lost", () => {
     const error = await submitTransfer(BODY, SIGNATURE, 0).catch((caught: unknown) => caught);
     expect(error).toMatchObject({ name: "UnknownOutcomeError", signature: SIGNATURE });
 
-    // Once its time has run out with no trace, the refusal stands, as worded.
+    // Even once its time has run out with no trace, the refusal does not stand.
     chain(null, true);
     answer(json(400, { error: { code: "BAD", message: "Signature verification failed." } }));
-    await expect(submitTransfer(BODY, SIGNATURE, 0)).rejects.toThrow(
-      "Signature verification failed.",
-    );
+    await expect(submitTransfer(BODY, SIGNATURE, 0)).rejects.toMatchObject({
+      name: "UnknownOutcomeError",
+    });
 
     chain(LANDED);
     answer(json(400, { error: { code: "BAD", message: "Signature verification failed." } }));

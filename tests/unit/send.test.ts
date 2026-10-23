@@ -15,10 +15,7 @@ import {
 } from "@solana/web3.js";
 import { connection } from "../../src/infrastructure/solana/client.js";
 import { sendSolTo, toRawUnits } from "../../src/infrastructure/solana/sol.js";
-import {
-  EXPIRY_GRACE_BLOCKS,
-  OWN_SEND_WAIT_MS,
-} from "../../src/infrastructure/solana/settlement.js";
+import { OWN_SEND_WAIT_MS } from "../../src/infrastructure/solana/settlement.js";
 import { UnknownOutcomeError } from "../../src/infrastructure/solana/swap/types.js";
 import { ataFor, withdrawToken } from "../../src/infrastructure/solana/tokens.js";
 
@@ -28,7 +25,7 @@ const DECIMALS = 6;
 const TOKEN_ACCOUNT_RENT = 2_039_280;
 const RENT_EXEMPT_MINIMUM = 890_880;
 const LAST_VALID_BLOCK_HEIGHT = 1_000;
-const PAST_GRACE = LAST_VALID_BLOCK_HEIGHT + 1 + EXPIRY_GRACE_BLOCKS;
+const PAST_EXPIRY = LAST_VALID_BLOCK_HEIGHT + 1_000;
 
 const mint = Keypair.generate().publicKey;
 const funder = Keypair.generate();
@@ -326,7 +323,10 @@ describe("amounts", () => {
   });
 
   it("converts an ordinary amount without float drift", () => {
-    expect(toRawUnits(0.1 + 0.2, 6)).toBe(300_000n);
+    expect(toRawUnits(0.3, 6)).toBe(300_000n);
+    expect(() => toRawUnits(0.1 + 0.2, 6)).toThrow("more decimals");
+    expect(() => toRawUnits(0.9999999999999999, 6)).toThrow("more decimals");
+    expect(toRawUnits(1000000.000000001, 9)).toBe(1_000_000_000_000_001n);
     expect(toRawUnits(1.1, 9)).toBe(1_100_000_000n);
   });
 
@@ -397,37 +397,31 @@ describe("a send, confirmed by asking the chain", () => {
     await expect(send()).rejects.toThrow("The transfer failed.");
   });
 
-  it("is a failure once its blockhash has expired with no trace of it", async () => {
+  it("is unknown, never a failure, once its blockhash has expired with no trace of it", async () => {
+    vi.useFakeTimers();
     chain();
     vi.mocked(connection.getSignatureStatus).mockResolvedValue(noTrace);
-    vi.mocked(connection.getBlockHeight).mockResolvedValue(PAST_GRACE);
+    vi.mocked(connection.getBlockHeight).mockResolvedValue(PAST_EXPIRY);
 
-    await expect(send()).rejects.toThrow("The transfer failed.");
+    const outcome = expect(send()).rejects.toBeInstanceOf(UnknownOutcomeError);
+    await vi.advanceTimersByTimeAsync(OWN_SEND_WAIT_MS + 5_000);
+    await outcome;
   });
 
-  it("is not a failure when a lagging node first reports no trace of a transaction that landed", async () => {
+  it("is not a failure when a lagging node twice reports no trace of a transaction that landed", async () => {
+    vi.useFakeTimers();
     chain();
-    vi.mocked(connection.getBlockHeight).mockResolvedValue(PAST_GRACE);
+    vi.mocked(connection.getBlockHeight).mockResolvedValue(PAST_EXPIRY);
     vi.mocked(connection.getSignatureStatus)
+      .mockResolvedValueOnce(noTrace)
       .mockResolvedValueOnce(noTrace)
       .mockResolvedValue({
         context: { slot: 2 },
         value: { slot: 2, confirmations: null, err: null, confirmationStatus: "confirmed" },
       });
 
-    await expect(send()).resolves.toBeUndefined();
-  });
-
-  it("is unknown, not a failure, when the second read of an expiry cannot be had", async () => {
-    chain();
-    vi.useFakeTimers();
-    vi.mocked(connection.getBlockHeight)
-      .mockResolvedValueOnce(PAST_GRACE)
-      .mockRejectedValue(new Error("down"));
-    vi.mocked(connection.getSignatureStatus).mockResolvedValue(noTrace);
-
-    const outcome = expect(send()).rejects.toBeInstanceOf(UnknownOutcomeError);
-    await vi.advanceTimersByTimeAsync(OWN_SEND_WAIT_MS + 5_000);
+    const outcome = expect(send()).resolves.toBeUndefined();
+    await vi.advanceTimersByTimeAsync(5_000);
     await outcome;
   });
 

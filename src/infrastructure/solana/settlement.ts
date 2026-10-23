@@ -38,58 +38,22 @@ export function signaturesOf(transaction: VersionedTransaction): string[] {
 
 /**
  * What the chain itself says became of a transaction that was sent, for when
- * whoever was landing it stopped answering. "failed" is only ever a fact: an
- * error recorded on chain, or a blockhash that expired with no trace of the
- * transaction. Anything short of that is "unknown".
- *
- * The block height is read before the status on purpose. Read the other way
- * round, a transaction landing between the two calls would be seen as absent
- * and then as expired.
- *
- * Every read goes through the one connection, to one pool of nodes, and a
- * node that is behind the one that gave the height sees a landed transaction
- * as absent, however often it is asked. So absence is no proof until the
- * height is past the last valid one by `EXPIRY_GRACE_MS` of chain time, a lag
- * no pool node sits behind, and a second read, `EXPIRY_RECHECK_MS` later,
- * agrees. Short of that the outcome stays "unknown" and the transaction may
- * still be paid for twice only by someone who ignores that it may have landed.
- * An error recorded on chain is a fact and needs neither.
+ * whoever was landing it stopped answering. "failed" is only ever an error
+ * the chain itself recorded for the signature. The absence of a status is
+ * never a verdict, however late and however often it is read: every read goes
+ * through one connection to one pool of nodes, and a node that is behind or
+ * lacks history reports a landed transaction as absent. Absence stays
+ * "unknown", and the person is told to check the balance and history before
+ * trying again.
  */
-export const EXPIRY_RECHECK_MS = 1_000;
-export const EXPIRY_GRACE_MS = 120_000;
-const SLOT_MS = 400;
-export const EXPIRY_GRACE_BLOCKS = EXPIRY_GRACE_MS / SLOT_MS;
-
-/** Whether `height` is far enough past `lastValidBlockHeight` for absence to count as proof. */
-export function expiredForGood(height: number, lastValidBlockHeight: number): boolean {
-  return height > lastValidBlockHeight + EXPIRY_GRACE_BLOCKS;
-}
-
-async function broadcastOutcome(
-  signature: string,
-  lastValidBlockHeight?: number,
-): Promise<"confirmed" | "failed" | "unknown"> {
-  const first = await readOutcome(signature, lastValidBlockHeight);
-  if (first !== "failed") return first;
-  await new Promise((resolve) => setTimeout(resolve, EXPIRY_RECHECK_MS));
-  return readOutcome(signature, lastValidBlockHeight);
-}
-
-async function readOutcome(
-  signature: string,
-  lastValidBlockHeight?: number,
-): Promise<"confirmed" | "failed" | "unknown"> {
+async function broadcastOutcome(signature: string): Promise<"confirmed" | "failed" | "unknown"> {
   try {
-    const height = lastValidBlockHeight ? await connection.getBlockHeight("finalized") : 0;
     const { value } = await connection.getSignatureStatus(signature, {
       searchTransactionHistory: true,
     });
     if (value?.err) return "failed";
     if (value?.confirmationStatus === "confirmed" || value?.confirmationStatus === "finalized") {
       return "confirmed";
-    }
-    if (!value && lastValidBlockHeight && expiredForGood(height, lastValidBlockHeight)) {
-      return "failed";
     }
     return "unknown";
   } catch {
@@ -106,12 +70,11 @@ const CONFIRM_POLL_MS = 1_000;
  */
 export async function outcomeWithin(
   signature: string,
-  lastValidBlockHeight: number | undefined,
   waitMs: number,
 ): Promise<"confirmed" | "failed" | "unknown"> {
   const deadline = Date.now() + waitMs;
   for (;;) {
-    const outcome = await broadcastOutcome(signature, lastValidBlockHeight);
+    const outcome = await broadcastOutcome(signature);
     if (outcome !== "unknown" || Date.now() >= deadline) return outcome;
     await new Promise((resolve) => setTimeout(resolve, CONFIRM_POLL_MS));
   }
@@ -119,9 +82,8 @@ export async function outcomeWithin(
 
 /**
  * How long a transaction we sent ourselves is watched for. Its blockhash
- * stops being valid after about a minute, and the finalized height that
- * proves it takes some seconds more to pass, so by then the chain has
- * answered either way: it landed, or it never can.
+ * stops being valid after about a minute. Past that, a transaction the chain
+ * still shows no status for stays unknown, never failed.
  */
 export const OWN_SEND_WAIT_MS = 120_000;
 
@@ -153,7 +115,7 @@ export async function sendAndSettle(
       return false;
     },
   );
-  const outcome = await outcomeWithin(signature, lastValidBlockHeight, sent ? OWN_SEND_WAIT_MS : 0);
+  const outcome = await outcomeWithin(signature, sent ? OWN_SEND_WAIT_MS : 0);
   if (outcome === "confirmed") return signature;
   if (outcome === "failed") throw failed();
   throw new UnknownOutcomeError(signature, lastValidBlockHeight);

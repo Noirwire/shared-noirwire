@@ -36,7 +36,7 @@ import {
   runRelayed,
 } from "../../src/infrastructure/solana/relayer.js";
 import { ChainError } from "../../src/domain/chainError.js";
-import { EXPIRY_GRACE_BLOCKS, signatureOf } from "../../src/infrastructure/solana/settlement.js";
+import { signatureOf } from "../../src/infrastructure/solana/settlement.js";
 import { UnknownOutcomeError } from "../../src/infrastructure/solana/swap/types.js";
 import {
   ataFor,
@@ -67,7 +67,7 @@ const tracker = ALL_STOCKS[0];
 const FEE = 20_000n;
 const LAST_VALID = 1_000;
 /** A finalized height far enough past the last valid one for an absent transaction to be proven gone. */
-const PAST_GRACE = LAST_VALID + 1 + EXPIRY_GRACE_BLOCKS;
+const PAST_GRACE = LAST_VALID + 1_000;
 
 function tokenAccount(mint: PublicKey, of: PublicKey, amount: bigint): AccountInfo<Buffer> {
   const data = Buffer.alloc(AccountLayout.span);
@@ -403,7 +403,7 @@ describe("pricing an action with the relayer", () => {
 describe("running a relayer-paid action", () => {
   it("signs, has the relayer sign, sends what came back and reports the fee payer's signature", async () => {
     const signature = await run();
-    expect(methods()).toEqual(["getPayerSigner", "signTransaction"]);
+    expect(methods()).toEqual(["getPayerSigner", "estimateTransactionFee", "signTransaction"]);
     expect(sent).toHaveLength(1);
     expect(sent[0].message.staticAccountKeys[0].equals(relayer.publicKey)).toBe(true);
     expect(sent[0].signatures.every((bytes) => bytes.some((byte) => byte !== 0))).toBe(true);
@@ -415,7 +415,7 @@ describe("running a relayer-paid action", () => {
     await expect(run({ stillUnlocked: () => false })).rejects.toMatchObject({
       code: "walletLocked",
     });
-    expect(methods()).toEqual(["getPayerSigner"]);
+    expect(methods()).toEqual(["getPayerSigner", "estimateTransactionFee"]);
   });
 
   it("signs nothing the simulation does not bear out", async () => {
@@ -438,45 +438,33 @@ describe("running a relayer-paid action", () => {
     expect(sent).toHaveLength(0);
   });
 
-  it("falls back when the relayer refuses to sign, without trying again", async () => {
+  it("leaves the outcome unknown when the relayer refuses to sign, without trying again", async () => {
     relay.signTransaction = () => refusal("refused");
-    await expect(run()).rejects.toBeInstanceOf(RelayerUnavailableError);
-    expect(methods()).toEqual(["getPayerSigner", "signTransaction"]);
+    await expect(run()).rejects.toBeInstanceOf(UnknownOutcomeError);
+    expect(methods()).toEqual(["getPayerSigner", "estimateTransactionFee", "signTransaction"]);
     expect(sent).toHaveLength(0);
   });
 
-  it("asks for the fee once more when the payment was too small, and never pays more than was reviewed", async () => {
-    relay.signTransaction = () => refusal("insufficient_payment");
+  it("prices the fee before anything is signed, and never pays more than was reviewed", async () => {
     relay.estimateTransactionFee = () => answer({ fee_in_token: Number(FEE) + 1 });
     const rose = await run().catch((error: unknown) => error);
     expect(rose).toBeInstanceOf(RelayerFeeRoseError);
     expect((rose as RelayerFeeRoseError).feeRaw).toBe(FEE + 1n);
-    expect(methods()).toEqual(["getPayerSigner", "signTransaction", "estimateTransactionFee"]);
+    expect(methods()).toEqual(["getPayerSigner", "estimateTransactionFee"]);
     expect(sent).toHaveLength(0);
   });
 
-  it("signs the same payment again when the fee is back within what was reviewed, once", async () => {
-    let attempts = 0;
-    relay.signTransaction = (params) => {
-      attempts += 1;
-      return attempts === 1
-        ? refusal("insufficient_payment")
-        : answer({ signed_transaction: coSigned(params.transaction) });
+  it("signs exactly once when a signer that holds the signed transaction answers insufficient_payment", async () => {
+    let signRequests = 0;
+    relay.signTransaction = () => {
+      signRequests += 1;
+      return refusal("insufficient_payment");
     };
-    await run();
-    expect(methods()).toEqual([
-      "getPayerSigner",
-      "signTransaction",
-      "estimateTransactionFee",
-      "getPayerSigner",
-      "signTransaction",
-    ]);
-    expect(sent).toHaveLength(1);
-
-    asked = [];
-    relay.signTransaction = () => refusal("insufficient_payment");
-    await expect(run()).rejects.toBeInstanceOf(RelayerUnavailableError);
-    expect(methods().filter((method) => method === "signTransaction")).toHaveLength(2);
+    await expect(run()).rejects.toBeInstanceOf(UnknownOutcomeError);
+    expect(signRequests).toBe(1);
+    expect(presignGuard.verifyBalancesBeforeSigning).toHaveBeenCalledTimes(1);
+    expect(methods().filter((method) => method === "estimateTransactionFee")).toHaveLength(1);
+    expect(sent).toHaveLength(0);
   });
 
   it("never signs a second transaction on the server's word that the first was not received", async () => {
@@ -486,7 +474,7 @@ describe("running a relayer-paid action", () => {
         ? refusal("unavailable", 503)
         : answer({ signed_transaction: coSigned(params.transaction) });
     await expect(run()).rejects.toBeInstanceOf(UnknownOutcomeError);
-    expect(methods()).toEqual(["getPayerSigner", "signTransaction"]);
+    expect(methods()).toEqual(["getPayerSigner", "estimateTransactionFee", "signTransaction"]);
     expect(presignGuard.verifyBalancesBeforeSigning).toHaveBeenCalledTimes(1);
     expect(sent).toHaveLength(0);
   });
@@ -498,7 +486,7 @@ describe("running a relayer-paid action", () => {
     // unknown until the chain says, never "nothing was sent".
     expect(error).toBeInstanceOf(UnknownOutcomeError);
     expect((error as UnknownOutcomeError).lastValidBlockHeight).toBe(LAST_VALID);
-    expect(methods()).toEqual(["getPayerSigner", "signTransaction"]);
+    expect(methods()).toEqual(["getPayerSigner", "estimateTransactionFee", "signTransaction"]);
     expect(sent).toHaveLength(0);
   });
 
@@ -581,7 +569,7 @@ describe("running a relayer-paid action", () => {
     // A 422 that carries no code of the server's is not a refusal it can vouch for.
     relay.signTransaction = () => Response.json({ error: "insufficient_payment" }, { status: 422 });
     await expect(run()).rejects.toBeInstanceOf(UnknownOutcomeError);
-    expect(methods()).toEqual(["getPayerSigner", "signTransaction"]);
+    expect(methods()).toEqual(["getPayerSigner", "estimateTransactionFee", "signTransaction"]);
   });
 
   it("stops with nothing sent when no session could be had, so the request was never made", async () => {
@@ -650,7 +638,7 @@ describe("running a relayer-paid action", () => {
       // replica, could land beside it: the same send twice.
       expect(error).toBeInstanceOf(UnknownOutcomeError);
       expect((error as UnknownOutcomeError).lastValidBlockHeight).toBe(LAST_VALID);
-      expect(methods()).toEqual(["getPayerSigner", "signTransaction"]);
+      expect(methods()).toEqual(["getPayerSigner", "estimateTransactionFee", "signTransaction"]);
       expect(presignGuard.verifyBalancesBeforeSigning).toHaveBeenCalledTimes(1);
       expect(sent).toHaveLength(0);
     },
@@ -904,45 +892,42 @@ describe("a transaction that was sent and not confirmed", () => {
     }));
   });
 
-  it("is landed when the chain shows it, expired when it failed or its blockhash expired with no trace", async () => {
+  it("is landed when the chain shows it, expired only when the chain recorded an error", async () => {
     const sent: SentUnconfirmed = { signature: "sig", lastValidBlockHeight: LAST_VALID };
     expect(await settle(sent)).toBe("landed");
     status = "failed";
     expect(await settle(sent)).toBe("expired");
     status = "absent";
     expect(await settle(sent)).toBe("pending");
-    blockHeight = PAST_GRACE;
-    expect(await settle(sent)).toBe("expired");
   });
 
-  it("stays pending when the chain twice says absent but the height is only just past expiry", async () => {
-    blockHeight = LAST_VALID + 1;
+  it("never calls it expired on the absence of a status, however far past expiry", async () => {
     status = "absent";
-    expect(await settle({ signature: "sig", lastValidBlockHeight: LAST_VALID })).toBe("pending");
-    expect(await settle({ signature: "sig", lastValidBlockHeight: LAST_VALID })).toBe("pending");
-    blockHeight = LAST_VALID + EXPIRY_GRACE_BLOCKS;
-    expect(await settle({ signature: "sig", lastValidBlockHeight: LAST_VALID })).toBe("pending");
+    for (const height of [LAST_VALID + 1, PAST_GRACE, LAST_VALID * 1_000]) {
+      blockHeight = height;
+      expect(await settle({ signature: "sig", lastValidBlockHeight: LAST_VALID })).toBe("pending");
+    }
   });
 
-  it("is expired once the grace period has passed and the chain still has no trace", async () => {
-    status = "absent";
-    blockHeight = PAST_GRACE;
-    expect(await settle({ signature: "sig", lastValidBlockHeight: LAST_VALID })).toBe("expired");
-  });
-
-  it("is not called expired on the word of a node that is behind", async () => {
+  it("resolves to landed when two stale null reads are followed by a confirmed status", async () => {
     blockHeight = PAST_GRACE;
     const landed = { context: { slot: 1 }, value: { confirmationStatus: "confirmed" } };
-    const statusOf = vi.spyOn(connection, "getSignatureStatus");
-    statusOf
-      .mockResolvedValueOnce({ context: { slot: 1 }, value: null })
+    const none = { context: { slot: 1 }, value: null };
+    vi.spyOn(connection, "getSignatureStatus")
+      .mockResolvedValueOnce(none)
+      .mockResolvedValueOnce(none)
       .mockResolvedValue(landed as never);
-    expect(await settle({ signature: "sig", lastValidBlockHeight: LAST_VALID })).toBe("landed");
+    const sent: SentUnconfirmed = { signature: "sig", lastValidBlockHeight: LAST_VALID };
+    expect(await settle(sent)).toBe("pending");
+    expect(await settle(sent)).toBe("pending");
+    expect(await settle(sent)).toBe("landed");
+  });
 
-    statusOf.mockReset();
-    statusOf
-      .mockResolvedValueOnce({ context: { slot: 1 }, value: null })
-      .mockRejectedValue(new Error("down"));
+  it("stays pending while the chain cannot be read", async () => {
+    blockHeight = PAST_GRACE;
+    vi.spyOn(connection, "getSignatureStatus").mockRejectedValue(new Error("down"));
+    expect(await settle({ signature: "sig", lastValidBlockHeight: LAST_VALID })).toBe("pending");
+    vi.mocked(connection.getBlockHeight).mockRejectedValue(new Error("down"));
     expect(await settle({ signature: "sig", lastValidBlockHeight: LAST_VALID })).toBe("pending");
   });
 
@@ -951,17 +936,16 @@ describe("a transaction that was sent and not confirmed", () => {
     expect(await settle({ signature: "sig", lastValidBlockHeight: LAST_VALID })).toBe("landed");
   });
 
-  it("with no id to look up, waits for its last valid block to pass, then looks for it before releasing", async () => {
+  it("with no id to look up, waits for its last valid block to pass, then looks for it and still keeps it", async () => {
     const signer = portfolio.publicKey.toBase58();
     const sent: SentUnconfirmed = { lastValidBlockHeight: LAST_VALID, blockhash: "hash", signer };
     const recent = vi.spyOn(connection, "getSignaturesForAddress").mockResolvedValue([]);
     expect(await settle(sent)).toBe("pending");
     expect(recent).not.toHaveBeenCalled();
     blockHeight = PAST_GRACE;
-    // Everything the signer did was read, and it is not there.
-    expect(await settle(sent)).toBe("expired");
-    // Read twice, a moment apart, before it is released.
-    expect(recent).toHaveBeenCalledTimes(2);
+    // Everything the signer did was read, and it is not there: one pool's word is no proof.
+    expect(await settle(sent)).toBe("pending");
+    expect(recent).toHaveBeenCalledTimes(1);
     // Nothing to look for it by: never released on its blockhash alone.
     expect(await settle({ lastValidBlockHeight: LAST_VALID })).toBe("unknown");
     vi.mocked(connection.getBlockHeight).mockRejectedValue(new Error("down"));
@@ -974,9 +958,9 @@ describe("a transaction that was sent and not confirmed", () => {
     blockhashValid = false;
     vi.spyOn(connection, "getSignaturesForAddress").mockResolvedValue([]);
     expect(await settle({ blockhash: "hash", signer: portfolio.publicKey.toBase58() })).toBe(
-      "expired",
+      "pending",
     );
-    expect(await settle({ signature: "sig", blockhash: "hash" })).toBe("expired");
+    expect(await settle({ signature: "sig", blockhash: "hash" })).toBe("pending");
     status = "confirmed";
     expect(await settle({ signature: "sig", blockhash: "hash" })).toBe("landed");
   });

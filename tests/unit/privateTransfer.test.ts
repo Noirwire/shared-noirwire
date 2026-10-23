@@ -26,7 +26,7 @@ describe("the most a balance can move privately", () => {
 
 describe("what a private transfer costs", () => {
   it("sums in exact base units", () => {
-    const costs = privateTransferCosts(0.1 + 0.2, 6);
+    const costs = privateTransferCosts(0.3, 6);
     expect(costs.total).toBe(Number(300_000n + privacyFeeFor(300_000n) + RELAY_FEE_RAW) / 1e6);
     expect(costs.minimum).toBe(Number(MIN_TRANSFER_RAW) / 1e6);
   });

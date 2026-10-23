@@ -13,7 +13,7 @@ import {
   jupiterVenue,
   NoQuoteError,
 } from "../../src/infrastructure/solana/swap/jupiter.js";
-import { EXPIRY_GRACE_BLOCKS, signatureOf } from "../../src/infrastructure/solana/settlement.js";
+import { signatureOf } from "../../src/infrastructure/solana/settlement.js";
 import {
   clampSlippageBps,
   DEFAULT_SLIPPAGE_BPS,
@@ -298,16 +298,16 @@ describe("a swap handed back to the venue to land", () => {
     );
   });
 
-  it("reports a failure only when it is a fact: an error on chain, or an expired blockhash", async () => {
+  it("reports a failure only when it is a fact: an error on chain, never an expired blockhash alone", async () => {
     noAnswer();
     chainSays({ err: { InstructionError: [0, "Custom"] }, confirmationStatus: "confirmed" });
     await expect(executeJupiterSwap(quote, signed(), LANDS_UNTIL)).rejects.toThrow(
       "did not go through",
     );
 
-    chainSays(null, 101 + EXPIRY_GRACE_BLOCKS);
-    await expect(executeJupiterSwap(quote, signed(), LANDS_UNTIL)).rejects.toThrow(
-      "did not go through",
+    chainSays(null, 10_000);
+    await expect(executeJupiterSwap(quote, signed(), LANDS_UNTIL)).rejects.toBeInstanceOf(
+      UnknownOutcomeError,
     );
   });
 
@@ -409,11 +409,11 @@ describe("a swap handed back to the venue to land", () => {
         UnknownOutcomeError,
       );
     }
-    // The chain shows its time ran out with no trace: now it is a failure.
+    // Its time ran out with no trace: still not a failure, only one pool's word.
     refusing({ status: "Failed", error: "Quote expired" }, 200);
-    chainSays(null, 101 + EXPIRY_GRACE_BLOCKS);
-    await expect(executeJupiterSwap(quote, signed(), LANDS_UNTIL)).rejects.toThrow(
-      "did not go through",
+    chainSays(null, 10_000);
+    await expect(executeJupiterSwap(quote, signed(), LANDS_UNTIL)).rejects.toBeInstanceOf(
+      UnknownOutcomeError,
     );
     // And had it landed after all, it landed.
     chainSays({ confirmationStatus: "confirmed", err: null });

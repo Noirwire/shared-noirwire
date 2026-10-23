@@ -1,6 +1,7 @@
 import "../buffer-polyfill.js";
 
 import type { Keypair, PublicKey, VersionedTransaction } from "@solana/web3.js";
+import { floorToUnit } from "../../../domain/orderbook/decimal.js";
 import { connection } from "../client.js";
 import { isMainnet } from "../config.js";
 import { NETWORK_FEE_LAMPORTS } from "../fees.js";
@@ -93,8 +94,12 @@ function requireMarketPrice(marketPrice: number | undefined): asserts marketPric
   }
 }
 
+/**
+ * An order's amount is the result of price arithmetic and carries more
+ * decimals than the token has, so it is cut down to the unit first, never up.
+ */
 function toBaseUnits(amount: number, decimals: number): bigint {
-  return toRawUnits(amount, decimals);
+  return toRawUnits(floorToUnit(amount, decimals), decimals);
 }
 
 function toDisplayUnits(amount: bigint, decimals: number): number {

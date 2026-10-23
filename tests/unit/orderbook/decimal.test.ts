@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   divFixedPoint,
   fromFixedPoint,
+  floorToUnit,
   mulFixedPoint,
   parseNumberUnits,
   parseUnits,
@@ -59,7 +60,16 @@ describe("fixed-point decimals", () => {
   });
 
   it("reads a number as its plain decimal, without float noise or exponent form", () => {
-    expect(parseNumberUnits(0.1 + 0.2, 6)).toBe(300_000n);
+    expect(parseNumberUnits(0.3, 6)).toBe(300_000n);
+    expect(() => parseNumberUnits(0.1 + 0.2, 6)).toThrow("More than 6 decimals");
+    expect(() => parseNumberUnits(0.9999999999999999, 6)).toThrow("More than 6 decimals");
+    expect(parseNumberUnits(0.999999, 6)).toBe(999_999n);
+    expect(parseNumberUnits(1.000001, 6)).toBe(1_000_001n);
+    expect(floorToUnit(0.9999999999999999, 6)).toBe(0.999999);
+    expect(floorToUnit(0.1 + 0.2, 6)).toBe(0.3);
+    expect(floorToUnit(1.0000009999, 6)).toBe(1);
+    expect(floorToUnit(1e-7, 6)).toBe(0);
+    expect(floorToUnit(2.5, 6)).toBe(2.5);
     expect(parseNumberUnits(1e-7, 9)).toBe(100n);
     expect(parseNumberUnits(1.5e-7, 9)).toBe(150n);
     expect(parseNumberUnits(0, 6)).toBe(0n);

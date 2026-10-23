@@ -45,6 +45,8 @@ export const sendCopy = {
   previousRecipient: "Previous recipient: ",
   checkEveryCharacter: "Check every character against the source, not just the start and end.",
   checkedAddress: "I have checked the full address",
+  checkedHistory:
+    "I have checked this portfolio's balance and transaction history, and this payment is not in it",
   lastFour: (large: boolean) =>
     `Type the last 4 characters of the recipient address to confirm this ${large ? "large send" : "send"}`,
   lastFourLabel: "Last 4 characters of recipient address",

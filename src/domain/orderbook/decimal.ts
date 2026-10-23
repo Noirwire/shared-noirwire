@@ -67,19 +67,25 @@ function plainDecimal(amount: number): string {
 
 /**
  * `parseUnits` for an amount held as a number, read as the shortest decimal
- * that names that number, exactly. NaN, infinity and negatives are refused.
- * More decimals than `decimals` are accepted only when they are float noise
- * (0.1 + 0.2): rounding the number to 15 significant digits then fits.
+ * that names that number, exactly. NaN, infinity and negatives are refused,
+ * and so is a number with more decimals than `decimals`: it is never rounded
+ * here, because rounding can move an amount up. A caller holding the result
+ * of arithmetic rounds it first, down, with `floorToUnit`.
  */
 export function parseNumberUnits(amount: number, decimals: number): bigint {
   if (!Number.isFinite(amount) || amount < 0) throw new Error(`Not an amount: ${amount}`);
-  try {
-    return parseUnits(plainDecimal(amount), decimals);
-  } catch (error) {
-    const rounded = Number(amount.toPrecision(15));
-    if (rounded === amount) throw error;
-    return parseUnits(plainDecimal(rounded), decimals);
-  }
+  return parseUnits(plainDecimal(amount), decimals);
+}
+
+/**
+ * The number cut down to a whole count of base units of `decimals` places,
+ * never up. It reads the shortest decimal of the number and drops the digits
+ * past the unit, so a value just below a unit boundary stays below it.
+ */
+export function floorToUnit(amount: number, decimals: number): number {
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  const [whole, fraction = ""] = plainDecimal(amount).split(".");
+  return Number(fraction.slice(0, decimals) ? `${whole}.${fraction.slice(0, decimals)}` : whole);
 }
 
 /** The decimal string at the fixed-point scale, or null when `toFixedPoint` would throw. */

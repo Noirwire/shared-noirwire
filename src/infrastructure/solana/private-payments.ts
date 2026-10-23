@@ -401,11 +401,7 @@ export async function submitTransfer(
   // Handed over with no clear success and no signature to ask the chain
   // about: what became of it is not known, whatever the answer said.
   if (!signature) throw new UnknownOutcomeError();
-  const outcome = await outcomeWithin(
-    signature,
-    latest?.lastValidBlockHeight,
-    refusal === null ? waitMs : 0,
-  );
+  const outcome = await outcomeWithin(signature, refusal === null ? waitMs : 0);
   if (outcome === "confirmed") return signature;
   if (outcome === "failed") throw new Error(refusal ?? "The private transfer did not go through.");
   throw new UnknownOutcomeError(signature, latest?.lastValidBlockHeight);

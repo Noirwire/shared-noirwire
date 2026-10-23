@@ -291,13 +291,24 @@ export function createPendingActions(deps: PendingActionsDeps) {
 
   /**
    * Removes an unsettled action the chain cannot settle, on the user's word,
-   * once they have checked the portfolio's balance. Only that one, and only
-   * while it has no block height or blockhash to settle it by: a newer
-   * reservation that took its place in the meantime is left alone.
+   * once they have checked the portfolio's balance. Only that one, and while
+   * it has a block height or blockhash to settle it by, only when
+   * `userCheckedHistory` is true: the caller passes it after the person
+   * confirmed `send.checkedHistory`, never on its own. A newer reservation
+   * that took its place in the meantime is left alone.
    */
-  async function clearPending(portfolioId: string, id: string): Promise<void> {
+  async function clearPending(
+    portfolioId: string,
+    id: string,
+    userCheckedHistory = false,
+  ): Promise<void> {
     if (runningHere(portfolioId)) return;
-    await store.update((wallet) => applied(wallet, portfolioId, id, { type: "userCleared" }));
+    await store.update((wallet) =>
+      applied(wallet, portfolioId, id, {
+        type: "userCleared",
+        ...(userCheckedHistory ? { checkedHistory: true as const } : {}),
+      }),
+    );
   }
 
   return {

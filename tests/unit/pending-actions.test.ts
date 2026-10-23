@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Keypair, TransactionMessage, VersionedTransaction, SystemProgram } from "@solana/web3.js";
 import { deriveKeypair } from "../../src/infrastructure/solana/keys.js";
-import { EXPIRY_GRACE_BLOCKS } from "../../src/infrastructure/solana/settlement.js";
 import type { Wallet } from "../../src/domain/wallet.js";
 import { newVaultKey, open, seal, vaultKeyFor, type Envelope } from "../../src/wallet/keystore.js";
 import { STORAGE_KEY, toStored } from "../../src/wallet/types.js";
@@ -376,7 +375,7 @@ describe("reserving an action", () => {
     expect(await second.pending.settlePending("acc_1")).toBe("none");
   });
 
-  it("after a crash between signing and sending, waits for the chain to show it cannot land", async () => {
+  it("after a crash between signing and sending, stays pending until the person confirms their check", async () => {
     const first = await walletTab();
     await first.pending.reserve("acc_1", PORTFOLIO, "a send", SEND);
     await first.signing.signForSending(ownTransaction(), keyAt(1), () => true);
@@ -385,7 +384,10 @@ describe("reserving an action", () => {
     expect(await reloaded.store.unlock(PASSWORD)).toBeNull();
     expect(await reloaded.pending.settlePending("acc_1")).toBe("pending");
     blockhashValid = false;
-    expect(await reloaded.pending.settlePending("acc_1")).toBe("expired");
+    expect(await reloaded.pending.settlePending("acc_1")).toBe("pending");
+    const kept = reloaded.pending.pendingFor("acc_1")!;
+    await reloaded.pending.clearPending("acc_1", kept.id, true);
+    expect(reloaded.pending.pendingFor("acc_1")).toBeUndefined();
   });
 
   describe.each([
@@ -429,7 +431,7 @@ describe("reserving an action", () => {
       const again = await reopened();
       expect(again.pending.pendingFor("acc_1")).toMatchObject({ signature: id });
       expect(await again.pending.settlePending("acc_1")).toBe("pending");
-      blockHeight = LAST_VALID + 1 + EXPIRY_GRACE_BLOCKS;
+      blockHeight = LAST_VALID + 1;
       status = "confirmed";
       expect(await again.pending.settlePending("acc_1")).toBe("landed");
       expect(again.pending.pendingFor("acc_1")).toBeUndefined();
@@ -438,16 +440,41 @@ describe("reserving an action", () => {
       ]);
     });
 
-    it("before it was broadcast: nothing was sent, and it is released truthfully", async () => {
+    it("before it was broadcast: absence is no verdict, and only the person's confirmed check releases it", async () => {
       await coSigned();
       // Killed with the signed transaction in hand, before it was recorded or sent.
       const again = await reopened();
       expect(await again.pending.settlePending("acc_1")).toBe("pending");
-      blockHeight = LAST_VALID + 1 + EXPIRY_GRACE_BLOCKS;
-      // Its time has run out, and the portfolio's own transactions do not include it.
-      expect(await again.pending.settlePending("acc_1")).toBe("expired");
+      blockHeight = LAST_VALID + 1;
+      // Its time has run out, and the portfolio's own transactions do not include it:
+      // one pool's word, so it stays.
+      expect(await again.pending.settlePending("acc_1")).toBe("pending");
+      const kept = again.pending.pendingFor("acc_1")!;
+      expect(await again.pending.reserve("acc_1", PORTFOLIO, "again")).toBeNull();
+      // Without the person's confirmation it stays.
+      await again.pending.clearPending("acc_1", kept.id);
+      expect(again.pending.pendingFor("acc_1")).toBeDefined();
+      await again.pending.clearPending("acc_1", kept.id, true);
       expect(again.pending.pendingFor("acc_1")).toBeUndefined();
       expect(again.store.getSnapshot()?.activity).toEqual([]);
+    });
+
+    it("keeps it pending through persistent RPC errors, and the person's recovery clears it", async () => {
+      await coSigned();
+      const again = await reopened();
+      blockHeight = LAST_VALID + 1;
+      search = "is down";
+      const { connection } = await import("../../src/infrastructure/solana/client.js");
+      vi.mocked(connection.getBlockHeight).mockRejectedValue(new Error("down"));
+      for (let attempt = 0; attempt < 3; attempt++) {
+        expect(await again.pending.settlePending("acc_1")).toBe("pending");
+      }
+      const kept = again.pending.pendingFor("acc_1")!;
+      expect(again.pending.pendingFor("acc_1")).not.toMatchObject({ unfindable: true });
+      await again.pending.clearPending("acc_1", kept.id);
+      expect(again.pending.pendingFor("acc_1")).toBeDefined();
+      await again.pending.clearPending("acc_1", kept.id, true);
+      expect(again.pending.pendingFor("acc_1")).toBeUndefined();
     });
 
     it("with no id on record but landed all the same: it is found, never called expired", async () => {
@@ -461,7 +488,7 @@ describe("reserving an action", () => {
         },
       ];
       const again = await reopened();
-      blockHeight = LAST_VALID + 1 + EXPIRY_GRACE_BLOCKS;
+      blockHeight = LAST_VALID + 1;
       expect(await again.pending.settlePending("acc_1")).toBe("landed");
       expect(again.store.getSnapshot()?.activity).toMatchObject([
         { portfolioId: "acc_1", ...activity },
@@ -471,7 +498,7 @@ describe("reserving an action", () => {
     it("is kept while the chain cannot be searched, and is the person's to clear when it never can be", async () => {
       await coSigned();
       const again = await reopened();
-      blockHeight = LAST_VALID + 1 + EXPIRY_GRACE_BLOCKS;
+      blockHeight = LAST_VALID + 1;
       search = "is down";
       expect(await again.pending.settlePending("acc_1")).toBe("pending");
       search = "is not allowed";
@@ -583,8 +610,11 @@ describe("reserving an action", () => {
     const funding = await pending.reserve(pending.FUNDING, addressAt(0), "moving 5.00 USDC");
     await funding!.finish(new UnknownOutcomeError("deposit-signature", LAST_VALID));
     expect(await pending.settlePending(pending.FUNDING)).toBe("pending");
-    blockHeight = LAST_VALID + 1 + EXPIRY_GRACE_BLOCKS;
-    expect(await pending.settlePending(pending.FUNDING)).toBe("expired");
+    blockHeight = LAST_VALID + 1;
+    expect(await pending.settlePending(pending.FUNDING)).toBe("pending");
+    expect(await pending.reserve(pending.FUNDING, addressAt(0), "again")).toBeNull();
+    const kept = pending.pendingFor(pending.FUNDING)!;
+    await pending.clearPending(pending.FUNDING, kept.id, true);
     expect(await pending.reserve(pending.FUNDING, addressAt(0), "again")).not.toBeNull();
   });
 });
@@ -671,7 +701,7 @@ describe("a pending action stored by the previous build", () => {
     expect(store.getSnapshot()?.activity).toMatchObject([{ portfolioId: "acc_1", ...SEND }]);
   });
 
-  it("reads one signed and not yet sent when the page closed, and settles it as expired", async () => {
+  it("reads one signed and not yet sent when the page closed, and keeps it until the person confirms", async () => {
     const { pending } = await storePrevious({
       state: "reserved",
       id: "act_old",
@@ -682,7 +712,8 @@ describe("a pending action stored by the previous build", () => {
     expect(pending.pendingFor("acc_1")).toMatchObject({ status: "unknown" });
     expect(await pending.settlePending("acc_1")).toBe("pending");
     blockhashValid = false;
-    expect(await pending.settlePending("acc_1")).toBe("expired");
+    expect(await pending.settlePending("acc_1")).toBe("pending");
+    await pending.clearPending("acc_1", "act_old", true);
     expect(pending.pendingFor("acc_1")).toBeUndefined();
   });
 
