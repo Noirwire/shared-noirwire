@@ -76,21 +76,19 @@ async function sought(
 /**
  * What became of `sent`:
  * - "landed": the chain shows it confirmed;
- * - "expired": it failed on chain, or can no longer land and the chain has
- *   no trace of it;
- * - "pending": it may still land;
- * - "unknown": there is nothing to settle it by, neither when it expires nor
- *   (with no id) whether it landed. Only the person who can check the
- *   balance can release it.
+ * - "expired": the chain itself recorded an error for it;
+ * - "pending": it may still land: its last valid height has not passed, or
+ *   the chain cannot be read just now;
+ * - "unknown": it is past its last valid height (or has nothing to settle it
+ *   by) and the chain recorded no error. The absence of a status is never a
+ *   verdict, because every read goes through one pool of nodes and a node
+ *   that is behind or lacks history reports a landed transaction as absent.
+ *   Only the person, after checking the balance and history, can release it
+ *   (`userCleared`).
  *
- * A transaction with no recorded id is never called expired on its blockhash
- * alone. Someone else signed it as fee payer after this wallet did, so it
- * may have been sent and have landed under an id this device never saw.
- * Once its blockhash has expired, the signer's recent transactions are
- * searched for it, and it is released only when that search is conclusive.
- *
- * Expiry is read before the status, so that one landing between the two
- * reads is seen as landed and not as expired.
+ * A transaction with no recorded id is looked for among the signer's recent
+ * transactions once its blockhash has expired, and is "expired" only when
+ * one of them carries it with a recorded error.
  */
 export async function settle(
   sent: SentUnconfirmed,
@@ -114,6 +112,7 @@ export async function settle(
       .getSignatureStatus(sent.signature, { searchTransactionHistory: true })
       .catch(() => undefined);
     if (status === undefined) return "pending";
+    // Only an error the chain recorded releases it. No status at all never does.
     if (status.value?.err) return "expired";
     const level = status.value?.confirmationStatus;
     if (level === "confirmed" || level === "finalized") return "landed";
@@ -121,10 +120,12 @@ export async function settle(
   }
   if (expired === null) return "unknown";
   if (!expired) return "pending";
-  if (sent.signature) return "expired";
+  // Past its last valid height with no error the chain recorded: never
+  // released here, and left to the person to clear once they have checked.
+  if (sent.signature) return "unknown";
 
   const found = await sought(sent);
   if (found === "landed") return "landed";
-  if (found === "failed" || found === "absent") return "expired";
-  return found === "unread" ? "pending" : "unknown";
+  if (found === "failed") return "expired";
+  return "unknown";
 }

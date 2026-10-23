@@ -26,6 +26,7 @@ import {
 import { LEND_PROGRAM, LEND_RECEIPT_MINT, LEND_REDEEM, LEND_WITHDRAW } from "../relayed.js";
 import type { RelayedDraft, RelayerTerms } from "../relayer.js";
 import { signForSending, type StillUnlocked } from "../signerAccounts.js";
+import { toRawUnits } from "../sol.js";
 import { readTokenAmount } from "../swap/guard.js";
 import { sendAndSettle, signatureOf } from "../settlement.js";
 import { ataFor } from "../tokens.js";
@@ -58,8 +59,13 @@ export const EARN_NETWORK_FEE_LAMPORTS = 50_000;
 /** The rent of a classic token account such as USDC's, which a withdrawal to a wallet without one opens. */
 const TOKEN_ACCOUNT_RENT_LAMPORTS = 2_039_280;
 
-/** Shares-to-assets drift allowed between reading the rate and the transaction landing. */
-const SLACK_BPS = 50n;
+/**
+ * Shares a deposit may return below the figure from the stored price: the
+ * live price is only ever higher, so it returns slightly fewer. A withdrawal
+ * has no slack: a higher price burns fewer shares than computed, never more.
+ */
+const DEPOSIT_SLACK_BPS = 5n;
+const WITHDRAW_SLACK_BPS = 0n;
 
 /**
  * The vault's own account, which every deposit and withdrawal passes through.
@@ -89,7 +95,7 @@ const MAX_SHARE_PRICE = 2n * PRICE_SCALE;
  * would loosen them, letting a deposit return too few shares or a withdrawal
  * burn too many. The stored price is as of the vault's last update, so the
  * live one is a touch higher; interest accrues at fractions of a basis point
- * a day, far inside `SLACK_BPS`.
+ * a day, inside `DEPOSIT_SLACK_BPS`.
  */
 async function sharePrice(): Promise<bigint> {
   const account = await connection.getAccountInfo(LENDING_ACCOUNT);
@@ -214,7 +220,7 @@ async function fetchVault(): Promise<VaultInfo> {
 }
 
 function toRaw(amount: number): bigint {
-  return BigInt(Math.round(amount * UNIT));
+  return toRawUnits(amount, DECIMALS);
 }
 
 async function buildTransaction(
@@ -357,13 +363,18 @@ export async function prepareEarn(
           ...base,
           cashAccount: cash,
           maxCashSpent: amountRaw,
-          receive: { account: receipt, minAmount: (shares * (10_000n - SLACK_BPS)) / 10_000n },
+          receive: {
+            account: receipt,
+            minAmount: (shares * (10_000n - DEPOSIT_SLACK_BPS)) / 10_000n,
+          },
         }
       : {
           ...base,
           cashAccount: receipt,
           // Every share, and not one more, when the whole position is taken back.
-          maxCashSpent: withdrawal?.all ? shares : (shares * (10_000n + SLACK_BPS)) / 10_000n + 1n,
+          maxCashSpent: withdrawal?.all
+            ? shares
+            : (shares * (10_000n + WITHDRAW_SLACK_BPS)) / 10_000n + 1n,
           receive: { account: cash, minAmount: amountRaw - 1n },
         };
   return { transaction, limits };
@@ -510,14 +521,17 @@ export async function relayedEarnDraft(
             cashAccount: cash,
             maxCashSpent: amountRaw + feeRaw,
             maxLamportsSpent: 0n,
-            receive: { account: receipt, minAmount: (shares * (10_000n - SLACK_BPS)) / 10_000n },
+            receive: {
+              account: receipt,
+              minAmount: (shares * (10_000n - DEPOSIT_SLACK_BPS)) / 10_000n,
+            },
             programs: RELAYED_PROGRAMS,
           }
         : {
             cashAccount: receipt,
             maxCashSpent: withdrawal?.all
               ? shares
-              : (shares * (10_000n + SLACK_BPS)) / 10_000n + 1n,
+              : (shares * (10_000n + WITHDRAW_SLACK_BPS)) / 10_000n + 1n,
             maxLamportsSpent: 0n,
             receive: { account: cash, minAmount: amountRaw - 1n - feeRaw },
             programs: RELAYED_PROGRAMS,

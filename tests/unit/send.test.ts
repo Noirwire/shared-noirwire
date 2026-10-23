@@ -25,6 +25,7 @@ const DECIMALS = 6;
 const TOKEN_ACCOUNT_RENT = 2_039_280;
 const RENT_EXEMPT_MINIMUM = 890_880;
 const LAST_VALID_BLOCK_HEIGHT = 1_000;
+const PAST_EXPIRY = LAST_VALID_BLOCK_HEIGHT + 1_000;
 
 const mint = Keypair.generate().publicKey;
 const funder = Keypair.generate();
@@ -295,8 +296,37 @@ describe("amounts", () => {
     expect(toRawUnits(9_007_199_254, 6)).toBe(9_007_199_254_000_000n);
   });
 
+  it("refuses NaN, negatives and amounts with more decimals than the asset has", () => {
+    expect(() => toRawUnits(Number.NaN, 6)).toThrow("not valid");
+    expect(() => toRawUnits(-1, 6)).toThrow("not valid");
+    expect(() => toRawUnits(1.0000001, 6)).toThrow("more decimals");
+    expect(() => toRawUnits(1e21, 6)).toThrow("too large");
+  });
+
+  it("reads exponent-form numbers as the plain amounts they are", () => {
+    expect(toRawUnits(1e-6, 6)).toBe(1n);
+    expect(toRawUnits(1.5e-7, 9)).toBe(150n);
+    expect(() => toRawUnits(2e10, 6)).toThrow("too large");
+  });
+
+  it("sends everything by exact raw equality, not by comparing floats", async () => {
+    const held = 123_456_789_012_345n;
+    const everything = mockChain(fundedPortfolio(held, 10_000_000));
+    await withdrawToken(mint, 9, portfolio, funder, 123_456.789012345, recipient);
+    expect(transferredAmount(everything[0])).toBe(held);
+    vi.restoreAllMocks();
+
+    // One raw unit less is sent as typed, never rounded up to the whole balance.
+    const slightlyLess = mockChain(fundedPortfolio(held, 10_000_000));
+    await withdrawToken(mint, 9, portfolio, funder, 123_456.789012344, recipient);
+    expect(transferredAmount(slightlyLess[0])).toBe(held - 1n);
+  });
+
   it("converts an ordinary amount without float drift", () => {
-    expect(toRawUnits(0.1 + 0.2, 6)).toBe(300_000n);
+    expect(toRawUnits(0.3, 6)).toBe(300_000n);
+    expect(() => toRawUnits(0.1 + 0.2, 6)).toThrow("more decimals");
+    expect(() => toRawUnits(0.9999999999999999, 6)).toThrow("more decimals");
+    expect(toRawUnits(1000000.000000001, 9)).toBe(1_000_000_000_000_001n);
     expect(toRawUnits(1.1, 9)).toBe(1_100_000_000n);
   });
 
@@ -367,12 +397,32 @@ describe("a send, confirmed by asking the chain", () => {
     await expect(send()).rejects.toThrow("The transfer failed.");
   });
 
-  it("is a failure once its blockhash has expired with no trace of it", async () => {
+  it("is unknown, never a failure, once its blockhash has expired with no trace of it", async () => {
+    vi.useFakeTimers();
     chain();
     vi.mocked(connection.getSignatureStatus).mockResolvedValue(noTrace);
-    vi.mocked(connection.getBlockHeight).mockResolvedValue(LAST_VALID_BLOCK_HEIGHT + 1);
+    vi.mocked(connection.getBlockHeight).mockResolvedValue(PAST_EXPIRY);
 
-    await expect(send()).rejects.toThrow("The transfer failed.");
+    const outcome = expect(send()).rejects.toBeInstanceOf(UnknownOutcomeError);
+    await vi.advanceTimersByTimeAsync(OWN_SEND_WAIT_MS + 5_000);
+    await outcome;
+  });
+
+  it("is not a failure when a lagging node twice reports no trace of a transaction that landed", async () => {
+    vi.useFakeTimers();
+    chain();
+    vi.mocked(connection.getBlockHeight).mockResolvedValue(PAST_EXPIRY);
+    vi.mocked(connection.getSignatureStatus)
+      .mockResolvedValueOnce(noTrace)
+      .mockResolvedValueOnce(noTrace)
+      .mockResolvedValue({
+        context: { slot: 2 },
+        value: { slot: 2, confirmations: null, err: null, confirmationStatus: "confirmed" },
+      });
+
+    const outcome = expect(send()).resolves.toBeUndefined();
+    await vi.advanceTimersByTimeAsync(5_000);
+    await outcome;
   });
 
   it("is unknown, not a failure, when the wait ends with no trace and a live blockhash", async () => {

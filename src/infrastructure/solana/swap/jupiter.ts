@@ -312,11 +312,7 @@ export async function executeJupiterSwap(
   const signature = own ?? result?.signature;
   if (!signature) throw new UnknownOutcomeError(undefined, lastValidBlockHeight);
   const submitted = !refused && status >= 200 && status < 300 && Boolean(result?.signature);
-  const outcome = await outcomeWithin(
-    signature,
-    lastValidBlockHeight,
-    submitted ? CONFIRM_WAIT_MS : 0,
-  );
+  const outcome = await outcomeWithin(signature, submitted ? CONFIRM_WAIT_MS : 0);
   if (outcome === "failed") throw new Error("The swap did not go through.");
   if (
     outcome === "confirmed" &&

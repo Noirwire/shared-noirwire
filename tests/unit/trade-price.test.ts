@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Keypair } from "@solana/web3.js";
 import { checkQuotedPrice, planTrade } from "../../src/infrastructure/solana/swap/execute.js";
+import { tradeDraft } from "../../src/application/trade.js";
+import { divideToUnits } from "../../src/domain/orderbook/decimal.js";
 import { TRADABLE_STOCKS } from "../../src/infrastructure/solana/tokenRegistry.js";
 
 const STOCK = TRADABLE_STOCKS[0];
@@ -37,6 +39,64 @@ const plan = (side: "buy" | "sell", amount: number, marketPrice?: number) =>
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+describe("an amount typed with more decimals than the cash has", () => {
+  it("is refused at the quote, never cut down", async () => {
+    venueQuotes(HUNDRED_USDC, raw(0.2));
+    await expect(plan("buy", 1.0000009, MARKET_PRICE)).rejects.toThrow("more decimals");
+    await expect(plan("buy", 0.0000001, MARKET_PRICE)).rejects.toThrow(
+      /smaller than the smallest unit/,
+    );
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("is cut down, never up, when it is the result of price arithmetic", () => {
+    const draft = (amountText: string) =>
+      tradeDraft({
+        side: "buy",
+        denom: "units",
+        amountText,
+        cash: 1_000,
+        heldRaw: 0,
+        unitsPerHeld: 1,
+        displayPrice: 0.9999999,
+      });
+    // 1.5 tokens at 0.9999999 is 1.49999985 dollars: cash holds six decimals.
+    expect(draft("1.5").amountToQuote).toBe(1.499999);
+  });
+});
+
+describe("selling shown units through a multiplier", () => {
+  const sell = (amountText: string, heldRaw: number, unitsPerHeld = 1.01) =>
+    tradeDraft({
+      side: "sell",
+      denom: "units",
+      amountText,
+      cash: 0,
+      heldRaw,
+      unitsPerHeld,
+      displayPrice: 10,
+      decimals: 6,
+    }).amountToQuote;
+
+  it("converts exactly, to the nearest unit, where the float quotient lands one short", () => {
+    expect(0.0707 / 1.01).toBe(0.06999999999999999);
+    expect(sell("0.0707", 5)).toBe(0.07);
+  });
+
+  it("sells the full position as held, exactly", () => {
+    expect(sell("5.05", 5)).toBe(5);
+  });
+
+  it("rounds a base-unit boundary to the nearest unit and never above what is held", () => {
+    expect(divideToUnits(0.0707, 1.01, 6)).toBe(70_000n);
+    // 1.000001 shown at multiplier 2 is half a unit above 0.5: halves round up.
+    expect(divideToUnits(1.000001, 2, 6)).toBe(500_001n);
+    expect(divideToUnits(1.000002, 2, 6)).toBe(500_001n);
+    expect(divideToUnits(1.000003, 2, 6)).toBe(500_002n);
+    expect(sell("0.0707", 0.06999)).toBe(0.06999);
+  });
 });
 
 describe("a quote held against the market price", () => {

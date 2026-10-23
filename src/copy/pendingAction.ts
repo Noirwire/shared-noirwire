@@ -16,7 +16,7 @@ export const pendingActionCopy = {
     funding: "your main wallet's balance",
   },
   unresolved: (subject: string, what: string, where: string) =>
-    `We could not confirm whether ${subject.charAt(0).toLowerCase()}${subject.slice(1)} (${what}) went through. Check ${where}; you can clear this once you have.`,
+    `We could not confirm whether ${subject.charAt(0).toLowerCase()}${subject.slice(1)} (${what}) went through. Check ${where} and your transaction history; you can clear this once you have.`,
   waiting: (subject: string, what: string) =>
     `${subject} (${what}) is not confirmed yet. It may still go through, so nothing can be confirmed here until that is known. This is checked for you.`,
   landed: (subject: string, what: string) =>
@@ -26,7 +26,7 @@ export const pendingActionCopy = {
 
   clear: "Clear",
   clearWarning:
-    "Clearing does not prove it failed: it may still have gone through. Check the balance first, and clear it only if the balance shows it did not.",
+    "Clearing does not prove it failed: it may still have gone through. Check your transaction history and the balance first, and clear it only if neither shows it went through.",
   clearConfirm: "Yes, clear it",
   keep: "Keep it",
 

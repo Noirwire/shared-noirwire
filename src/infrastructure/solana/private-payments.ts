@@ -20,6 +20,7 @@ import { apiUrl } from "../api.js";
 import { apiErrorOf, authorizedFetch } from "../apiSession.js";
 import { apiErrorIn } from "../../domain/apiError.js";
 import { isChainError } from "../../domain/chainError.js";
+import { parseNumberUnits } from "../../domain/orderbook/decimal.js";
 import { privatePaymentCluster } from "./config.js";
 import {
   MIN_TRANSFER_RAW,
@@ -400,11 +401,7 @@ export async function submitTransfer(
   // Handed over with no clear success and no signature to ask the chain
   // about: what became of it is not known, whatever the answer said.
   if (!signature) throw new UnknownOutcomeError();
-  const outcome = await outcomeWithin(
-    signature,
-    latest?.lastValidBlockHeight,
-    refusal === null ? waitMs : 0,
-  );
+  const outcome = await outcomeWithin(signature, refusal === null ? waitMs : 0);
   if (outcome === "confirmed") return signature;
   if (outcome === "failed") throw new Error(refusal ?? "The private transfer did not go through.");
   throw new UnknownOutcomeError(signature, latest?.lastValidBlockHeight);
@@ -446,7 +443,7 @@ export async function sendPrivateTransfer(
   request: PrivateTransferRequest,
 ): Promise<{ signature: string; feeTokens: number }> {
   const { sender, to, mint, decimals, amount, keepOut, stillUnlocked } = request;
-  const amountRaw = BigInt(Math.round(amount * 10 ** decimals));
+  const amountRaw = parseNumberUnits(amount, decimals);
   if (amountRaw < MIN_TRANSFER_RAW) {
     throw new Error(
       `A private transfer has to be at least ${Number(MIN_TRANSFER_RAW) / 10 ** decimals} USDC.`,

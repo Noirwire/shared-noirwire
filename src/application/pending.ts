@@ -120,8 +120,8 @@ export function pendingReducer(
       return undefined;
     case "chainChecked":
       if (event.outcome === "landed" || event.outcome === "expired") return undefined;
-      // With no id and nothing more the chain can say, it is the person's to release.
-      return event.outcome === "unknown" && !pending.signature && !userClearable(pending)
+      // With nothing more the chain can say, it is the person's to release.
+      return event.outcome === "unknown" && !userClearable(pending)
         ? { ...pending, unfindable: true }
         : pending;
     case "userCleared":

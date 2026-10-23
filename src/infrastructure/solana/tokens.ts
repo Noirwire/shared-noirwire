@@ -19,7 +19,7 @@ import { usdcMintKey } from "./config.js";
 import { NETWORK_FEE_LAMPORTS, requireFunderCovers, requireSenderCovers } from "./fees.js";
 import type { RelayedDraft, RelayerTerms } from "./relayer.js";
 import type { StillUnlocked } from "./signerAccounts.js";
-import { signSendConfirm, toRawUnits } from "./sol.js";
+import { rawAmountToSend, signSendConfirm, toRawUnits } from "./sol.js";
 import { readTokenAmount } from "./swap/guard.js";
 
 /**
@@ -212,7 +212,7 @@ export async function withdrawToken(
   const destinationInfo = await connection.getAccountInfo(destination);
 
   const held = readTokenAmount(sourceInfo?.data);
-  const rawAmount = amount === Number(held) / 10 ** decimals ? held : toRawUnits(amount, decimals);
+  const rawAmount = rawAmountToSend(amount, held, decimals);
   if (rawAmount === 0n || rawAmount > held) {
     throw new Error("More than this address holds.");
   }
@@ -304,8 +304,7 @@ export async function relayedSendDraft(
   const destinationInfo = await connection.getAccountInfo(destination);
 
   const held = readTokenAmount(sourceInfo?.data);
-  const asked =
-    send.amount === Number(held) / 10 ** decimals ? held : toRawUnits(send.amount, decimals);
+  const asked = rawAmountToSend(send.amount, held, decimals);
   const room = isCash ? held - terms.feeRaw : held;
   const amountRaw = terms.pricing && asked > room ? room : asked;
   if (amountRaw <= 0n || amountRaw > room) {

@@ -1,3 +1,5 @@
+import { parseNumberUnits } from "./orderbook/decimal.js";
+
 /**
  * The settlement window the queue may deliver in. A private transfer is
  * unlinkable because it settles out of the program's queue rather than as a
@@ -35,12 +37,21 @@ export function privacyFeeFor(amountRaw: bigint): bigint {
  * top of it, or 0 when that is under the smallest transfer.
  */
 export function maxPrivateTransfer(held: number, decimals: number): number {
-  const heldRaw = BigInt(Math.floor(Math.max(held, 0) * 10 ** decimals + 1e-6));
+  const heldRaw = previewUnits(held, decimals);
   const afterRelay = heldRaw - RELAY_FEE_RAW;
   if (afterRelay < MIN_TRANSFER_RAW) return 0;
   let raw = (afterRelay * 10_000n) / BigInt(10_000 + PRIVACY_FEE_BPS);
   while (raw + privacyFeeFor(raw) > afterRelay) raw -= 1n;
   return raw < MIN_TRANSFER_RAW ? 0 : Number(raw) / 10 ** decimals;
+}
+
+/** The base units of a typed amount for a cost preview: 0 when it is not an amount the token can hold. */
+function previewUnits(amount: number, decimals: number): bigint {
+  try {
+    return parseNumberUnits(amount, decimals);
+  } catch {
+    return 0n;
+  }
 }
 
 /**
@@ -51,9 +62,7 @@ export function maxPrivateTransfer(held: number, decimals: number): number {
 export function privateTransferCosts(amount: number, decimals: number) {
   const units = (raw: bigint) => Number(raw) / 10 ** decimals;
   // Summed in base units, so the total is the figure the check before signing enforces.
-  const raw = Number.isFinite(amount)
-    ? BigInt(Math.round(Math.max(amount, 0) * 10 ** decimals))
-    : 0n;
+  const raw = previewUnits(amount, decimals);
   const privacyFee = privacyFeeFor(raw);
   return {
     privacyFee: units(privacyFee),

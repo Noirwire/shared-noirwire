@@ -50,7 +50,11 @@ describe("the life of a pending action", () => {
     expect(pendingReducer(sent, { type: "chainChecked", outcome: "landed" })).toBeUndefined();
     expect(pendingReducer(sent, { type: "chainChecked", outcome: "expired" })).toBeUndefined();
     expect(pendingReducer(sent, { type: "chainChecked", outcome: "pending" })).toBe(sent);
-    expect(pendingReducer(sent, { type: "chainChecked", outcome: "unknown" })).toBe(sent);
+    const unknown = pendingReducer(sent, { type: "chainChecked", outcome: "unknown" })!;
+    expect(unknown).toMatchObject({ unfindable: true });
+    // Only an unknown outcome is the person's to clear; a pending one is not.
+    expect(pendingReducer(sent, { type: "userCleared" })).toBe(sent);
+    expect(pendingReducer(unknown, { type: "userCleared" })).toBeUndefined();
   });
 
   it("is cleared by the user only when there is no block height or blockhash to settle it by", () => {

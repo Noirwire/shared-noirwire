@@ -81,6 +81,14 @@ describe("prepareEarn", () => {
     vi.restoreAllMocks();
   });
 
+  it.each([0, Number.NaN, -1, Number.POSITIVE_INFINITY, 0.0000001])(
+    "refuses an amount of %s before anything is built",
+    async (amount) => {
+      await expect(prepareEarn("deposit", owner, amount)).rejects.toThrow();
+      await expect(prepareEarn("withdraw", owner, amount)).rejects.toThrow();
+    },
+  );
+
   it("takes its limits from the price on chain, whatever share price the API reports", async () => {
     // The API's rate would put the deposit's floor at a thousandth of what is
     // owed. The floor signed against comes from the vault account instead.
@@ -91,10 +99,12 @@ describe("prepareEarn", () => {
 
     const deposit = await prepareEarn("deposit", owner, 10);
     expect(deposit.limits.maxCashSpent).toBe(TEN_USDC);
-    expect(deposit.limits.receive?.minAmount).toBe((9_410_798n * 9_950n) / 10_000n);
+    expect(deposit.limits.receive?.minAmount).toBe((9_410_798n * 9_995n) / 10_000n);
+    // A 0.4% skim on the receipt shares is below that floor and is refused.
+    expect(deposit.limits.receive!.minAmount).toBeGreaterThan((9_410_798n * 9_960n) / 10_000n);
 
     const withdrawal = await prepareEarn("withdraw", owner, 10);
-    expect(withdrawal.limits.maxCashSpent).toBe((9_410_798n * 10_050n) / 10_000n + 1n);
+    expect(withdrawal.limits.maxCashSpent).toBe(9_410_798n + 1n);
     expect(withdrawal.limits.receive?.minAmount).toBe(TEN_USDC - 1n);
   });
 

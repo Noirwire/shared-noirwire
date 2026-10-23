@@ -16,10 +16,10 @@ describe("pendingActionNote", () => {
 
   it("asks the user to check the balance when the chain cannot settle it", () => {
     expect(pendingActionNote("portfolio", "a sale of NVDAx", "unresolved")).toBe(
-      "We could not confirm whether your last action from this portfolio (a sale of NVDAx) went through. Check this portfolio's balance; you can clear this once you have.",
+      "We could not confirm whether your last action from this portfolio (a sale of NVDAx) went through. Check this portfolio's balance and your transaction history; you can clear this once you have.",
     );
     expect(pendingActionNote("funding", "x", "unresolved")).toContain(
-      "Check your main wallet's balance;",
+      "Check your main wallet's balance and your transaction history;",
     );
   });
 
@@ -52,7 +52,7 @@ describe("pendingActionNoteView", () => {
     expect(pendingActionNoteView({ note: "n", clearable: true, confirming: true })?.clear).toEqual({
       asking: true,
       warning:
-        "Clearing does not prove it failed: it may still have gone through. Check the balance first, and clear it only if the balance shows it did not.",
+        "Clearing does not prove it failed: it may still have gone through. Check your transaction history and the balance first, and clear it only if neither shows it went through.",
       confirm: "Yes, clear it",
       keep: "Keep it",
     });

@@ -1,11 +1,12 @@
 import "../buffer-polyfill.js";
 
 import type { Keypair, PublicKey, VersionedTransaction } from "@solana/web3.js";
+import { floorToUnit } from "../../../domain/orderbook/decimal.js";
 import { connection } from "../client.js";
 import { isMainnet } from "../config.js";
 import { NETWORK_FEE_LAMPORTS } from "../fees.js";
 import { signForSending, type StillUnlocked } from "../signerAccounts.js";
-import { lamportsToSol } from "../sol.js";
+import { lamportsToSol, toRawUnits } from "../sol.js";
 import { ataFor, ataRentFor } from "../tokens.js";
 import { QUOTE_TOKEN, stockBySymbol, type TokenDefinition } from "../tokenRegistry.js";
 import { executeJupiterSwap, isBuilt, jupiterVenue, landsUntil } from "./jupiter.js";
@@ -93,8 +94,14 @@ function requireMarketPrice(marketPrice: number | undefined): asserts marketPric
   }
 }
 
-function toBaseUnits(amount: number, decimals: number): bigint {
-  return BigInt(Math.round(amount * 10 ** decimals));
+/**
+ * A buy spends the cash amount as given: one with more decimals than the
+ * cash has is refused, never cut down. A sell's amount is shown units
+ * converted to stored ones, an arithmetic result, so it is cut down to the
+ * unit, never up.
+ */
+function toBaseUnits(amount: number, decimals: number, side: "buy" | "sell"): bigint {
+  return toRawUnits(side === "sell" ? floorToUnit(amount, decimals) : amount, decimals);
 }
 
 function toDisplayUnits(amount: bigint, decimals: number): number {
@@ -154,7 +161,7 @@ export async function planTrade(input: {
   const quote = await jupiterVenue(input.owner.publicKey).quote({
     inputMint: from.mint,
     outputMint: to.mint,
-    amount: toBaseUnits(input.amount, from.decimals),
+    amount: toBaseUnits(input.amount, from.decimals, input.side),
     slippageBps: input.slippageBps ?? DEFAULT_SLIPPAGE_BPS,
     priceOnly: input.priceOnly,
   });
