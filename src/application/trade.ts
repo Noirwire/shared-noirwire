@@ -1,4 +1,5 @@
 import { tooPrecise, typedAmount } from "../domain/amount.js";
+import { floorToUnit } from "../domain/orderbook/decimal.js";
 import type { Side } from "../domain/order.js";
 
 /** What a trade is typed in: dollars, or the tracker's own tokens. */
@@ -68,8 +69,11 @@ export function tradeDraft(input: TradeInput): TradeDraft {
   // Selling the full position quotes the exact stored raw amount, so
   // converting shown units back to raw leaves no rounding dust behind.
   const sellRaw = typed === cap ? heldRaw : multiplierKnown ? units / unitsPerHeld : 0;
+  // Dollars from a typed number of tokens are an arithmetic result: cut down to the cent-fraction cash holds, never up.
   const amountToQuote =
-    side === "buy" ? (denom === "units" && typed === cap ? cash : value) : sellRaw;
+    side === "buy"
+      ? floorToUnit(denom === "units" && typed === cap ? cash : value, TRADE_CASH_DECIMALS)
+      : sellRaw;
   return {
     multiplierKnown,
     held,

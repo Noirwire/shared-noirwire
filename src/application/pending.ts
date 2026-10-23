@@ -18,8 +18,7 @@ import type { PendingAction } from "../domain/wallet.js";
  * left that can land: it completed, it was refused before anything was sent,
  * or the chain shows it failed. Otherwise only chain evidence settles it,
  * never the device's clock, and `userCleared` removes one only when there is
- * no block height or blockhash to settle it by, or the person confirms they
- * checked their balance and history (`checkedHistory`).
+ * no block height or blockhash to settle it by.
  *
  * Landed and expired are outcomes, not stored states: the record is removed
  * once either is known.
@@ -49,8 +48,7 @@ export type PendingEvent =
   | { type: "released" }
   /** One reading of the chain about it. */
   | { type: "chainChecked"; outcome: ChainOutcome }
-  /** The person's release. A record with a block height or blockhash needs them to say they checked their history. */
-  | { type: "userCleared"; checkedHistory?: true };
+  | { type: "userCleared" };
 
 /**
  * What the chain says about an unsettled action: it landed, it expired (it
@@ -122,11 +120,11 @@ export function pendingReducer(
       return undefined;
     case "chainChecked":
       if (event.outcome === "landed" || event.outcome === "expired") return undefined;
-      // With no id and nothing more the chain can say, it is the person's to release.
-      return event.outcome === "unknown" && !pending.signature && !userClearable(pending)
+      // With nothing more the chain can say, it is the person's to release.
+      return event.outcome === "unknown" && !userClearable(pending)
         ? { ...pending, unfindable: true }
         : pending;
     case "userCleared":
-      return userClearable(pending) || event.checkedHistory ? undefined : pending;
+      return userClearable(pending) ? undefined : pending;
   }
 }

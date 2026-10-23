@@ -375,7 +375,7 @@ describe("reserving an action", () => {
     expect(await second.pending.settlePending("acc_1")).toBe("none");
   });
 
-  it("after a crash between signing and sending, stays pending until the person confirms their check", async () => {
+  it("after a crash between signing and sending, is unknown once expired, and then the person's to clear", async () => {
     const first = await walletTab();
     await first.pending.reserve("acc_1", PORTFOLIO, "a send", SEND);
     await first.signing.signForSending(ownTransaction(), keyAt(1), () => true);
@@ -383,10 +383,12 @@ describe("reserving an action", () => {
     const reloaded = await tab();
     expect(await reloaded.store.unlock(PASSWORD)).toBeNull();
     expect(await reloaded.pending.settlePending("acc_1")).toBe("pending");
-    blockhashValid = false;
-    expect(await reloaded.pending.settlePending("acc_1")).toBe("pending");
     const kept = reloaded.pending.pendingFor("acc_1")!;
-    await reloaded.pending.clearPending("acc_1", kept.id, true);
+    await reloaded.pending.clearPending("acc_1", kept.id);
+    expect(reloaded.pending.pendingFor("acc_1")).toBeDefined();
+    blockhashValid = false;
+    expect(await reloaded.pending.settlePending("acc_1")).toBe("unknown");
+    await reloaded.pending.clearPending("acc_1", kept.id);
     expect(reloaded.pending.pendingFor("acc_1")).toBeUndefined();
   });
 
@@ -440,29 +442,28 @@ describe("reserving an action", () => {
       ]);
     });
 
-    it("before it was broadcast: absence is no verdict, and only the person's confirmed check releases it", async () => {
+    it("before it was broadcast: absence is no verdict, it is unknown once expired, and only then the person's to clear", async () => {
       await coSigned();
       // Killed with the signed transaction in hand, before it was recorded or sent.
       const again = await reopened();
       expect(await again.pending.settlePending("acc_1")).toBe("pending");
-      blockHeight = LAST_VALID + 1;
-      // Its time has run out, and the portfolio's own transactions do not include it:
-      // one pool's word, so it stays.
-      expect(await again.pending.settlePending("acc_1")).toBe("pending");
       const kept = again.pending.pendingFor("acc_1")!;
-      expect(await again.pending.reserve("acc_1", PORTFOLIO, "again")).toBeNull();
-      // Without the person's confirmation it stays.
+      // Still pending: the person cannot clear it.
       await again.pending.clearPending("acc_1", kept.id);
       expect(again.pending.pendingFor("acc_1")).toBeDefined();
-      await again.pending.clearPending("acc_1", kept.id, true);
+      blockHeight = LAST_VALID + 1;
+      // Its time has run out, and the portfolio's own transactions do not include it:
+      // one pool's word, so it is unknown, never released.
+      expect(await again.pending.settlePending("acc_1")).toBe("unknown");
+      expect(await again.pending.reserve("acc_1", PORTFOLIO, "again")).toBeNull();
+      await again.pending.clearPending("acc_1", kept.id);
       expect(again.pending.pendingFor("acc_1")).toBeUndefined();
       expect(again.store.getSnapshot()?.activity).toEqual([]);
     });
 
-    it("keeps it pending through persistent RPC errors, and the person's recovery clears it", async () => {
+    it("keeps it pending through persistent RPC errors, then unknown once the height reads past expiry, and the person clears it", async () => {
       await coSigned();
       const again = await reopened();
-      blockHeight = LAST_VALID + 1;
       search = "is down";
       const { connection } = await import("../../src/infrastructure/solana/client.js");
       vi.mocked(connection.getBlockHeight).mockRejectedValue(new Error("down"));
@@ -470,10 +471,11 @@ describe("reserving an action", () => {
         expect(await again.pending.settlePending("acc_1")).toBe("pending");
       }
       const kept = again.pending.pendingFor("acc_1")!;
-      expect(again.pending.pendingFor("acc_1")).not.toMatchObject({ unfindable: true });
       await again.pending.clearPending("acc_1", kept.id);
       expect(again.pending.pendingFor("acc_1")).toBeDefined();
-      await again.pending.clearPending("acc_1", kept.id, true);
+      vi.mocked(connection.getBlockHeight).mockResolvedValue(LAST_VALID + 1);
+      expect(await again.pending.settlePending("acc_1")).toBe("unknown");
+      await again.pending.clearPending("acc_1", kept.id);
       expect(again.pending.pendingFor("acc_1")).toBeUndefined();
     });
 
@@ -500,7 +502,7 @@ describe("reserving an action", () => {
       const again = await reopened();
       blockHeight = LAST_VALID + 1;
       search = "is down";
-      expect(await again.pending.settlePending("acc_1")).toBe("pending");
+      expect(await again.pending.settlePending("acc_1")).toBe("unknown");
       search = "is not allowed";
       expect(await again.pending.settlePending("acc_1")).toBe("unknown");
       const kept = again.pending.pendingFor("acc_1")!;
@@ -611,10 +613,10 @@ describe("reserving an action", () => {
     await funding!.finish(new UnknownOutcomeError("deposit-signature", LAST_VALID));
     expect(await pending.settlePending(pending.FUNDING)).toBe("pending");
     blockHeight = LAST_VALID + 1;
-    expect(await pending.settlePending(pending.FUNDING)).toBe("pending");
+    expect(await pending.settlePending(pending.FUNDING)).toBe("unknown");
     expect(await pending.reserve(pending.FUNDING, addressAt(0), "again")).toBeNull();
     const kept = pending.pendingFor(pending.FUNDING)!;
-    await pending.clearPending(pending.FUNDING, kept.id, true);
+    await pending.clearPending(pending.FUNDING, kept.id);
     expect(await pending.reserve(pending.FUNDING, addressAt(0), "again")).not.toBeNull();
   });
 });
@@ -701,7 +703,7 @@ describe("a pending action stored by the previous build", () => {
     expect(store.getSnapshot()?.activity).toMatchObject([{ portfolioId: "acc_1", ...SEND }]);
   });
 
-  it("reads one signed and not yet sent when the page closed, and keeps it until the person confirms", async () => {
+  it("reads one signed and not yet sent when the page closed, and keeps it until the person clears it once unknown", async () => {
     const { pending } = await storePrevious({
       state: "reserved",
       id: "act_old",
@@ -711,9 +713,11 @@ describe("a pending action stored by the previous build", () => {
     });
     expect(pending.pendingFor("acc_1")).toMatchObject({ status: "unknown" });
     expect(await pending.settlePending("acc_1")).toBe("pending");
+    await pending.clearPending("acc_1", "act_old");
+    expect(pending.pendingFor("acc_1")).toBeDefined();
     blockhashValid = false;
-    expect(await pending.settlePending("acc_1")).toBe("pending");
-    await pending.clearPending("acc_1", "act_old", true);
+    expect(await pending.settlePending("acc_1")).toBe("unknown");
+    await pending.clearPending("acc_1", "act_old");
     expect(pending.pendingFor("acc_1")).toBeUndefined();
   });
 

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Keypair } from "@solana/web3.js";
 import { checkQuotedPrice, planTrade } from "../../src/infrastructure/solana/swap/execute.js";
+import { tradeDraft } from "../../src/application/trade.js";
 import { TRADABLE_STOCKS } from "../../src/infrastructure/solana/tokenRegistry.js";
 
 const STOCK = TRADABLE_STOCKS[0];
@@ -37,6 +38,32 @@ const plan = (side: "buy" | "sell", amount: number, marketPrice?: number) =>
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+describe("an amount typed with more decimals than the cash has", () => {
+  it("is refused at the quote, never cut down", async () => {
+    venueQuotes(HUNDRED_USDC, raw(0.2));
+    await expect(plan("buy", 1.0000009, MARKET_PRICE)).rejects.toThrow("more decimals");
+    await expect(plan("buy", 0.0000001, MARKET_PRICE)).rejects.toThrow(
+      /smaller than the smallest unit/,
+    );
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("is cut down, never up, when it is the result of price arithmetic", () => {
+    const draft = (amountText: string) =>
+      tradeDraft({
+        side: "buy",
+        denom: "units",
+        amountText,
+        cash: 1_000,
+        heldRaw: 0,
+        unitsPerHeld: 1,
+        displayPrice: 0.9999999,
+      });
+    // 1.5 tokens at 0.9999999 is 1.49999985 dollars: cash holds six decimals.
+    expect(draft("1.5").amountToQuote).toBe(1.499999);
+  });
 });
 
 describe("a quote held against the market price", () => {

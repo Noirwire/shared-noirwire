@@ -77,12 +77,14 @@ async function sought(
  * What became of `sent`:
  * - "landed": the chain shows it confirmed;
  * - "expired": the chain itself recorded an error for it;
- * - "pending": it may still land, or may have landed unseen: the absence of
- *   a status is never a verdict, however late, because every read goes
- *   through one pool of nodes and a node that is behind or lacks history
- *   reports a landed transaction as absent. Only the person, after checking
- *   the balance and history, can release it (`userCleared`);
- * - "unknown": there is nothing to settle it by.
+ * - "pending": it may still land: its last valid height has not passed, or
+ *   the chain cannot be read just now;
+ * - "unknown": it is past its last valid height (or has nothing to settle it
+ *   by) and the chain recorded no error. The absence of a status is never a
+ *   verdict, because every read goes through one pool of nodes and a node
+ *   that is behind or lacks history reports a landed transaction as absent.
+ *   Only the person, after checking the balance and history, can release it
+ *   (`userCleared`).
  *
  * A transaction with no recorded id is looked for among the signer's recent
  * transactions once its blockhash has expired, and is "expired" only when
@@ -117,10 +119,13 @@ export async function settle(
     if (status.value) return "pending";
   }
   if (expired === null) return "unknown";
-  if (!expired || sent.signature) return "pending";
+  if (!expired) return "pending";
+  // Past its last valid height with no error the chain recorded: never
+  // released here, and left to the person to clear once they have checked.
+  if (sent.signature) return "unknown";
 
   const found = await sought(sent);
   if (found === "landed") return "landed";
   if (found === "failed") return "expired";
-  return found === "unsearchable" ? "unknown" : "pending";
+  return "unknown";
 }

@@ -901,15 +901,18 @@ describe("a transaction that was sent and not confirmed", () => {
     expect(await settle(sent)).toBe("pending");
   });
 
-  it("never calls it expired on the absence of a status, however far past expiry", async () => {
+  it("stays pending before its last valid height, and is unknown, never expired, after it with no status", async () => {
     status = "absent";
+    const sent: SentUnconfirmed = { signature: "sig", lastValidBlockHeight: LAST_VALID };
+    blockHeight = LAST_VALID;
+    expect(await settle(sent)).toBe("pending");
     for (const height of [LAST_VALID + 1, PAST_GRACE, LAST_VALID * 1_000]) {
       blockHeight = height;
-      expect(await settle({ signature: "sig", lastValidBlockHeight: LAST_VALID })).toBe("pending");
+      expect(await settle(sent)).toBe("unknown");
     }
   });
 
-  it("resolves to landed when two stale null reads are followed by a confirmed status", async () => {
+  it("resolves to landed when stale null reads past expiry are followed by a confirmed status", async () => {
     blockHeight = PAST_GRACE;
     const landed = { context: { slot: 1 }, value: { confirmationStatus: "confirmed" } };
     const none = { context: { slot: 1 }, value: null };
@@ -918,12 +921,12 @@ describe("a transaction that was sent and not confirmed", () => {
       .mockResolvedValueOnce(none)
       .mockResolvedValue(landed as never);
     const sent: SentUnconfirmed = { signature: "sig", lastValidBlockHeight: LAST_VALID };
-    expect(await settle(sent)).toBe("pending");
-    expect(await settle(sent)).toBe("pending");
+    expect(await settle(sent)).toBe("unknown");
+    expect(await settle(sent)).toBe("unknown");
     expect(await settle(sent)).toBe("landed");
   });
 
-  it("stays pending while the chain cannot be read", async () => {
+  it("stays pending while the status or the height cannot be read", async () => {
     blockHeight = PAST_GRACE;
     vi.spyOn(connection, "getSignatureStatus").mockRejectedValue(new Error("down"));
     expect(await settle({ signature: "sig", lastValidBlockHeight: LAST_VALID })).toBe("pending");
@@ -944,7 +947,7 @@ describe("a transaction that was sent and not confirmed", () => {
     expect(recent).not.toHaveBeenCalled();
     blockHeight = PAST_GRACE;
     // Everything the signer did was read, and it is not there: one pool's word is no proof.
-    expect(await settle(sent)).toBe("pending");
+    expect(await settle(sent)).toBe("unknown");
     expect(recent).toHaveBeenCalledTimes(1);
     // Nothing to look for it by: never released on its blockhash alone.
     expect(await settle({ lastValidBlockHeight: LAST_VALID })).toBe("unknown");
@@ -958,9 +961,9 @@ describe("a transaction that was sent and not confirmed", () => {
     blockhashValid = false;
     vi.spyOn(connection, "getSignaturesForAddress").mockResolvedValue([]);
     expect(await settle({ blockhash: "hash", signer: portfolio.publicKey.toBase58() })).toBe(
-      "pending",
+      "unknown",
     );
-    expect(await settle({ signature: "sig", blockhash: "hash" })).toBe("pending");
+    expect(await settle({ signature: "sig", blockhash: "hash" })).toBe("unknown");
     status = "confirmed";
     expect(await settle({ signature: "sig", blockhash: "hash" })).toBe("landed");
   });

@@ -273,7 +273,7 @@ export function createPendingActions(deps: PendingActionsDeps) {
     }
     if (outcome === "pending") return outcome;
     if (outcome === "unknown") {
-      if (sent.signature || userClearable(sent)) return outcome;
+      if (userClearable(sent)) return outcome;
       await store.update((wallet) =>
         applied(wallet, portfolioId, sent.id, { type: "chainChecked", outcome }),
       );
@@ -291,24 +291,14 @@ export function createPendingActions(deps: PendingActionsDeps) {
 
   /**
    * Removes an unsettled action the chain cannot settle, on the user's word,
-   * once they have checked the portfolio's balance. Only that one, and while
-   * it has a block height or blockhash to settle it by, only when
-   * `userCheckedHistory` is true: the caller passes it after the person
-   * confirmed `send.checkedHistory`, never on its own. A newer reservation
-   * that took its place in the meantime is left alone.
+   * once they have checked the portfolio's balance. Only that one, and only
+   * once its outcome is unknown: while it has a block height or blockhash to
+   * settle it by and is still pending, it is left alone, as is a newer
+   * reservation that took its place in the meantime.
    */
-  async function clearPending(
-    portfolioId: string,
-    id: string,
-    userCheckedHistory = false,
-  ): Promise<void> {
+  async function clearPending(portfolioId: string, id: string): Promise<void> {
     if (runningHere(portfolioId)) return;
-    await store.update((wallet) =>
-      applied(wallet, portfolioId, id, {
-        type: "userCleared",
-        ...(userCheckedHistory ? { checkedHistory: true as const } : {}),
-      }),
-    );
+    await store.update((wallet) => applied(wallet, portfolioId, id, { type: "userCleared" }));
   }
 
   return {
