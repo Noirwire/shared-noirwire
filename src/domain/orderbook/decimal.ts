@@ -77,6 +77,30 @@ export function parseNumberUnits(amount: number, decimals: number): bigint {
   return parseUnits(plainDecimal(amount), decimals);
 }
 
+function scaledInteger(amount: number): { integer: bigint; places: number } {
+  const [whole, fraction = ""] = plainDecimal(amount).split(".");
+  return { integer: BigInt(whole + fraction), places: fraction.length };
+}
+
+/**
+ * `numerator / denominator` as a whole count of base units of `decimals`
+ * places, by bigint division of the shortest decimals the two numbers name,
+ * rounded to the nearest unit with halves rounding up. Used to turn an amount
+ * shown through a multiplier into stored units, where the float quotient
+ * (0.0707 / 1.01 = 0.06999999999999999) would land a unit short.
+ */
+export function divideToUnits(numerator: number, denominator: number, decimals: number): bigint {
+  if (!Number.isFinite(numerator) || numerator < 0) throw new Error(`Not an amount: ${numerator}`);
+  if (!Number.isFinite(denominator) || denominator <= 0) {
+    throw new Error(`Not a divisor: ${denominator}`);
+  }
+  const top = scaledInteger(numerator);
+  const bottom = scaledInteger(denominator);
+  const dividend = top.integer * 10n ** BigInt(bottom.places + decimals);
+  const divisor = bottom.integer * 10n ** BigInt(top.places);
+  return (2n * dividend + divisor) / (2n * divisor);
+}
+
 /**
  * The number cut down to a whole count of base units of `decimals` places,
  * never up. It reads the shortest decimal of the number and drops the digits

@@ -1,5 +1,5 @@
 import { tooPrecise, typedAmount } from "../domain/amount.js";
-import { floorToUnit } from "../domain/orderbook/decimal.js";
+import { divideToUnits, floorToUnit } from "../domain/orderbook/decimal.js";
 import type { Side } from "../domain/order.js";
 
 /** What a trade is typed in: dollars, or the tracker's own tokens. */
@@ -66,9 +66,19 @@ export function tradeDraft(input: TradeInput): TradeDraft {
       : denom === "units"
         ? held
         : held * displayPrice;
+  /**
+   * Shown units typed in tokens, as stored units: exact bigint division by the
+   * multiplier, to the nearest unit and never above what is held. A dollar
+   * amount goes through the live price first, so only that path stays float.
+   */
+  function storedUnits(): number {
+    if (denom !== "units" || decimals === undefined || !valid) return units / unitsPerHeld!;
+    const exact = Number(divideToUnits(typed, unitsPerHeld!, decimals)) / 10 ** decimals;
+    return Math.min(exact, heldRaw);
+  }
   // Selling the full position quotes the exact stored raw amount, so
   // converting shown units back to raw leaves no rounding dust behind.
-  const sellRaw = typed === cap ? heldRaw : multiplierKnown ? units / unitsPerHeld : 0;
+  const sellRaw = typed === cap ? heldRaw : multiplierKnown ? storedUnits() : 0;
   // Dollars from a typed number of tokens are an arithmetic result: cut down to the cent-fraction cash holds, never up.
   const amountToQuote =
     side === "buy"
