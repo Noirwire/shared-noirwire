@@ -27,6 +27,7 @@ import { readRelayed } from "../../src/infrastructure/solana/relayed.js";
 import {
   checkCoSigned,
   compileRelayed,
+  MAX_RELAY_ATTEMPTS,
   quoteRelayed,
   RelayedNotLandedError,
   RelayerFeeRoseError,
@@ -362,6 +363,19 @@ describe("pricing an action with the relayer", () => {
     expect(sent).toHaveLength(0);
   });
 
+  it("stops after the attempt cap when the relay keeps naming the same failing fee payer", async () => {
+    relay.getPayerSigner = () =>
+      answer({
+        signer_address: relayer.publicKey.toBase58(),
+        payment_address: paymentWallet.toBase58(),
+      });
+    relay.estimateTransactionFee = () => refusal("unavailable", 503);
+    await expect(quoteRelayed(owner, build())).rejects.toBeInstanceOf(RelayerUnavailableError);
+    expect(methods().filter((method) => method === "estimateTransactionFee")).toHaveLength(
+      MAX_RELAY_ATTEMPTS,
+    );
+  });
+
   it("is unavailable when there is no relayer, with nothing asked of it", async () => {
     available = false;
     await expect(quoteRelayed(owner, build())).rejects.toBeInstanceOf(RelayerUnavailableError);
@@ -463,31 +477,16 @@ describe("running a relayer-paid action", () => {
     expect(methods().filter((method) => method === "signTransaction")).toHaveLength(2);
   });
 
-  it("builds again against another replica only when the first is certain never to have had the transaction", async () => {
+  it("never signs a second transaction on the server's word that the first was not received", async () => {
     const downed = relayer.publicKey.toBase58();
     relay.signTransaction = (params) =>
       params.signer_key === downed
         ? refusal("unavailable", 503)
         : answer({ signed_transaction: coSigned(params.transaction) });
-    await run();
-    expect(methods()).toEqual([
-      "getPayerSigner",
-      "signTransaction",
-      "getPayerSigner",
-      "signTransaction",
-    ]);
-    expect(asked[2].params).toEqual({ not: [downed] });
-    // The guard ran again on the rebuilt transaction before the portfolio signed it.
-    expect(presignGuard.verifyBalancesBeforeSigning).toHaveBeenCalledTimes(2);
-    expect(sent).toHaveLength(1);
-    expect(sent[0].message.staticAccountKeys[0].equals(secondRelayer.publicKey)).toBe(true);
-    // The same fee, to the unit: what was reviewed.
-    const reading = readRelayed(sent[0], {
-      feePayers: relayerKeys.map((key) => key.publicKey),
-      paymentWallet,
-      accountCreation: true,
-    });
-    expect(reading.ok && reading.relayed.feeRaw).toBe(FEE);
+    await expect(run()).rejects.toBeInstanceOf(UnknownOutcomeError);
+    expect(methods()).toEqual(["getPayerSigner", "signTransaction"]);
+    expect(presignGuard.verifyBalancesBeforeSigning).toHaveBeenCalledTimes(1);
+    expect(sent).toHaveLength(0);
   });
 
   it("never asks the relayer to sign a second time when the server turns the request down", async () => {
@@ -569,17 +568,11 @@ describe("running a relayer-paid action", () => {
     });
   });
 
-  it("builds again for another replica when the server says the relayer could not be used", async () => {
-    let first = true;
-    const sign = relay.signTransaction;
-    relay.signTransaction = (params) => {
-      if (!first) return sign(params);
-      first = false;
-      return refusal("relayer_unavailable", 503);
-    };
-    await run();
-    expect(methods().filter((method) => method === "signTransaction")).toHaveLength(2);
-    expect(sent).toHaveLength(1);
+  it("leaves the outcome unknown, and signs nothing more, when the server says the relayer could not be used", async () => {
+    relay.signTransaction = () => refusal("relayer_unavailable", 503);
+    await expect(run()).rejects.toBeInstanceOf(UnknownOutcomeError);
+    expect(methods().filter((method) => method === "signTransaction")).toHaveLength(1);
+    expect(sent).toHaveLength(0);
   });
 
   it("goes by the server's code, never its sentence or its status alone", async () => {
@@ -630,10 +623,10 @@ describe("running a relayer-paid action", () => {
     ]);
   });
 
-  it("is not available, with nothing sent, when no replica can be reached to sign", async () => {
-    relay.signTransaction = () => refusal("unavailable", 503);
+  it("is not available, with nothing sent, when no replica can be had to build against", async () => {
+    relay.getPayerSigner = () => refusal("unavailable", 503);
     await expect(run()).rejects.toBeInstanceOf(RelayerUnavailableError);
-    expect(methods().filter((method) => method === "signTransaction")).toHaveLength(2);
+    expect(methods()).toEqual(["getPayerSigner"]);
     expect(sent).toHaveLength(0);
   });
 
@@ -920,6 +913,22 @@ describe("a transaction that was sent and not confirmed", () => {
     expect(await settle(sent)).toBe("expired");
   });
 
+  it("is not called expired on the word of a node that is behind", async () => {
+    blockHeight = LAST_VALID + 1;
+    const landed = { context: { slot: 1 }, value: { confirmationStatus: "confirmed" } };
+    const statusOf = vi.spyOn(connection, "getSignatureStatus");
+    statusOf
+      .mockResolvedValueOnce({ context: { slot: 1 }, value: null })
+      .mockResolvedValue(landed as never);
+    expect(await settle({ signature: "sig", lastValidBlockHeight: LAST_VALID })).toBe("landed");
+
+    statusOf.mockReset();
+    statusOf
+      .mockResolvedValueOnce({ context: { slot: 1 }, value: null })
+      .mockRejectedValue(new Error("down"));
+    expect(await settle({ signature: "sig", lastValidBlockHeight: LAST_VALID })).toBe("pending");
+  });
+
   it("is still landed if it shows up just as its blockhash expires", async () => {
     blockHeight = LAST_VALID + 1;
     expect(await settle({ signature: "sig", lastValidBlockHeight: LAST_VALID })).toBe("landed");
@@ -934,7 +943,8 @@ describe("a transaction that was sent and not confirmed", () => {
     blockHeight = LAST_VALID + 1;
     // Everything the signer did was read, and it is not there.
     expect(await settle(sent)).toBe("expired");
-    expect(recent).toHaveBeenCalledTimes(1);
+    // Read twice, a moment apart, before it is released.
+    expect(recent).toHaveBeenCalledTimes(2);
     // Nothing to look for it by: never released on its blockhash alone.
     expect(await settle({ lastValidBlockHeight: LAST_VALID })).toBe("unknown");
     vi.mocked(connection.getBlockHeight).mockRejectedValue(new Error("down"));

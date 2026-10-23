@@ -184,8 +184,11 @@ const NOT_ACTED_ON = [
   "upstream_not_reached",
 ];
 
-/** The codes that say the relayer never had the request: the action may be built again for another replica. */
+/** The codes a replica gives when it could not be reached: enough to price with another, never to sign a second transaction. */
 const NEVER_RECEIVED = ["relayer_unavailable", "unavailable"];
+
+/** How many replicas or prices one quote or run tries before it gives up. */
+export const MAX_RELAY_ATTEMPTS = 3;
 
 async function call<T>(method: string, params?: Record<string, unknown>): Promise<T> {
   let response: Response;
@@ -473,7 +476,7 @@ export async function quoteRelayed(
   build: RelayedBuild,
 ): Promise<RelayerQuote> {
   const failed: PublicKey[] = [];
-  for (;;) {
+  for (let attempt = 0; attempt < MAX_RELAY_ATTEMPTS; attempt++) {
     const { pins, feePayer } = await relayerFor(failed);
     const draft = await build({ feePayer, feeRaw: PLACEHOLDER_FEE_RAW, pricing: true });
     if (draft.opens && !pins.accountCreation) throw new RelayerUnavailableError();
@@ -501,6 +504,7 @@ export async function quoteRelayed(
     if (feeRaw > relayerFeeCap(opensAccount)) throw new RelayerUnavailableError();
     return { feeRaw, opensAccount };
   }
+  throw new RelayerUnavailableError();
 }
 
 /**
@@ -520,13 +524,11 @@ export async function quoteRelayed(
  * the new fee back for a fresh review. Nobody pays more than they were shown.
  *
  * A transaction names its fee payer, so it can only be signed by the one
- * replica whose key that is. When that replica is certain never to have
- * received it (it could not be reached, or it turned the request away), the
- * action is built again against another, checked again from the start, and
- * signed again by the portfolio, inside the same confirmation and for the
- * fee that was reviewed.
+ * replica whose key that is. At most `MAX_RELAY_ATTEMPTS` passes are made,
+ * after which `RelayerUnavailableError` is thrown.
  *
- * Anything short of that certainty is not a reason to sign again. A replica
+ * No error code from the server is certainty that a signed transaction was
+ * not received, so none is a reason to sign again. A replica
  * that was sent a signed transaction and did not answer may hold a complete
  * one, and a second transaction signed for another replica could land beside
  * it: the same action twice. So silence at that point is
@@ -548,7 +550,7 @@ export async function runRelayed(run: {
 
   const failed: PublicKey[] = [];
   let repriced = false;
-  for (;;) {
+  for (let attempt = 0; attempt < MAX_RELAY_ATTEMPTS; attempt++) {
     const { pins, feePayer } = await relayerFor(failed).catch(() => {
       throw new RelayerUnavailableError();
     });
@@ -598,15 +600,10 @@ export async function runRelayed(run: {
       // The request was never made, for want of a session. Nothing left
       // the device, and nothing is asked of the relayer again here.
       if (isChainError(error, "notAvailableNow")) throw error;
-      // This replica never had the transaction. Another is asked for, and
-      // when none is left that ends it (`relayerFor` above).
-      if (neverReceived(error)) {
-        failed.push(feePayer);
-        continue;
-      }
-      // It may have it, signed by both. Nothing more is signed until the
-      // chain has settled this one.
-      if (error instanceof RelayerSilence) {
+      // It may have it, signed by both: an error code from the server is not
+      // proof it did not, and silence is not either. Nothing more is signed
+      // until the chain has settled this one.
+      if (error instanceof RelayerSilence || neverReceived(error)) {
         throw new UnknownOutcomeError(undefined, latest.lastValidBlockHeight);
       }
       const tooSmall = error instanceof RelayerRefusal && error.reason === "insufficient_payment";
@@ -644,4 +641,5 @@ export async function runRelayed(run: {
       () => new RelayedNotLandedError(),
     );
   }
+  throw new RelayerUnavailableError();
 }

@@ -20,6 +20,7 @@ import { apiUrl } from "../api.js";
 import { apiErrorOf, authorizedFetch } from "../apiSession.js";
 import { apiErrorIn } from "../../domain/apiError.js";
 import { isChainError } from "../../domain/chainError.js";
+import { parseNumberUnits } from "../../domain/orderbook/decimal.js";
 import { privatePaymentCluster } from "./config.js";
 import {
   MIN_TRANSFER_RAW,
@@ -446,7 +447,7 @@ export async function sendPrivateTransfer(
   request: PrivateTransferRequest,
 ): Promise<{ signature: string; feeTokens: number }> {
   const { sender, to, mint, decimals, amount, keepOut, stillUnlocked } = request;
-  const amountRaw = BigInt(Math.round(amount * 10 ** decimals));
+  const amountRaw = parseNumberUnits(amount, decimals);
   if (amountRaw < MIN_TRANSFER_RAW) {
     throw new Error(
       `A private transfer has to be at least ${Number(MIN_TRANSFER_RAW) / 10 ** decimals} USDC.`,

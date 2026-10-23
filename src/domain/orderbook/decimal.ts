@@ -32,6 +32,41 @@ export function toFixedPoint(text: string): bigint {
   return negative ? -value : value;
 }
 
+const UNSIGNED_DECIMAL = /^\d+(\.\d+)?$/;
+
+/**
+ * The whole base units of an asset with `decimals` places that a decimal
+ * string names, exactly. Throws on anything but plain digits with an
+ * optional fraction (no sign, exponent or spaces) and on a nonzero digit
+ * past `decimals`, which the asset cannot hold.
+ */
+export function parseUnits(text: string, decimals: number): bigint {
+  const trimmed = text.trim();
+  if (!UNSIGNED_DECIMAL.test(trimmed)) throw new Error(`Not an amount: "${text}"`);
+  const [whole, fraction = ""] = trimmed.split(".");
+  if (/[1-9]/.test(fraction.slice(decimals))) {
+    throw new Error(`More than ${decimals} decimals: "${text}"`);
+  }
+  return BigInt(whole + fraction.slice(0, decimals).padEnd(decimals, "0"));
+}
+
+/**
+ * `parseUnits` for an amount held as a number. A number is written out in
+ * full first, so a tiny or huge one never reaches the parser in exponent
+ * form; NaN, infinity and negatives are refused. A number holds about 15
+ * significant digits, so float noise beyond that (0.1 + 0.2) is dropped.
+ */
+export function parseNumberUnits(amount: number, decimals: number): bigint {
+  if (!Number.isFinite(amount) || amount < 0) throw new Error(`Not an amount: ${amount}`);
+  const plain = String(Number(amount.toPrecision(15)));
+  const text = plain.includes("e")
+    ? Number(plain)
+        .toFixed(Math.min(100, decimals + 12))
+        .replace(/\.?0+$/, "")
+    : plain;
+  return parseUnits(text, decimals);
+}
+
 /** The decimal string at the fixed-point scale, or null when `toFixedPoint` would throw. */
 export function readFixedPoint(text: string): bigint | null {
   try {

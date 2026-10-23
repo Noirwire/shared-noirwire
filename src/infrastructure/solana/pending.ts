@@ -1,6 +1,7 @@
 import { PublicKey } from "@solana/web3.js";
 import { isTransient } from "../../application/retries.js";
 import { connection } from "./client.js";
+import { EXPIRY_RECHECK_MS } from "./settlement.js";
 
 /**
  * A transaction that was signed and not seen to land or fail. It may still
@@ -93,6 +94,18 @@ async function sought(
  * reads is seen as landed and not as expired.
  */
 export async function settle(
+  sent: SentUnconfirmed,
+): Promise<"landed" | "expired" | "pending" | "unknown"> {
+  const first = await settleOnce(sent);
+  if (first !== "expired") return first;
+  // One read answers through one node of a pool, and a node that is behind
+  // sees a landed transaction as absent. "Expired" releases the reservation
+  // and invites a second payment, so a second read has to say it too.
+  await new Promise((resolve) => setTimeout(resolve, EXPIRY_RECHECK_MS));
+  return settleOnce(sent);
+}
+
+async function settleOnce(
   sent: SentUnconfirmed,
 ): Promise<"landed" | "expired" | "pending" | "unknown"> {
   let expired: boolean | null = null;

@@ -5,7 +5,7 @@ import { connection } from "../client.js";
 import { isMainnet } from "../config.js";
 import { NETWORK_FEE_LAMPORTS } from "../fees.js";
 import { signForSending, type StillUnlocked } from "../signerAccounts.js";
-import { lamportsToSol } from "../sol.js";
+import { lamportsToSol, toRawUnits } from "../sol.js";
 import { ataFor, ataRentFor } from "../tokens.js";
 import { QUOTE_TOKEN, stockBySymbol, type TokenDefinition } from "../tokenRegistry.js";
 import { executeJupiterSwap, isBuilt, jupiterVenue, landsUntil } from "./jupiter.js";
@@ -94,7 +94,7 @@ function requireMarketPrice(marketPrice: number | undefined): asserts marketPric
 }
 
 function toBaseUnits(amount: number, decimals: number): bigint {
-  return BigInt(Math.round(amount * 10 ** decimals));
+  return toRawUnits(amount, decimals);
 }
 
 function toDisplayUnits(amount: bigint, decimals: number): number {

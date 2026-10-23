@@ -9,6 +9,7 @@ import {
   VersionedTransaction,
   type TransactionInstruction,
 } from "@solana/web3.js";
+import { parseNumberUnits } from "../../domain/orderbook/decimal.js";
 import { requireSendableRecipient } from "./address.js";
 import { connection } from "./client.js";
 import { NETWORK_FEE_LAMPORTS, requireSenderCovers } from "./fees.js";
@@ -35,19 +36,47 @@ export async function getWalletBalanceSol(pubkey: PublicKey): Promise<number> {
 
 /**
  * An amount typed in display units, as the whole base units that will move.
- * A JavaScript number carries about 15 significant digits, so an amount is
- * refused when it would round to nothing or cannot be represented exactly,
- * rather than sent as a figure the user did not type.
+ * The number is read as a decimal and converted without floating point
+ * arithmetic. A number carries about 15 significant digits, so float noise
+ * past that is dropped; an amount is refused when it names a fraction of a
+ * base unit, is not a plain non-negative number, or is too large to send
+ * exactly, rather than sent as a figure the user did not type.
  */
 export function toRawUnits(amount: number, decimals: number): bigint {
-  const scaled = Math.round(amount * 10 ** decimals);
-  if (!Number.isFinite(scaled) || scaled > Number.MAX_SAFE_INTEGER) {
+  if (Number.isNaN(amount) || amount < 0) throw new Error("This amount is not valid.");
+  let raw: bigint;
+  try {
+    raw = parseNumberUnits(amount, decimals);
+  } catch {
+    if (amount === Number.POSITIVE_INFINITY || amount >= 1e21) {
+      throw new Error("This amount is too large to send exactly. Send it in smaller parts.");
+    }
+    throw new Error(
+      amount * 10 ** decimals < 1
+        ? "This amount is smaller than the smallest unit that can be sent."
+        : "This amount has more decimals than can be sent.",
+    );
+  }
+  if (raw > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new Error("This amount is too large to send exactly. Send it in smaller parts.");
   }
-  if (scaled <= 0) {
+  if (raw <= 0n) {
     throw new Error("This amount is smaller than the smallest unit that can be sent.");
   }
-  return BigInt(scaled);
+  return raw;
+}
+
+/**
+ * The base units to send for `amount` out of a balance of `held`. Asking
+ * for everything is recognised by exact bigint equality. Past 2^53 base
+ * units a number cannot name the balance, so there, and only there, the
+ * figure that balance is shown as stands for all of it.
+ */
+export function rawAmountToSend(amount: number, held: bigint, decimals: number): bigint {
+  if (held > BigInt(Number.MAX_SAFE_INTEGER) && amount === Number(held) / 10 ** decimals) {
+    return held;
+  }
+  return toRawUnits(amount, decimals);
 }
 
 /**
@@ -136,11 +165,12 @@ export async function sendSolTo(
   await requireSendableRecipient(to);
 
   const balance = await connection.getBalance(owner.publicKey);
-  const sendingAll = amountSol === lamportsToSol(balance);
+  const requested = toRawUnits(amountSol, 9);
+  const sendingAll = requested === BigInt(balance);
   if (sendingAll && balance <= NETWORK_FEE_LAMPORTS) {
     throw new Error("There is too little SOL here to cover the network fee of a send.");
   }
-  const lamports = sendingAll ? BigInt(balance - NETWORK_FEE_LAMPORTS) : toRawUnits(amountSol, 9);
+  const lamports = sendingAll ? BigInt(balance - NETWORK_FEE_LAMPORTS) : requested;
 
   await requireSenderCovers(
     balance,

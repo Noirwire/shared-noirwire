@@ -45,8 +45,25 @@ export function signaturesOf(transaction: VersionedTransaction): string[] {
  * The block height is read before the status on purpose. Read the other way
  * round, a transaction landing between the two calls would be seen as absent
  * and then as expired.
+ *
+ * One read answers through one node of a pool, and a node that is behind the
+ * one that gave the height sees a landed transaction as absent. So "failed"
+ * stands only when a second read, `EXPIRY_RECHECK_MS` later, says it too;
+ * otherwise the second answer is the answer.
  */
+export const EXPIRY_RECHECK_MS = 1_000;
+
 async function broadcastOutcome(
+  signature: string,
+  lastValidBlockHeight?: number,
+): Promise<"confirmed" | "failed" | "unknown"> {
+  const first = await readOutcome(signature, lastValidBlockHeight);
+  if (first !== "failed") return first;
+  await new Promise((resolve) => setTimeout(resolve, EXPIRY_RECHECK_MS));
+  return readOutcome(signature, lastValidBlockHeight);
+}
+
+async function readOutcome(
   signature: string,
   lastValidBlockHeight?: number,
 ): Promise<"confirmed" | "failed" | "unknown"> {
