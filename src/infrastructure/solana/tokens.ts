@@ -19,7 +19,7 @@ import { usdcMintKey } from "./config.js";
 import { NETWORK_FEE_LAMPORTS, requireFunderCovers, requireSenderCovers } from "./fees.js";
 import type { RelayedDraft, RelayerTerms } from "./relayer.js";
 import type { StillUnlocked } from "./signerAccounts.js";
-import { rawAmountToSend, signSendConfirm, toRawUnits } from "./sol.js";
+import { signSendConfirm, toRawUnits } from "./sol.js";
 import { readTokenAmount } from "./swap/guard.js";
 
 /**
@@ -185,8 +185,9 @@ export async function tokenSendLamports(
  * wallet and the portfolio together on chain. It is taken only to tell a send
  * from the funding wallet itself apart, for the wording of a refusal.
  *
- * Asking for exactly the balance the chain reports sends that balance in raw
- * units, not the rounded figure it was shown as.
+ * The amount is read exactly as the decimal it names. A balance past 2^53 raw
+ * units cannot be named by a number, so a send of it is refused rather than
+ * guessed from a rounded figure.
  */
 export async function withdrawToken(
   mint: PublicKey,
@@ -212,7 +213,7 @@ export async function withdrawToken(
   const destinationInfo = await connection.getAccountInfo(destination);
 
   const held = readTokenAmount(sourceInfo?.data);
-  const rawAmount = rawAmountToSend(amount, held, decimals);
+  const rawAmount = toRawUnits(amount, decimals);
   if (rawAmount === 0n || rawAmount > held) {
     throw new Error("More than this address holds.");
   }
@@ -304,7 +305,7 @@ export async function relayedSendDraft(
   const destinationInfo = await connection.getAccountInfo(destination);
 
   const held = readTokenAmount(sourceInfo?.data);
-  const asked = rawAmountToSend(send.amount, held, decimals);
+  const asked = toRawUnits(send.amount, decimals);
   const room = isCash ? held - terms.feeRaw : held;
   const amountRaw = terms.pricing && asked > room ? room : asked;
   if (amountRaw <= 0n || amountRaw > room) {

@@ -67,19 +67,6 @@ export function toRawUnits(amount: number, decimals: number): bigint {
 }
 
 /**
- * The base units to send for `amount` out of a balance of `held`. Asking
- * for everything is recognised by exact bigint equality. Past 2^53 base
- * units a number cannot name the balance, so there, and only there, the
- * figure that balance is shown as stands for all of it.
- */
-export function rawAmountToSend(amount: number, held: bigint, decimals: number): bigint {
-  if (held > BigInt(Number.MAX_SAFE_INTEGER) && amount === Number(held) / 10 ** decimals) {
-    return held;
-  }
-  return toRawUnits(amount, decimals);
-}
-
-/**
  * Signs `instructions` once with `payer`, its fee payer and only signer,
  * sends it, and returns the signature once the chain shows it confirmed,
  * which it is asked for until it answers or the blockhash has expired.
