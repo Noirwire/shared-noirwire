@@ -6,24 +6,18 @@ import { mobileFundingCopy } from "../copy/funding.js";
 import { mobileSendCopy as mobileCopy, sendCopy as copy } from "../copy/send.js";
 import { smallestAmount } from "../domain/amount.js";
 import type { AppPlatform } from "../domain/appPlatform.js";
-import { symbolAmount, usd } from "../domain/format.js";
+import { usd } from "../domain/format.js";
 import type { ReadFreshness } from "../domain/freshness.js";
 import type { NetworkCost } from "../domain/networkCost.js";
 import type { RecipientClass, Unsendable } from "../domain/recipients.js";
 import type { Wallet } from "../domain/wallet.js";
+import { amountOf } from "./amount.js";
 import { balancesView, type Figure } from "./freshness.js";
 import { groupsOfFour } from "./importFindings.js";
 import { networkCostView, type NetworkCostView } from "./networkCost.js";
 import { addressSegments } from "./receive.js";
 
 const CASH = "USDC";
-
-/** A stored amount of `symbol` in shown units, or "Unavailable" while those are not known. */
-function amountOf(symbol: string, unitsPerHeld: number | undefined, held: number) {
-  return unitsPerHeld === undefined
-    ? commonCopy.unavailable
-    : symbolAmount(symbol, held * unitsPerHeld);
-}
 
 export type SendFormState = {
   /** The asset's decimals, named in the message for an amount typed with too many. */

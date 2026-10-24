@@ -1,4 +1,5 @@
 import { plural } from "./plural.js";
+import { sentence } from "./sentence.js";
 import { notSaved } from "./wallet.js";
 
 /** `where` is where the password locks the wallet: "in this browser" or "on this phone". */
@@ -26,8 +27,6 @@ const importLead = (keepOpen: string) => `${keepOpen} ${importTiming}`;
 /** `where` is where nothing was saved: "in this browser" or "on this phone". */
 const importFailed = (where: string) =>
   `We couldn't finish restoring your wallet. Nothing was saved ${where}. Try again.`;
-
-const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** Creating a wallet or importing one, up to the password that seals it. */
 export const onboardingCopy = {

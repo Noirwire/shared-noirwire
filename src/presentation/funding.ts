@@ -13,7 +13,7 @@ import { fundingActivity, type ActivityRowView } from "./activity.js";
 import {
   balancesUnavailable,
   balancesView,
-  freshnessView,
+  homeFreshnessView,
   type Figure,
   type HomeFreshness,
   type UnavailableView,
@@ -542,10 +542,7 @@ export function fundingWalletView(
   const words = copy.wallet;
   const balances = balancesView(freshness.balances);
   const { known } = balances;
-  const fresh = freshnessView(freshness.now, [
-    ...(known ? [{ read: freshness.balances, notice: "balances" as const }] : []),
-    { read: freshness.prices, notice: "prices" },
-  ]);
+  const fresh = homeFreshnessView(freshness, known);
   const { sol } = wallet.funding;
   const cash = wallet.funding.tokens[CASH] ?? 0;
   const total = fundingWalletValue(reads, wallet, updatedAt);

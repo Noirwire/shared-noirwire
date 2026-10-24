@@ -23,6 +23,7 @@ import {
   type VaultKey,
 } from "./keystore.js";
 import { assessPassword } from "./passwordStrength.js";
+import { isMoment as nonnegative, isRecord as record } from "../domain/profile.js";
 import { ACTIVITY_KINDS, type Wallet } from "../domain/wallet.js";
 import {
   LEGACY_STORAGE_KEY,
@@ -148,12 +149,6 @@ function disarmIdleLock() {
   idleTimer = null;
 }
 
-function record(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-const nonnegative = (value: unknown): value is number =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0;
 const text = (value: unknown): value is string => typeof value === "string";
 
 /**
