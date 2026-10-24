@@ -202,6 +202,39 @@ describe("an amount with more decimals than the asset has", () => {
       action: { disabled: false },
     });
   });
+
+  it("is refused in a sell of tokens, and an amount at the token's precision is accepted", () => {
+    const sell = (amountText: string) => {
+      const draft = tradeDraft({
+        side: "sell",
+        denom: "units",
+        amountText,
+        cash: 100,
+        heldRaw: 50,
+        unitsPerHeld: 1,
+        displayPrice: 10,
+        decimals: 8,
+      });
+      return tradeFormView({
+        draft,
+        side: "sell",
+        denom: "units",
+        symbol: "NVDAx",
+        cash: 100,
+        displayLive: true,
+        quoting: false,
+        balances: READ,
+      });
+    };
+    expect(sell("1.123456789")).toMatchObject({
+      tooPrecise: "That amount has too many decimals. The smallest amount is 0.00000001 NVDAx.",
+      action: { kind: "review", disabled: true },
+    });
+    expect(sell("1.12345678")).toMatchObject({
+      tooPrecise: null,
+      action: { kind: "review", disabled: false },
+    });
+  });
 });
 
 const baseSend = {
