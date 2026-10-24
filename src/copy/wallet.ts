@@ -1,4 +1,5 @@
 import { plural } from "./plural.js";
+import { sentence } from "./sentence.js";
 
 /** The vault refused a new wallet. `platformNoun` names the device: "browser" or "phone". */
 export const notSaved = (platformNoun: string) =>
@@ -14,8 +15,6 @@ const damaged = (where: string) =>
 
 /** `where` is "in this browser" or "on this phone". */
 const noWallet = (where: string) => `There is no wallet ${where}.`;
-
-const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** Unlocking, passwords, resetting and copying: the wallet itself rather than what is in it. */
 export const walletCopy = {

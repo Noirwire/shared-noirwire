@@ -15,6 +15,7 @@ import type { PricedOrder, Side } from "../domain/order.js";
 import { resolvePortfolioIcon, type PortfolioIcon } from "../domain/portfolioIcon.js";
 import type { Portfolio, Wallet } from "../domain/wallet.js";
 import { describeFailure } from "./actionResult.js";
+import { amountOf } from "./amount.js";
 import { balancesView, type Figure } from "./freshness.js";
 import type { HomeTarget } from "./home.js";
 import { networkCostView, type NetworkCostView } from "./networkCost.js";
@@ -165,12 +166,6 @@ type TradeReviewView = {
   offline: string | null;
 };
 
-function shownAmount(symbol: string, unitsPerHeld: number | undefined, held: number) {
-  return unitsPerHeld === undefined
-    ? commonCopy.unavailable
-    : symbolAmount(symbol, held * unitsPerHeld);
-}
-
 function feeExplanation(order: PricedOrder, lamports: number) {
   if (order.quote.feeBps === undefined) return copy.feeUnverified;
   if (order.quote.gasless && lamports === 0) return copy.feeCoversNetwork;
@@ -184,7 +179,7 @@ export function tradeReviewView(state: TradeReviewState): TradeReviewView {
   const feeBps = order.quote.feeBps;
   const { expiresAt } = order.quote;
   const expired = !!expiresAt && state.now >= expiresAt;
-  const tracker = (amount: number) => shownAmount(symbol, unitsPerHeld, amount);
+  const tracker = (amount: number) => amountOf(symbol, unitsPerHeld, amount);
   const dollars = (amount: number) => copy.usdc(usd(amount));
   const networkCost = networkCostView({
     cost: state.cost,

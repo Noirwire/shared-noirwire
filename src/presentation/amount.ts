@@ -16,6 +16,13 @@ export function shownAmountWith(units: ShownUnits, symbol: string, held: number)
   return shown === undefined ? commonCopy.unavailable : symbolAmount(symbol, shown);
 }
 
+/** A stored amount of `symbol` in shown units, or "Unavailable" while those are not known. */
+export function amountOf(symbol: string, unitsPerHeld: number | undefined, held: number) {
+  return unitsPerHeld === undefined
+    ? commonCopy.unavailable
+    : symbolAmount(symbol, held * unitsPerHeld);
+}
+
 /**
  * The amount an activity entry moved, in its own unit and as it read on the
  * day: a tracker in shares to four decimals, cash with two like everywhere

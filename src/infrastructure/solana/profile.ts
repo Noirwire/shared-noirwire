@@ -51,7 +51,7 @@ let deployment: Deployment | null = null;
  */
 let reading: { owner: string; token: string } | null = null;
 
-const posting = (body: Record<string, unknown>): RequestInit => ({
+export const posting = (body: Record<string, unknown>): RequestInit => ({
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(body),

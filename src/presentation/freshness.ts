@@ -99,3 +99,11 @@ export function freshnessView(
     loading: !stale && states.some(({ state }) => state === "waiting"),
   };
 }
+
+/** `freshnessView` over home's reads: balances only once they are `known`, then prices. */
+export function homeFreshnessView(freshness: HomeFreshness, known: boolean): FreshnessView {
+  return freshnessView(freshness.now, [
+    ...(known ? [{ read: freshness.balances, notice: "balances" as const }] : []),
+    { read: freshness.prices, notice: "prices" },
+  ]);
+}

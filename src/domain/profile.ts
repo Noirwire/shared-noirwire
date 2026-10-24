@@ -62,14 +62,14 @@ export type PortfolioLabels = Pick<Portfolio, "label" | "createdAt" | "archivedA
   icon?: PortfolioIcon;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 const isCount = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 
-const isMoment = (value: unknown): value is number =>
+export const isMoment = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0;
 
 function portfolioValue({ label, createdAt, archivedAt, icon, pie }: PortfolioLabels) {

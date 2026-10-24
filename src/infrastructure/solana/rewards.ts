@@ -12,7 +12,7 @@ import { apiUrl } from "../api.js";
 import { apiErrorOf, authorizedFetch } from "../apiSession.js";
 import { readFetch } from "../readFetch.js";
 import { base58 } from "./bytes.js";
-import { signMessage } from "./profile.js";
+import { posting, signMessage } from "./profile.js";
 import { WalletLockedError, type StillUnlocked } from "./signerAccounts.js";
 
 /**
@@ -29,12 +29,6 @@ import { WalletLockedError, type StillUnlocked } from "./signerAccounts.js";
 
 /** The server's code for a trade it cannot see as final yet, the one refusal of a claim that is asked again. */
 const NOT_FINALIZED = "transaction_not_finalized";
-
-const posting = (body: Record<string, unknown>): RequestInit => ({
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(body),
-});
 
 /** `key`'s signature over `message`, as the server reads one. Nothing is signed once the wallet has locked. */
 function signed(key: Keypair, message: string, stillUnlocked: StillUnlocked): string {

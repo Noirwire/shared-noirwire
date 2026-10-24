@@ -1,3 +1,4 @@
+import { sentence } from "./sentence.js";
 import { walletCopy } from "./wallet.js";
 
 /** `where` is where the wallet is kept, `lost` is when unsaved changes go: "after a reload" or "when the app closes". */
@@ -7,8 +8,6 @@ const saveFailing = (where: string, lost: string) =>
 /** `where` is "in this browser" or "on this phone". */
 const passwordChanged = (where: string) =>
   `Password changed. Use the new one next time you unlock. This protects the copy ${where} only: if you think someone already copied this wallet, move your funds to a new recovery phrase.`;
-
-const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** The settings screen. */
 export const settingsCopy = {

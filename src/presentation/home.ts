@@ -7,7 +7,7 @@ import type { Wallet } from "../domain/wallet.js";
 import { recentActivity, type ActivityRowView } from "./activity.js";
 import {
   balancesView,
-  freshnessView,
+  homeFreshnessView,
   type Figure,
   type HomeFreshness,
   type UnavailableView,
@@ -209,10 +209,7 @@ export function homeView(
   const overview = reads.portfolioOverview(wallet, updatedAt);
   const balances = balancesView(freshness.balances);
   const { known } = balances;
-  const fresh = freshnessView(freshness.now, [
-    ...(known ? [{ read: freshness.balances, notice: "balances" as const }] : []),
-    { read: freshness.prices, notice: "prices" },
-  ]);
+  const fresh = homeFreshnessView(freshness, known);
   const earnUnconfirmed = earn === null || archivedHeld.earnUnknown;
   const earnHeld = typeof earn === "number" && earn > 0;
   const empty =
