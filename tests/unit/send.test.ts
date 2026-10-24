@@ -330,21 +330,18 @@ describe("amounts", () => {
     expect(toRawUnits(1.1, 9)).toBe(1_100_000_000n);
   });
 
-  it("sends the exact raw balance when asked for everything the chain reports", async () => {
-    // Past 2^53: the shown figure cannot name this balance exactly, the raw one can.
+  it("refuses a balance past 2^53 raw units rather than equating a float with it", async () => {
+    // A number cannot name this balance, so neither its shown figure nor a
+    // neighbour of it may stand for all of it.
     const held = 123_456_789_012_345_678n;
     const sent = mockChain(fundedPortfolio(held, 10_000_000));
 
-    await withdrawToken(
-      mint,
-      DECIMALS,
-      portfolio,
-      funder,
-      Number(held) / 10 ** DECIMALS,
-      recipient,
-    );
-
-    expect(transferredAmount(sent[0])).toBe(held);
+    for (const typed of [Number(held) / 10 ** DECIMALS, 123_456_789_012.345_67]) {
+      await expect(
+        withdrawToken(mint, DECIMALS, portfolio, funder, typed, recipient),
+      ).rejects.toThrow("too large to send exactly");
+    }
+    expect(sent).toHaveLength(0);
   });
 
   it("refuses more than the chain holds", async () => {
