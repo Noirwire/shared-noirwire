@@ -1,17 +1,13 @@
 import "./buffer-polyfill.js";
 
 import { Buffer } from "buffer";
-import {
-  Ed25519Program,
-  PublicKey,
-  type Keypair,
-  type TransactionInstruction,
-} from "@solana/web3.js";
+import { PublicKey, type Keypair, type TransactionInstruction } from "@solana/web3.js";
 import type { MirrorSending, MirrorWrite, ProfileMirror } from "../../application/ports.js";
 import { apiUrl } from "../api.js";
 import { apiErrorOf, authorizedFetch } from "../apiSession.js";
 import { readFetch } from "../readFetch.js";
 import { base58 } from "./bytes.js";
+import { signMessage } from "./ed25519.js";
 import {
   PROFILE_PROGRAM,
   createProfileInstruction,
@@ -64,22 +60,7 @@ async function answerOf<T>(response: Response, what: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-/**
- * `owner`'s signature on `message`. The library signs a message only as it
- * builds the instruction that proves one, so the signature is read out of
- * that instruction, at the place its own header says. `secretKey` hands out
- * a fresh copy of the key's bytes, which is zeroed once it has signed.
- */
-export function signMessage(owner: Keypair, message: Uint8Array): Uint8Array {
-  const privateKey = owner.secretKey;
-  try {
-    const { data } = Ed25519Program.createInstructionWithPrivateKey({ privateKey, message });
-    const at = data[2] | (data[3] << 8);
-    return Uint8Array.from(data.subarray(at, at + 64));
-  } finally {
-    privateKey.fill(0);
-  }
-}
+export { signMessage };
 
 /** A read token for `owner`: the one in memory, or a new one for the rollup's challenge signed. */
 async function tokenFor(owner: Keypair, stillUnlocked: StillUnlocked): Promise<string> {

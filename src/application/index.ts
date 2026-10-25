@@ -141,3 +141,17 @@ export {
   pickQuizWord,
   resumeQuiz,
 } from "./phraseQuiz.js";
+export {
+  type BridgeChoice,
+  type BridgePorts,
+  type BridgeRequest,
+  type NetworkVerdict,
+  type Review,
+  type Reviewed,
+  NETWORK_CHECK_FRESH_MS,
+  REQUEST_LIFETIME_MS,
+  bridgeChoices,
+  needsNetworkCheck,
+  recheckNetwork,
+  reviewRequest,
+} from "./walletBridge.js";

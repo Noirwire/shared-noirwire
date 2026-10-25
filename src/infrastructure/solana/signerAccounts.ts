@@ -4,6 +4,7 @@ import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import type { Keypair, MessageAccountKeys, PublicKey, VersionedTransaction } from "@solana/web3.js";
 import { ChainError } from "../../domain/chainError.js";
 import { connection } from "./client.js";
+import { signMessage } from "./ed25519.js";
 import { signatureBy, signatureOf } from "./settlement.js";
 
 /** The wallet locked before the key could sign. Nothing was signed. */
@@ -32,6 +33,22 @@ export function signWhileUnlocked(
 ): void {
   if (!stillUnlocked()) throw new WalletLockedError();
   transaction.sign([signer]);
+}
+
+/**
+ * The Ed25519 signature of `signer` on exactly `message`, given only if the
+ * wallet is unlocked at the moment of the call. The wallet bridge's one way
+ * to a signature: it signs bytes it has decoded and never sends them, so it
+ * needs no reservation. The unlock is asked here, synchronously, so no
+ * caller can sign without asking it.
+ */
+export function signBytesWhileUnlocked(
+  message: Uint8Array,
+  signer: Keypair,
+  stillUnlocked: StillUnlocked,
+): Uint8Array {
+  if (!stillUnlocked()) throw new WalletLockedError();
+  return signMessage(signer, message);
 }
 
 /** What is known of a transaction the moment it is signed, before it can leave this device. */

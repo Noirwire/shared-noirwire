@@ -1,0 +1,261 @@
+{
+  "toWallet": {
+    "valid": [
+      {
+        "name": "connect",
+        "message": {
+          "v": 1,
+          "type": "connect",
+          "id": "AQEBAQEBAQEBAQEBAQEBAQ",
+          "terminalNonce": "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM"
+        }
+      },
+      {
+        "name": "signMessage",
+        "message": {
+          "v": 1,
+          "type": "signMessage",
+          "id": "AQEBAQEBAQEBAQEBAQEBAQ",
+          "channel": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+          "message": "TG9naW4gdG8gUXVlcnkgRmlsdGVyaW5nIFNlcnZpY2UKVGltZXN0YW1wOiAxNzUwMDAwMDAwClVzZXI6IDExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTEy"
+        }
+      },
+      {
+        "name": "signTransaction",
+        "message": {
+          "v": 1,
+          "type": "signTransaction",
+          "id": "AQEBAQEBAQEBAQEBAQEBAQ",
+          "channel": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+          "network": "rollup",
+          "message": "BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQ=="
+        }
+      },
+      {
+        "name": "cancel",
+        "message": {
+          "v": 1,
+          "type": "cancel",
+          "id": "AQEBAQEBAQEBAQEBAQEBAQ",
+          "channel": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI"
+        }
+      },
+      {
+        "name": "disconnect",
+        "message": {
+          "v": 1,
+          "type": "disconnect",
+          "channel": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI"
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "extra key",
+        "rule": "keys",
+        "message": {
+          "v": 1,
+          "type": "cancel",
+          "id": "AQEBAQEBAQEBAQEBAQEBAQ",
+          "channel": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+          "origin": "https://terminal.noirwire.com"
+        }
+      },
+      {
+        "name": "missing key",
+        "rule": "keys",
+        "message": { "v": 1, "type": "cancel", "id": "AQEBAQEBAQEBAQEBAQEBAQ" }
+      },
+      {
+        "name": "version 2",
+        "rule": "version",
+        "message": {
+          "v": 2,
+          "type": "disconnect",
+          "channel": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI"
+        }
+      },
+      {
+        "name": "unknown type",
+        "rule": "type",
+        "message": {
+          "v": 1,
+          "type": "sendTransaction",
+          "channel": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI"
+        }
+      },
+      {
+        "name": "inherited name as type",
+        "rule": "type",
+        "message": { "v": 1, "type": "constructor" }
+      },
+      {
+        "name": "a list",
+        "rule": "notObject",
+        "message": [1, "cancel"]
+      },
+      {
+        "name": "channel too short",
+        "rule": "field",
+        "message": {
+          "v": 1,
+          "type": "disconnect",
+          "channel": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg"
+        }
+      },
+      {
+        "name": "id with a padding character",
+        "rule": "field",
+        "message": {
+          "v": 1,
+          "type": "cancel",
+          "id": "AQEBAQEBAQEBAQEBAQEBAQ=",
+          "channel": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI"
+        }
+      },
+      {
+        "name": "non-canonical base64",
+        "rule": "field",
+        "message": {
+          "v": 1,
+          "type": "signMessage",
+          "id": "AQEBAQEBAQEBAQEBAQEBAQ",
+          "channel": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+          "message": "AB=="
+        }
+      },
+      {
+        "name": "base64 without padding",
+        "rule": "field",
+        "message": {
+          "v": 1,
+          "type": "signMessage",
+          "id": "AQEBAQEBAQEBAQEBAQEBAQ",
+          "channel": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+          "message": "AAA"
+        }
+      },
+      {
+        "name": "empty message",
+        "rule": "field",
+        "message": {
+          "v": 1,
+          "type": "signMessage",
+          "id": "AQEBAQEBAQEBAQEBAQEBAQ",
+          "channel": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+          "message": ""
+        }
+      },
+      {
+        "name": "unknown network",
+        "rule": "field",
+        "message": {
+          "v": 1,
+          "type": "signTransaction",
+          "id": "AQEBAQEBAQEBAQEBAQEBAQ",
+          "channel": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+          "network": "devnet",
+          "message": "BQUF"
+        }
+      }
+    ]
+  },
+  "toTerminal": {
+    "valid": [
+      { "name": "ready", "message": { "v": 1, "type": "ready" } },
+      {
+        "name": "connected",
+        "message": {
+          "v": 1,
+          "type": "connected",
+          "id": "AQEBAQEBAQEBAQEBAQEBAQ",
+          "channel": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+          "terminalNonce": "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM",
+          "address": "11111111111111111111111111111112"
+        }
+      },
+      {
+        "name": "signed",
+        "message": {
+          "v": 1,
+          "type": "signed",
+          "id": "AQEBAQEBAQEBAQEBAQEBAQ",
+          "channel": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+          "signature": "BAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBA=="
+        }
+      },
+      {
+        "name": "refused with a channel",
+        "message": {
+          "v": 1,
+          "type": "refused",
+          "id": "AQEBAQEBAQEBAQEBAQEBAQ",
+          "channel": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+          "reason": "userRefused"
+        }
+      },
+      {
+        "name": "refused without a channel",
+        "message": {
+          "v": 1,
+          "type": "refused",
+          "id": "AQEBAQEBAQEBAQEBAQEBAQ",
+          "reason": "staleChannel"
+        }
+      },
+      {
+        "name": "disconnected",
+        "message": {
+          "v": 1,
+          "type": "disconnected",
+          "channel": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+          "reason": "closing"
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "63-byte signature",
+        "rule": "field",
+        "message": {
+          "v": 1,
+          "type": "signed",
+          "id": "AQEBAQEBAQEBAQEBAQEBAQ",
+          "channel": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+          "signature": "BAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE"
+        }
+      },
+      {
+        "name": "extra key on ready",
+        "rule": "keys",
+        "message": {
+          "v": 1,
+          "type": "ready",
+          "channel": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI"
+        }
+      },
+      {
+        "name": "unknown refusal",
+        "rule": "field",
+        "message": {
+          "v": 1,
+          "type": "refused",
+          "id": "AQEBAQEBAQEBAQEBAQEBAQ",
+          "reason": "because"
+        }
+      },
+      {
+        "name": "address that is not a key",
+        "rule": "field",
+        "message": {
+          "v": 1,
+          "type": "connected",
+          "id": "AQEBAQEBAQEBAQEBAQEBAQ",
+          "channel": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+          "terminalNonce": "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM",
+          "address": "not-an-address"
+        }
+      }
+    ]
+  }
+}

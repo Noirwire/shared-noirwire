@@ -64,6 +64,11 @@ export interface Env {
    * itself, or a test against a local validator.
    */
   rpcUrl?: string;
+  /**
+   * The origins that may open the wallet bridge, on the test network only.
+   * The main network has one fixed in code and ignores this.
+   */
+  bridgeTerminalOrigins?: string[];
 }
 
 /**

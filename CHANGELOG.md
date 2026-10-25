@@ -4,6 +4,24 @@ All notable changes to this package are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The apps pin an exact tag; see [README.md](README.md#releasing) for how a tag becomes a release.
 
+## [Unreleased]
+
+### Added
+
+The wallet side of letting the trading terminal ask this wallet for signatures. The wallet never sends: it decodes the bytes it is handed, signs them once a person approves, and returns a 64-byte signature that the terminal attaches and sends.
+
+- **Protocol** (`@noirwire/shared/domain`): `parseToWallet` and `parseToTerminal` read the messages with exact keys, capped strings and canonical base64, and answer with the rule broken. No new dependency.
+- **A decoder that refuses anything not exactly expected** (`decodeTransactionMessage`, `decodeSignInMessage`). A message is accepted only when it is byte for byte the message the wallet would build itself, from its own pins and the few values it reads out of the request (an amount, a shuttle id, four order keys). On the rollup: `openTrader`, `setOrderKeys`, `deposit`, `withdraw`, each tied to the connected owner (the deposit funds the owner's own seat from the owner's own token account; the withdrawal pays the owner's own token account). On Solana: a first or a repeat deposit into the rollup, and a withdrawal from it, with the pinned validator and mint. Versioned messages, compute budget, memo, system (so durable nonces) and any other program are refused.
+- **A network guard** (`guardSolana`, `guardRollup`): Solana through the app's server (genesis and blockhash); the rollup by a direct read of the one pinned URL (validator, the mainnet USDC mint, blockhash).
+- **`signForBridge`** (`@noirwire/shared/wallet`): the one way to a key, with the unlock checked in the same synchronous run as the signature. `signBytesWhileUnlocked` is its lower half.
+- **The approval screen**: `reviewRequest` and `bridgeChoices` (application), `approvalView` (presentation), `walletBridgeCopy` (copy).
+
+### For apps
+
+- [ ] **The `/connect` route.** The terminal opens it in a popup, so it must send `Cross-Origin-Opener-Policy: unsafe-none` on exactly that path and never navigate away from it. Nothing else changes: it stays unframeable, and sends `connect-src 'self'` plus the origin of `bridgeNetworkPins().rollupUrl`.
+- [ ] **Which origins may ask.** Answer a message only when `event.origin` is one of `bridgeTerminalOrigins()` and `event.source` is `window.opener`. On the main network that is `https://terminal.noirwire.com`. On the test network, set `bridgeTerminalOrigins` (comma-separated origins, no path) in `envFrom`, from the build's `NEXT_PUBLIC_BRIDGE_TERMINAL_ORIGINS`; it is ignored on the main network.
+- [ ] **Deposits and withdrawals need the custody pinned.** `custodyAuthority` is unset in `solana/config.ts` until the deployment's value is put there; until then the wallet signs only a sign-in, an account opening and a device change.
+
 ## [0.14.0] - 2026-10-20
 
 Security fixes from a review of what is checked before signing. A swap is held to the minimum its own route enforces on chain, a swap is never called failed while it can still land, Earn opens and pays for nothing but the portfolio's own account, the relayer's keys and the fee account come from the build, an unlocked wallet no longer holds its phrase, and the page to return to after unlocking can no longer be another site. The order book's pure rules move in from the trading terminal.

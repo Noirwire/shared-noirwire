@@ -17,3 +17,4 @@ export { mobileSettingsCopy, settingsCopy } from "./settings.js";
 export { mobileTradeCopy, tradeCopy } from "./trade.js";
 export { mobileWaitingCopy, waitingCopy } from "./waiting.js";
 export { mobileWalletCopy, walletCopy } from "./wallet.js";
+export { walletBridgeCopy } from "./walletBridge.js";
