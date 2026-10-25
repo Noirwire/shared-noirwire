@@ -96,3 +96,10 @@ export {
   toStored,
 } from "./types.js";
 export { type EarnVenue, type Money, type MoneyLocks, installMoney, money } from "./money.js";
+export {
+  type BridgeAccount,
+  type BridgeSigning,
+  bridgePorts,
+  shownGeneration,
+  signForBridge,
+} from "./bridge.js";

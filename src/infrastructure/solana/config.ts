@@ -33,6 +33,29 @@ type NetworkProfile = {
   usdcMint: string;
   /** Identifies the chain an RPC actually serves, whatever its URL says. */
   genesisHash: string;
+  /** What the wallet bridge signs for on this network. */
+  bridge: BridgeProfile;
+};
+
+/**
+ * The facts the wallet bridge holds a request to, fixed by the build. None of
+ * them is ever read from the terminal that asks for a signature.
+ */
+type BridgeProfile = {
+  orderbookProgram: string;
+  rollupUrl: string;
+  /** The identity the rollup must report. */
+  rollupValidator: string;
+  /**
+   * The key that owns the order book's collateral custody. Null until the
+   * deployment's value is set here, and while it is null no deposit or
+   * withdrawal is signed.
+   */
+  custodyAuthority: string | null;
+  /** Whether a trader's balance in the rollup is private (carries a permission). */
+  privateBalance: boolean;
+  /** The origins that may ask this wallet for a signature. */
+  terminalOrigins: readonly string[];
 };
 
 const NETWORKS: Record<SolanaNetwork, NetworkProfile> = {
@@ -41,12 +64,28 @@ const NETWORKS: Record<SolanaNetwork, NetworkProfile> = {
     privatePaymentCluster: "mainnet",
     usdcMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     genesisHash: "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+    bridge: {
+      orderbookProgram: "BrUoDsreaeXWypVxh6LoGseqwB4TZVJZBxvhfxXprvwP",
+      rollupUrl: "https://mainnet-tee.magicblock.app",
+      rollupValidator: "MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo",
+      custodyAuthority: null,
+      privateBalance: true,
+      terminalOrigins: ["https://terminal.noirwire.com"],
+    },
   },
   devnet: {
     label: "Solana test network",
     privatePaymentCluster: "devnet",
     usdcMint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
     genesisHash: "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
+    bridge: {
+      orderbookProgram: "3LTYp7hQEtu53UHZRhTHHacC1X1PL6hhE9dSK2U6pgr3",
+      rollupUrl: "https://devnet-tee.magicblock.app",
+      rollupValidator: "MTEWGuqxUpYZGFJQcp8tLN7x5v9BSeoFHYWQQ3n3xzo",
+      custodyAuthority: null,
+      privateBalance: true,
+      terminalOrigins: ["http://localhost:3002"],
+    },
   },
 };
 
@@ -94,6 +133,43 @@ export function expectedGenesisHash(): string {
 
 export function isMainnet(): boolean {
   return network() === "mainnet";
+}
+
+/**
+ * The origins whose windows may ask this wallet for a signature, compared
+ * with `event.origin` as exact strings. On the main network that is the
+ * terminal and nothing else: the build's setting is not read there, so a
+ * misconfigured production build cannot widen it. On the test network it is
+ * the setting, or the terminal's local address when there is none.
+ */
+export function bridgeTerminalOrigins(): readonly string[] {
+  const { bridge } = profile();
+  if (isMainnet()) return bridge.terminalOrigins;
+  const set = getPlatform().env.bridgeTerminalOrigins;
+  return set && set.length > 0 ? set : bridge.terminalOrigins;
+}
+
+/** What the wallet bridge holds every request to on this network. */
+export function bridgeNetworkPins(): BridgeProfile & { usdcMint: string } {
+  const { bridge, usdcMint: mint } = profile();
+  return { ...bridge, usdcMint: mint };
+}
+
+/** One origin as the browser writes it: https, or http to this machine, with no path. */
+function bridgeOriginFrom(text: string): string {
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    throw new Error(`A wallet bridge origin is not a URL: "${text}".`);
+  }
+  const local = url.protocol === "http:" && LOCAL_HOSTS.includes(url.hostname);
+  if (url.origin !== text || (url.protocol !== "https:" && !local)) {
+    throw new Error(
+      `A wallet bridge origin must be https, or http to this machine, with no path: "${text}".`,
+    );
+  }
+  return text;
 }
 
 const RATE_LIMIT_RETRIES = 3;
@@ -224,6 +300,8 @@ export type EnvSettings = {
   rpcUrl?: string;
   /** True in a development build, where a server on this machine may be reached over plain http. */
   development?: boolean;
+  /** The origins that may open the wallet bridge, separated by commas. Read on the test network only. */
+  bridgeTerminalOrigins?: string;
 };
 
 /** Where a development build finds a server on its own machine: itself, and the host as an Android emulator names it. */
@@ -280,6 +358,14 @@ export function envFrom(settings: EnvSettings): Env {
   const feeText = settings.feeBps?.trim();
   const development = settings.development === true;
   const relayer = relayerFrom(settings.relayerFeePayers, settings.relayerPaymentWallet);
+  const bridgeOrigins =
+    name === "devnet"
+      ? (settings.bridgeTerminalOrigins ?? "")
+          .split(",")
+          .map((origin) => origin.trim())
+          .filter(Boolean)
+          .map(bridgeOriginFrom)
+      : [];
   const env: Env = {
     network: name === "mainnet" ? "mainnet-beta" : "devnet",
     referralAccount: settings.referralAccount?.trim() || null,
@@ -287,6 +373,7 @@ export function envFrom(settings: EnvSettings): Env {
     apiBaseUrl: apiBaseFrom(settings.apiBaseUrl, settings.platform === "web", development),
     ...(settings.rpcUrl?.trim() ? { rpcUrl: settings.rpcUrl.trim() } : {}),
     ...(relayer ? { relayer } : {}),
+    ...(bridgeOrigins.length > 0 ? { bridgeTerminalOrigins: bridgeOrigins } : {}),
   };
 
   if (feeText && env.feeBps === 0) {

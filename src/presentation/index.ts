@@ -277,3 +277,13 @@ export {
   tradeProgressSteps,
   tradeReviewView,
 } from "./trade.js";
+export {
+  type ApprovalAccount,
+  type ApprovalView,
+  type NetworkCheck,
+  approvalView,
+  networkFeeUpperBound,
+  refusalText,
+  solText,
+  usdcText,
+} from "./walletBridge.js";

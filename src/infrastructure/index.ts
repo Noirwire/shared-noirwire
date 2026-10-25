@@ -154,3 +154,20 @@ export {
   relayedSendDraft,
   tokenSendLamports,
 } from "./solana/tokens.js";
+export { bridgeNetworkPins, bridgeTerminalOrigins } from "./solana/config.js";
+export { signBytesWhileUnlocked } from "./solana/signerAccounts.js";
+export {
+  type DecodeContext,
+  decodeSignInMessage,
+  decodeTransactionMessage,
+} from "./solana/walletBridge/decode.js";
+export {
+  type GuardDeps,
+  type GuardResult,
+  type SolanaReads,
+  GUARD_TIMEOUT_MS,
+  guardRollup,
+  guardSolana,
+  solanaReadsThroughApi,
+} from "./solana/walletBridge/networkGuard.js";
+export { type BridgePins, bridgePins } from "./solana/walletBridge/pins.js";
