@@ -11,6 +11,8 @@
   <img src="https://img.shields.io/badge/license-proprietary-black" alt="License">
 </p>
 
+NoirWire's main product is NoirWire Dark Pool, a private order book for SOL-PERP on Solana mainnet at https://terminal.noirwire.com. The NoirWire Wallet at https://app.noirwire.com also runs on mainnet.
+
 NoirWire is a non-custodial Solana wallet. One recovery phrase derives a funding wallet and separate portfolios, and the keys never leave the device. This repository is the part of it both apps run on, once:
 
 - Keys are sealed on the device; the vault behind this package only ever sees ciphertext.
