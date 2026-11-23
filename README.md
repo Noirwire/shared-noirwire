@@ -212,7 +212,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for commit style, tests, and what belongs
 
 ## Releasing
 
-This package has no production deployment of its own: it reaches an app by git tag, pinned in that app's `package.json` (see [Install](#install)). Semver tags: `v0.1.0` through `v0.11.1` so far. While the version is below 1.0, a minor bump may break; a patch never does. Every change is recorded in [CHANGELOG.md](CHANGELOG.md).
+This package has no production deployment of its own: it reaches an app by git tag, pinned in that app's `package.json` (see [Install](#install)). Semver tags: `v0.1.0` through `v0.15.0` so far. While the version is below 1.0, a minor bump may break; a patch never does. Every change is recorded in [CHANGELOG.md](CHANGELOG.md).
 
 Pushing a tag matching `v*` runs the full check suite (lint, types, format, unit tests, integration tests, build), confirms `package.json`'s version matches the tag, packs the tarball and checks it contains `dist/` and no test files, then publishes a GitHub Release with that tarball attached and its notes taken from the matching `CHANGELOG.md` section. To cut a release: bump `version` in `package.json`, add its section to `CHANGELOG.md`, commit, then push a `vX.Y.Z` tag matching the version.
 
