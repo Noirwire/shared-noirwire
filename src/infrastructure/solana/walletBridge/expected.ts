@@ -61,7 +61,7 @@ export function orderbookAddresses(pins: BridgePins, owner: PublicKey) {
   const view = find(program, text("view"), owner.toBytes());
   return {
     exchange: find(program, text("exchange")),
-    ledger: find(program, text("ledger")),
+    ledger: find(program, text("ledger-v2")),
     view,
     viewPermission: permissionOf(view),
     ownerToken: tokenAccount(owner, pins.usdcMint),
@@ -104,7 +104,6 @@ export function openTrader(
       signer(gate),
       signer(owner),
       writable(a.exchange),
-      writable(a.ledger),
       writable(a.view),
       writable(a.viewPermission),
       readonly(PERMISSION_PROGRAM),
@@ -120,9 +119,10 @@ export function setOrderKeys(
   owner: PublicKey,
   orderKeys: PublicKey[],
 ): TransactionInstruction {
+  const a = orderbookAddresses(pins, owner);
   return orderbook(
     pins,
-    [signer(owner), writable(orderbookAddresses(pins, owner).view)],
+    [signer(owner), writable(a.view), readonly(a.exchange), writable(a.ledger)],
     Buffer.concat([hex(DISCRIMINATORS.setOrderKeys), ...orderKeys.map((key) => key.toBuffer())]),
   );
 }
@@ -142,7 +142,7 @@ export function deposit(
       signer(owner),
       readonly(a.exchange),
       writable(a.ledger),
-      readonly(a.view),
+      writable(a.view),
       readonly(held.authority),
       writable(held.account),
       writable(a.ownerToken),
