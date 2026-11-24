@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-23
+
+The wallet side of the bridge, built for order book client 0.11.0, which mainnet now runs. This is also the first tag to carry the 0.14.0 changes, which were never tagged; they follow under their own heading.
+
 ### Added
 
 The wallet side of letting the trading terminal ask this wallet for signatures. The wallet never sends: it decodes the bytes it is handed, signs them once a person approves, and returns a 64-byte signature that the terminal attaches and sends.
@@ -22,11 +26,11 @@ The wallet side of letting the trading terminal ask this wallet for signatures. 
 - [ ] **Which origins may ask.** Answer a message only when `event.origin` is one of `bridgeTerminalOrigins()` and `event.source` is `window.opener`. On the main network that is `https://terminal.noirwire.com`. On the test network, set `bridgeTerminalOrigins` (comma-separated origins, no path) in `envFrom`, from the build's `NEXT_PUBLIC_BRIDGE_TERMINAL_ORIGINS`; it is ignored on the main network.
 - [ ] **Deposits and withdrawals need the custody pinned.** `custodyAuthority` is unset in `solana/config.ts` until the deployment's value is put there; until then the wallet signs only a sign-in, an account opening and a device change.
 
-## [0.14.0] - 2026-10-20
+### From 0.14.0 (dated 2026-10-20, never tagged)
 
 Security fixes from a review of what is checked before signing. A swap is held to the minimum its own route enforces on chain, a swap is never called failed while it can still land, Earn opens and pays for nothing but the portfolio's own account, the relayer's keys and the fee account come from the build, an unlocked wallet no longer holds its phrase, and the page to return to after unlocking can no longer be another site. The order book's pure rules move in from the trading terminal.
 
-### Breaking
+#### Breaking
 
 For both apps:
 
@@ -35,7 +39,7 @@ For both apps:
 - [ ] **Fewer routes**: an order Jupiter routes through DFlow, OKX or one of its own first-generation or exact-out route instructions is refused before signing, with a reason to get a new quote. In a sample of sixteen live buys with NoirWire's fee, fifteen went through Jupiter's own `route_v2` and one through OKX. To keep that rare, every order now asks Jupiter to leave out the DFlow and OKX routes (`excludeRouters` is `dflow,okx`). This needs the API release that accepts `excludeRouters` on the order route, which refuses any other value: deploy the API first, then the apps. Watch for refused routes after the update; see the first note under Security.
 - [ ] **No phrase in memory**: `getPhrase` is gone from `@noirwire/shared/wallet`, because an unlocked wallet no longer holds its phrase. Ask `isUnlocked()` whether it is unlocked. Where the phrase itself is needed, to show it or to check a stored record round trip, read it with `verifyPassword(password)`, which returns it from the stored record.
 
-### Security
+#### Security
 
 - **The swap's own on-chain minimum is read and held to the quote.** Every instruction of a swap venue's program is decoded from the program's published IDL. A swap order must carry exactly one: two are refused, since each could meet the floor on its own, and so is a transaction with none, such as one that only pays a fee, since nothing on chain would then hold it to its floor. The route must spend from the taker's own input account and no more than the quote's input, it must pay only into the taker's own output account, and the minimum the program enforces on chain must be no lower than the quote's floor. Both of the taker's accounts must be among the transaction's own keys, not loaded from a lookup table, which is read from the same server that built the order. Readable are Jupiter's `route_v2` and `shared_accounts_route_v2` and its RFQ engine's `fill`; every other instruction of those programs, and every DFlow and OKX instruction, is refused. In Jupiter's other routes and DFlow's the minimum follows a route plan of variable length that the program reads from the front, so its last bytes can say anything; OKX's published IDL is not known to match its deployed program. The simulation stays as the second line.
 - **A swap is never reported failed while its signed transaction can still land.** Its expiry is the newest blockhash's last valid height, read from the chain before it is handed over and written into the reservation before it is sent, never the height the venue's order states. A trade the chain cannot give that height for is not signed.
@@ -47,7 +51,7 @@ For both apps:
 - **An unlocked wallet holds a 64-byte key root, not its phrase.** The phrase is turned at unlock into SLIP-0010's master node for its seed, every key is derived from that over bytes, and the root is zeroed when the wallet locks, resets, idles out or is unlocked again. Intermediate derivation nodes, derived key bytes and the secret key copy `signMessage` signs with are zeroed after use. A routine write seals the phrase read from the stored record. JavaScript cannot guarantee that a secret is erased; `docs/architecture.md` says what this does and does not cover.
 - **`safeDestination` refuses any control character, any whitespace, any backslash and any `.` or `..` segment**, plain or as `%2e`, as well as `//`. A browser's URL parser drops tab, CR and LF and resolves dot segments, which turned `/<tab>/evil.example` and `/.//evil.example` into another site.
 
-### Added
+#### Added
 
 The order book's pure rules, from `@noirwire/shared/domain`, for an app that carries the trading terminal. Nothing here signs, reads the chain or imports the order book's SDK: a market's settings are plain data (`OrderbookMarket`) the app reads and hands in.
 
@@ -60,14 +64,14 @@ The order book's pure rules, from `@noirwire/shared/domain`, for an app that car
 - **Formatting**: `orderbookDecimal` and `quoteAmount` write a decimal string from its digits, at fixed places, with the quote token named as data; `durationText`, `clockTime`, `eventTime` and `ageText`. Each answers null for a value it cannot read.
 - **A mark's age**: `markFreshness(markTime, now, maxPriceAgeSeconds)` says how old a mark is and whether an order may use it, against the market's own price age limit; `ageOf` and `olderThan` are the same reading for anything else.
 
-### Changed
+#### Changed
 
 - `checkQuotedPrice` throws when there is no market price and returns nothing otherwise. `TradePlan.priceChecked` and `PricedOrder.priceChecked` are gone.
 - `BuiltSwap.lastValidBlockHeight` is gone: no swap expiry is taken from the venue.
 - `checkSwapPrograms` reads nothing from the chain beyond the transaction's lookup tables, and `verifySwapBeforeSigning` no longer reads the fee account with the balances.
 - `deriveKeypair`, `deriveProfileKeys`, `deriveRewardsKey` and `deriveCandidateKeypairs` still take a phrase and derive the same keys as before; they now go through the same key root the unlocked wallet holds.
 
-### Documentation
+#### Documentation
 
 - `docs/architecture.md` lists, as accepted risk, what still rests on the one server: the simulation and the reads behind it, the mint profile and the price index. The recommended next step is a second forwarding path at the web app's own edge, to an RPC provider the API server does not operate, for every read the checks make and the simulation together. It is not built.
 
